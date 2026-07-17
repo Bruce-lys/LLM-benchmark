@@ -1,0 +1,62 @@
+[
+  {
+    "name": "MODEL_1",
+    "server": "SERVER_1",
+    "batch": "server_1",
+    "base_url": "http://SERVER_1_IP:8000/v1",
+    "output": "hle_MODEL_1.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  },
+  {
+    "name": "MODEL_2",
+    "server": "SERVER_1",
+    "batch": "server_1",
+    "base_url": "http://SERVER_1_IP:8001/v1",
+    "output": "hle_MODEL_2.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  },
+  {
+    "name": "MODEL_3",
+    "server": "SERVER_2",
+    "batch": "server_2",
+    "base_url": "http://SERVER_2_IP:8000/v1",
+    "output": "hle_MODEL_3.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  },
+  {
+    "name": "MODEL_4",
+    "server": "SERVER_2",
+    "batch": "server_2",
+    "base_url": "http://SERVER_2_IP:8001/v1",
+    "output": "hle_MODEL_4.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  },
+  {
+    "name": "MODEL_5",
+    "server": "SERVER_3",
+    "batch": "server_3",
+    "base_url": "http://SERVER_3_IP:8000/v1",
+    "output": "hle_MODEL_5.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  },
+  {
+    "name": "MODEL_6",
+    "server": "SERVER_3",
+    "batch": "server_3",
+    "base_url": "http://SERVER_3_IP:8001/v1",
+    "output": "hle_MODEL_6.json",
+    "num_workers": 2,
+    "temperature": 0,
+    "text_only": false
+  }
+]

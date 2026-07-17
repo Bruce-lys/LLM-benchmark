@@ -1,0 +1,31 @@
+# Resume remaining questions for exp_64 only (higher timeout).
+
+dataset: cais/hle
+subset_file: data/subsets/hle_subset_10pct_category_difficulty_all.json
+parallel: 1
+realtime_judge: true
+text_only: false
+
+defaults:
+  num_workers: 1
+  temperature: 0.85
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 1.1
+  repetition_penalty: 1.0
+  timeout: 1800
+  max_retries: 2
+  api_key_env: OPENAI_API_KEY
+
+judge:
+  model: deepseek-v4-flash
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  timeout: 300
+  max_retries: 2
+
+models:
+  - name: exp_64_linear_Ornith_08_qwen35_02
+    base_url: http://10.0.3.50:8000/v1
+    output: outputs/predictions/hle_exp_64_linear_Ornith_08_qwen35_02.json

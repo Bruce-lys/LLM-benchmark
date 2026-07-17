@@ -1,0 +1,33 @@
+# Copy this file, change name/base_url, then run:
+#   ./run_hle.sh configs/models/my_model.yaml
+
+dataset: cais/hle
+subset_file: data/subsets/hle_subset_10pct_category_difficulty_all.json
+parallel: 1
+realtime_judge: true
+text_only: false
+
+defaults:
+  num_workers: 1
+  temperature: 0.85
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 1.1
+  repetition_penalty: 1.0
+  timeout: 600
+  max_retries: 1
+  api_key_env: OPENAI_API_KEY
+
+judge:
+  model: deepseek-v4-flash
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  timeout: 180
+  max_retries: 1
+
+models:
+  - name: YOUR_MODEL_NAME
+    base_url: http://10.0.3.XX:8000/v1
+    # output defaults to outputs/predictions/hle_<name>.json
+    # temperature: 0.7   # optional per-model override
