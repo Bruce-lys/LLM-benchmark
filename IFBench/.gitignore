@@ -1,0 +1,26 @@
+# Environment
+.env
+.venv/
+.nltk_data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Eval outputs (optional - uncomment to track results)
+# eval/
+
+# Response files with secrets in name
+data/*responses*.jsonl
+
+# Local run artifacts
+logs/
+.env
+.venv/
+.nltk_data/
+.coverage
+data/*responses*.jsonl
+data/*smoke*.jsonl
+eval/Nex-*/
+eval/sce397b_*/
