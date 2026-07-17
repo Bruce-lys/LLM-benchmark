@@ -1,0 +1,15 @@
+[project]
+name = "llm-eval"
+version = "0.0.1"
+description = "LLM evaluation framework"
+requires-python = ">=3.12"
+dependencies = [
+    "openai",
+    "datasets",
+    "pydantic",
+    "tqdm",
+    "rich",
+]
+
+[tool.uv]
+package = false

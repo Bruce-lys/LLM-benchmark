@@ -1,0 +1,14 @@
+# ai
+.claude/settings.json
+codex.sh
+
+# data
+data/**
+!data/.gitkeep
+outputs/**
+!outputs/.gitkeep
+
+# python
+__pycache__
+.venv
+uv.lock
