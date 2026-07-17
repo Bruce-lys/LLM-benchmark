@@ -1,0 +1,52 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 144eadeae2..48821f261f 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -1440,6 +1440,10 @@ class QuadContourSet(ContourSet):
+ 
+         return kwargs
+ 
++    @staticmethod
++    def _is_boolean_z(z):
++        return np.issubdtype(np.asarray(z).dtype, np.bool_)
++
+     def _contour_args(self, args, kwargs):
+         if self.filled:
+             fn = 'contourf'
+@@ -1447,12 +1451,24 @@ class QuadContourSet(ContourSet):
+             fn = 'contour'
+         nargs = len(args)
+         if nargs <= 2:
+-            z = ma.asarray(args[0], dtype=np.float64)
++            z = args[0]
++            is_boolean_z = (
++                not self.filled and self.levels is None
++                and len(args) == 1 and self._is_boolean_z(z))
++            z = ma.asarray(z, dtype=np.float64)
+             x, y = self._initialize_x_y(z)
+-            args = args[1:]
++            if is_boolean_z:
++                args = ([0.5],)
++            else:
++                args = args[1:]
+         elif nargs <= 4:
++            is_boolean_z = (
++                not self.filled and self.levels is None
++                and len(args) == 3 and self._is_boolean_z(args[2]))
+             x, y, z = self._check_xyz(args[:3], kwargs)
+             args = args[3:]
++            if is_boolean_z:
++                args = ([0.5],)
+         else:
+             raise _api.nargs_error(fn, takes="from 1 to 4", given=nargs)
+         z = ma.masked_invalid(z, copy=False)
+@@ -1575,6 +1591,9 @@ Z : (M, N) array-like
+     The height values over which the contour is drawn.  Color-mapping is
+     controlled by *cmap*, *norm*, *vmin*, and *vmax*.
+ 
++    If *Z* is boolean and ``levels`` is not given, ``[0.5]`` is used
++    for ``.contour``.
++
+ levels : int or array-like, optional
+     Determines the number and positions of the contour lines / regions.
+ 

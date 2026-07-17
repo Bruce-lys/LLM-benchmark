@@ -1,0 +1,184 @@
+diff --git a/sympy/polys/densearith.py b/sympy/polys/densearith.py
+index bce08bb356..ba349896bf 100644
+--- a/sympy/polys/densearith.py
++++ b/sympy/polys/densearith.py
+@@ -268,8 +268,10 @@ def dup_mul_ground(f, c, K):
+     """
+     if not c or not f:
+         return []
+-    else:
+-        return [ cf * c for cf in f ]
++
++    result = [ cf * c for cf in f ]
++
++    return dup_strip(result, K)
+ 
+ 
+ def dmp_mul_ground(f, c, u, K):
+@@ -289,9 +291,12 @@ def dmp_mul_ground(f, c, u, K):
+     if not u:
+         return dup_mul_ground(f, c, K)
+ 
++    if not c:
++        return dmp_zero(u)
++
+     v = u - 1
+ 
+-    return [ dmp_mul_ground(cf, c, v, K) for cf in f ]
++    return dmp_strip([ dmp_mul_ground(cf, c, v, K) for cf in f ], u, K)
+ 
+ 
+ def dup_quo_ground(f, c, K):
+diff --git a/sympy/polys/densebasic.py b/sympy/polys/densebasic.py
+index 1caeb8f629..2c0563127d 100644
+--- a/sympy/polys/densebasic.py
++++ b/sympy/polys/densebasic.py
+@@ -249,7 +249,7 @@ def dmp_degree_list(f, u):
+     return tuple(degs)
+ 
+ 
+-def dup_strip(f):
++def dup_strip(f, K=None):
+     """
+     Remove leading zeros from ``f`` in ``K[x]``.
+ 
+@@ -262,21 +262,30 @@ def dup_strip(f):
+     [1, 2, 3, 0]
+ 
+     """
+-    if not f or f[0]:
++    if not f:
+         return f
+ 
+-    i = 0
++    if K is not None:
++        is_zero = K.is_zero
++    else:
++        def is_zero(cf):
++            return cf == 0
+ 
+-    for cf in f:
+-        if cf:
+-            break
+-        else:
+-            i += 1
++    if is_zero(f[0]):
++        i = 0
++
++        for cf in f:
++            if is_zero(cf):
++                i += 1
++            else:
++                break
+ 
+-    return f[i:]
++        return f[i:]
++    else:
++        return f
+ 
+ 
+-def dmp_strip(f, u):
++def dmp_strip(f, u, K=None):
+     """
+     Remove leading zeros from ``f`` in ``K[X]``.
+ 
+@@ -290,23 +299,26 @@ def dmp_strip(f, u):
+ 
+     """
+     if not u:
+-        return dup_strip(f)
++        return dup_strip(f, K)
+ 
+-    if dmp_zero_p(f, u):
+-        return f
++    if K is None:
++        if dmp_zero_p(f, u):
++            return f
+ 
+-    i, v = 0, u - 1
++        i, v = 0, u - 1
+ 
+-    for c in f:
+-        if not dmp_zero_p(c, v):
+-            break
+-        else:
+-            i += 1
++        for c in f:
++            if not dmp_zero_p(c, v):
++                break
++            else:
++                i += 1
+ 
+-    if i == len(f):
+-        return dmp_zero(u)
++        if i == len(f):
++            return dmp_zero(u)
++        else:
++            return f[i:]
+     else:
+-        return f[i:]
++        return _rec_strip(f, u, K)
+ 
+ 
+ def _rec_validate(f, g, i, K):
+@@ -327,14 +339,29 @@ def _rec_validate(f, g, i, K):
+         return levels
+ 
+ 
+-def _rec_strip(g, v):
++def _rec_strip(g, v, K=None):
+     """Recursive helper for :func:`_rec_strip`."""
+     if not v:
+-        return dup_strip(g)
++        return dup_strip(g, K)
+ 
+     w = v - 1
++    f = [_rec_strip(c, w, K) for c in g]
++
++    if dmp_zero_p(f, v):
++        return f
++
++    i = 0
+ 
+-    return dmp_strip([ _rec_strip(c, w) for c in g ], v)
++    for c in f:
++        if not dmp_zero_p(c, w):
++            break
++        else:
++            i += 1
++
++    if i == len(f):
++        return dmp_zero(v)
++    else:
++        return f[i:]
+ 
+ 
+ def dmp_validate(f, K=None):
+diff --git a/sympy/polys/densetools.py b/sympy/polys/densetools.py
+index f057824642..1ce31cd545 100644
+--- a/sympy/polys/densetools.py
++++ b/sympy/polys/densetools.py
+@@ -1199,9 +1199,9 @@ def dup_clear_denoms(f, K0, K1=None, convert=False):
+         f = dup_mul_ground(f, common, K0)
+ 
+     if not convert:
+-        return common, f
++        return common, dup_strip(f, K0)
+     else:
+-        return common, dup_convert(f, K0, K1)
++        return common, dup_strip(dup_convert(f, K0, K1), K1)
+ 
+ 
+ def _rec_clear_denoms(g, v, K0, K1):
+@@ -1253,9 +1253,9 @@ def dmp_clear_denoms(f, u, K0, K1=None, convert=False):
+         f = dmp_mul_ground(f, common, u, K0)
+ 
+     if not convert:
+-        return common, f
++        return common, dmp_strip(f, u, K0)
+     else:
+-        return common, dmp_convert(f, u, K0, K1)
++        return common, dmp_strip(dmp_convert(f, u, K0, K1), u, K1)
+ 
+ 
+ def dup_revert(f, n, K):

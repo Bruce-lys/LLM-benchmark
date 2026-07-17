@@ -1,0 +1,68 @@
+diff --git a/sympy/polys/factortools.py b/sympy/polys/factortools.py
+index c6a5f9f063..0ef7f9887f 100644
+--- a/sympy/polys/factortools.py
++++ b/sympy/polys/factortools.py
+@@ -22,6 +22,7 @@
+     dmp_nest, dmp_raise,
+     dup_strip,
+     dmp_ground,
++    dmp_one_p,
+     dup_inflate,
+     dmp_exclude, dmp_include,
+     dmp_inject, dmp_eject,
+@@ -1141,28 +1142,43 @@ def dmp_ext_factor(f, u, K):
+         return dup_ext_factor(f, K)
+ 
+     lc = dmp_ground_LC(f, u, K)
+-    f = dmp_ground_monic(f, u, K)
++    content, g = dmp_primitive(f, u, K)
++    content_coeff, content_factors = dmp_factor_list(content, u - 1, K)
++    coeff = K.mul(lc, content_coeff)
+ 
+-    if all(d <= 0 for d in dmp_degree_list(f, u)):
+-        return lc, []
++    factors = []
+ 
+-    f, F = dmp_sqf_part(f, u, K), f
+-    s, g, r = dmp_sqf_norm(f, u, K)
++    if not dmp_one_p(content, u - 1, K):
++        # Content factors live in the remaining variables; promote them
++        # to constants in the top variable.
++        for factor, k in content_factors:
++            factors.append((dmp_ground(factor, 0), k))
+ 
+-    factors = dmp_factor_list_include(r, u, K.dom)
++    if all(d <= 0 for d in dmp_degree_list(g, u)):
++        return coeff, factors
+ 
+-    if len(factors) == 1:
+-        factors = [f]
++    F = g
++    g = dmp_sqf_part(g, u, K)
++    s, shifted, r = dmp_sqf_norm(g, u, K)
++
++    norm_factors = dmp_factor_list_include(r, u, K.dom)
++
++    if len(norm_factors) == 1:
++        primitive_factors = [g]
+     else:
+         H = dmp_raise([K.one, s*K.unit], u, 0, K)
+ 
+-        for i, (factor, _) in enumerate(factors):
++        for i, (factor, _) in enumerate(norm_factors):
+             h = dmp_convert(factor, u, K.dom, K)
+-            h, _, g = dmp_inner_gcd(h, g, u, K)
++            h, _, shifted = dmp_inner_gcd(h, shifted, u, K)
+             h = dmp_compose(h, H, u, K)
+-            factors[i] = h
++            norm_factors[i] = h
++
++        primitive_factors = norm_factors
++
++    factors.extend(dmp_trial_division(F, primitive_factors, u, K))
+ 
+-    return lc, dmp_trial_division(F, factors, u, K)
++    return coeff, factors
+ 
+ 
+ def dup_gf_factor(f, K):

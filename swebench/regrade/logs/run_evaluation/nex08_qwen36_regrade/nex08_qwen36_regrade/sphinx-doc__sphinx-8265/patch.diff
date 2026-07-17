@@ -1,0 +1,186 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index f4bc58b69..6961d0059 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -15,7 +15,7 @@ import sys
+ import typing
+ import warnings
+ from inspect import Parameter
+-from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Tuple
++from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
+ from typing import cast
+ 
+ from docutils import nodes
+@@ -215,17 +215,75 @@ def _parse_arglist(arglist: str, env: BuildEnvironment = None) -> addnodes.desc_
+     return params
+ 
+ 
++
++def _split_arglist(arglist: str) -> List[str]:
++    """Split an argument list, respecting parentheses, brackets, braces and strings."""
++    parts = []  # type: List[str]
++    start = 0
++    depth = 0
++    stack = []  # type: List[Tuple[str, bool, bool]]
++    quote = None  # type: Optional[str]
++    escape = False
++
++    for i, char in enumerate(arglist):
++        if quote:
++            if escape:
++                escape = False
++            elif len(quote) == 3:
++                if arglist.startswith(quote, i):
++                    quote = None
++            elif char == '\\':
++                escape = True
++            elif char == quote:
++                quote = None
++            continue
++
++        if char in ("'", '"'):
++            quote = char
++            if i + 2 < len(arglist) and arglist[i + 1:i + 3] == char * 3:
++                quote = char * 3
++                i += 2
++            continue
++
++        if char in "([{":
++            stack.append((char, False, False))
++            depth += 1
++        elif char in ")]}":
++            if stack:
++                open_char, seen_content, optional = stack.pop()
++                depth -= 1
++                if depth and not stack[-1][1]:
++                    stack[-1] = (stack[-1][0], True, stack[-1][2])
++        elif char == ',' and depth:
++            open_char, seen_content, optional = stack[-1]
++            if open_char == '[' and (not seen_content or optional):
++                parts.append(arglist[start:i].strip())
++                start = i + 1
++                stack[-1] = (open_char, True, True)
++            continue
++        elif char == ',' and not depth:
++            parts.append(arglist[start:i].strip())
++            start = i + 1
++            continue
++        elif not char.isspace() and depth:
++            if stack and not stack[-1][1]:
++                stack[-1] = (stack[-1][0], True, stack[-1][2])
++
++    parts.append(arglist[start:].strip())
++    return [part for part in parts if part]
++
++
+ def _pseudo_parse_arglist(signode: desc_signature, arglist: str) -> None:
+     """"Parse" a list of arguments separated by commas.
+ 
+     Arguments can have "optional" annotations given by enclosing them in
+-    brackets.  Currently, this will split at any comma, even if it's inside a
+-    string literal (e.g. default argument value).
++    brackets.  Commas inside parentheses, brackets, braces and string literals
++    are not treated as separators.
+     """
+     paramlist = addnodes.desc_parameterlist()
+     stack = [paramlist]  # type: List[Element]
+     try:
+-        for argument in arglist.split(','):
++        for argument in _split_arglist(arglist):
+             argument = argument.strip()
+             ends_open = ends_close = 0
+             while argument.startswith('['):
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index 378174993..20e7346b9 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -546,6 +546,62 @@ def evaluate_signature(sig: inspect.Signature, globalns: Dict = None, localns: D
+     return sig.replace(parameters=parameters, return_annotation=return_annotation)
+ 
+ 
++
++def _ast_unparse_with_parens(node: Optional[ast.AST],
++                             parenthesize_tuple: bool = True) -> Optional[str]:
++    """Unparse an AST node, adding parentheses for tuple default values."""
++    if node is None:
++        return None
++    elif isinstance(node, ast.Tuple):
++        elts = [_ast_unparse_with_parens(elt, parenthesize_tuple)
++                for elt in node.elts]
++        if parenthesize_tuple:
++            if len(elts) == 1:
++                return "(%s,)" % elts[0]
++            else:
++                return "(%s)" % ", ".join(elts)
++        elif len(elts) == 1:
++            return "%s," % elts[0]
++        else:
++            return ", ".join(elts)
++    elif isinstance(node, ast.List):
++        return "[" + ", ".join(_ast_unparse_with_parens(e) for e in node.elts) + "]"
++    elif isinstance(node, ast.Set):
++        return "{" + ", ".join(_ast_unparse_with_parens(e) for e in node.elts) + "}"
++    elif isinstance(node, ast.Dict):
++        items = []
++        for key, value in zip(node.keys, node.values):
++            if key is None:
++                items.append("**%s" % _ast_unparse_with_parens(value))
++            else:
++                items.append("%s: %s" % (_ast_unparse_with_parens(key),
++                                        _ast_unparse_with_parens(value)))
++        return "{" + ", ".join(items) + "}"
++    elif isinstance(node, ast.Attribute):
++        return "%s.%s" % (_ast_unparse_with_parens(node.value), node.attr)
++    elif isinstance(node, ast.Subscript):
++        return "%s[%s]" % (_ast_unparse_with_parens(node.value),
++                           _ast_unparse_with_parens(node.slice,
++                                                    parenthesize_tuple=False))
++    elif isinstance(node, ast.BinOp):
++        return " ".join(_ast_unparse_with_parens(e) for e in
++                        [node.left, node.op, node.right])
++    elif isinstance(node, ast.BoolOp):
++        op = ast_unparse(node.op)
++        return op.join(_ast_unparse_with_parens(e) for e in node.values)
++    elif isinstance(node, ast.UnaryOp):
++        return "%s %s" % (ast_unparse(node.op),
++                          _ast_unparse_with_parens(node.operand))
++    elif isinstance(node, ast.Call):
++        args = [_ast_unparse_with_parens(e) for e in node.args]
++        keywords = ["%s=%s" % (k.arg, _ast_unparse_with_parens(k.value))
++                    for k in node.keywords]
++        return "%s(%s)" % (_ast_unparse_with_parens(node.func),
++                           ", ".join(args + keywords))
++    else:
++        return ast_unparse(node)
++
++
+ def stringify_signature(sig: inspect.Signature, show_annotation: bool = True,
+                         show_return_annotation: bool = True) -> str:
+     """Stringify a Signature object.
+@@ -626,7 +682,7 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+             if defaults[i] is Parameter.empty:
+                 default = Parameter.empty
+             else:
+-                default = ast_unparse(defaults[i])
++                default = _ast_unparse_with_parens(defaults[i])
+ 
+             annotation = ast_unparse(arg.annotation) or Parameter.empty
+             params.append(Parameter(arg.arg, Parameter.POSITIONAL_ONLY,
+@@ -636,7 +692,7 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+         if defaults[i + posonlyargs] is Parameter.empty:
+             default = Parameter.empty
+         else:
+-            default = ast_unparse(defaults[i + posonlyargs])
++            default = _ast_unparse_with_parens(defaults[i + posonlyargs])
+ 
+         annotation = ast_unparse(arg.annotation) or Parameter.empty
+         params.append(Parameter(arg.arg, Parameter.POSITIONAL_OR_KEYWORD,
+@@ -648,7 +704,7 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+                                 annotation=annotation))
+ 
+     for i, arg in enumerate(args.kwonlyargs):
+-        default = ast_unparse(args.kw_defaults[i]) or Parameter.empty
++        default = _ast_unparse_with_parens(args.kw_defaults[i]) or Parameter.empty
+         annotation = ast_unparse(arg.annotation) or Parameter.empty
+         params.append(Parameter(arg.arg, Parameter.KEYWORD_ONLY, default=default,
+                                 annotation=annotation))

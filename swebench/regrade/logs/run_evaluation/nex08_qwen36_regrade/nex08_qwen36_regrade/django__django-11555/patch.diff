@@ -1,0 +1,39 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index bef93d36a2..baa1ea0c65 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -335,6 +335,18 @@ class BaseExpression:
+     def copy(self):
+         return copy.copy(self)
+ 
++    def prefix_references(self, prefix):
++        clone = self.copy()
++        clone.set_source_expressions([
++            (
++                F('%s%s' % (prefix, expr.name))
++                if isinstance(expr, F)
++                else expr.prefix_references(prefix)
++            )
++            for expr in self.get_source_expressions()
++        ])
++        return clone
++
+     def get_group_by_cols(self, alias=None):
+         if not self.contains_aggregate:
+             return [self]
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index eaccc96d7d..70d0832661 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -722,6 +722,11 @@ class SQLCompiler:
+ 
+             results = []
+             for item in opts.ordering:
++                if hasattr(item, 'resolve_expression') and not isinstance(item, OrderBy):
++                    item = item.desc() if descending else item.asc()
++                if isinstance(item, OrderBy):
++                    results.append((item.prefix_references('%s%s' % (name, LOOKUP_SEP)), False))
++                    continue
+                 results.extend(self.find_ordering_name(item, opts, alias,
+                                                        order, already_seen))
+             return results

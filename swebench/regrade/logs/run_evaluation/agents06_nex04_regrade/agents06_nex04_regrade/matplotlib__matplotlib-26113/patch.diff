@@ -1,0 +1,42 @@
+diff --git a/lib/matplotlib/axes/_axes.py b/lib/matplotlib/axes/_axes.py
+index 5369eadbde..5eec72e1ee 100644
+--- a/lib/matplotlib/axes/_axes.py
++++ b/lib/matplotlib/axes/_axes.py
+@@ -4847,9 +4847,10 @@ default: :rc:`scatter.edgecolors`
+         yscale : {'linear', 'log'}, default: 'linear'
+             Use a linear or log10 scale on the vertical axis.
+ 
+-        mincnt : int > 0, default: *None*
+-            If not *None*, only display cells with more than *mincnt*
+-            number of points in the cell.
++        mincnt : int or None, default: *None*
++            If not *None*, only display cells with at least *mincnt*
++            number of points in the cell. A value of 0 includes cells
++            with no points when *reduce_C_function* can handle empty inputs.
+ 
+         marginals : bool, default: *False*
+             If marginals is *True*, plot the marginal density as
+@@ -5012,12 +5013,17 @@ default: :rc:`scatter.edgecolors`
+                 else:
+                     Cs_at_i2[i2[i]].append(C[i])
+             if mincnt is None:
+-                mincnt = 0
+-            accum = np.array(
+-                [reduce_C_function(acc) if len(acc) > mincnt else np.nan
+-                 for Cs_at_i in [Cs_at_i1, Cs_at_i2]
+-                 for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
+-                float)
++                accum = np.array(
++                    [reduce_C_function(acc) if len(acc) else np.nan
++                     for Cs_at_i in [Cs_at_i1, Cs_at_i2]
++                     for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
++                    float)
++            else:
++                accum = np.array(
++                    [reduce_C_function(acc) if len(acc) >= mincnt else np.nan
++                     for Cs_at_i in [Cs_at_i1, Cs_at_i2]
++                     for acc in Cs_at_i[1:]],  # [1:] drops out-of-range points.
++                    float)
+ 
+         good_idxs = ~np.isnan(accum)
+ 

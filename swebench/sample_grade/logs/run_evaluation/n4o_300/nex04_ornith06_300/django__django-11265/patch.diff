@@ -1,0 +1,38 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index d69c24419b..c5d7721347 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1666,6 +1666,9 @@ class Query(BaseExpression):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
+         # Generate the inner query.
+         query = Query(self.model)
++        # The inner query needs to know about FilteredRelations from the
++        # outer query, since it may filter on annotations created by them.
++        query._filtered_relations = self._filtered_relations.copy()
+         query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+@@ -2122,6 +2125,8 @@ class Query(BaseExpression):
+         for trimmed_paths, path in enumerate(all_paths):
+             if path.m2m:
+                 break
++            if path.filtered_relation:
++                break
+             if self.alias_map[lookup_tables[trimmed_paths + 1]].join_type == LOUTER:
+                 contains_louter = True
+             alias = lookup_tables[trimmed_paths]
+@@ -2141,8 +2146,12 @@ class Query(BaseExpression):
+         trimmed_prefix = LOOKUP_SEP.join(trimmed_prefix)
+         # Lets still see if we can trim the first join from the inner query
+         # (that is, self). We can't do this for LEFT JOINs because we would
+-        # miss those rows that have nothing on the outer side.
+-        if self.alias_map[lookup_tables[trimmed_paths + 1]].join_type != LOUTER:
++        # miss those rows that have nothing on the outer side. We also can't
++        # trim joins that have a filtered_relation because that would lose
++        # the filter condition.
++        next_join = self.alias_map[lookup_tables[trimmed_paths + 1]]
++        if next_join.join_type != LOUTER and not getattr(
++                next_join, 'filtered_relation', None):
+             select_fields = [r[0] for r in join_field.related_fields]
+             select_alias = lookup_tables[trimmed_paths + 1]
+             self.unref_alias(lookup_tables[trimmed_paths])

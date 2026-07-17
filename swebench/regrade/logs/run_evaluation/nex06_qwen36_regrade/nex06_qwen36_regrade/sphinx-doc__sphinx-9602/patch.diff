@@ -1,0 +1,127 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 9875a9f4b..a7e3c42bc 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -107,27 +107,58 @@ def type_to_xref(text: str, env: BuildEnvironment = None) -> addnodes.pending_xr
+                         refdomain='py', reftype=reftype, reftarget=text, **kwargs)
+ 
+ 
++def _annotation_to_text(node: ast.AST) -> Optional[str]:
++    """Return the text representation of a type annotation node."""
++    if isinstance(node, ast.Name):
++        return node.id
++    elif isinstance(node, ast.Attribute):
++        base = _annotation_to_text(node.value)
++        if base is None:
++            return None
++        return "%s.%s" % (base, node.attr)
++    else:
++        return None
++
++
++def _is_literal_annotation(node: ast.AST) -> bool:
++    """Return True if the annotation represents typing.Literal."""
++    name = _annotation_to_text(node)
++    if name is None:
++        return False
++    return name == 'Literal' or name.endswith('.Literal')
++
++
++def _constant_to_node(value: Any, is_literal: bool, env: BuildEnvironment) -> List[Node]:
++    """Return a node for an annotation constant."""
++    if value is Ellipsis:
++        return [addnodes.desc_sig_punctuation('', "...")]
++    elif value is None and not is_literal:
++        return [type_to_xref("None", env)]
++    else:
++        return [nodes.Text(str(value))]
++
++
+ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Node]:
+     """Parse type annotation."""
+-    def unparse(node: ast.AST) -> List[Node]:
++    def unparse(node: ast.AST, is_literal: bool = False) -> List[Node]:
+         if isinstance(node, ast.Attribute):
+-            return [nodes.Text("%s.%s" % (unparse(node.value)[0], node.attr))]
++            text = _annotation_to_text(node)
++            if text is None:
++                text = "%s.%s" % (unparse(node.value)[0], node.attr)
++            return [type_to_xref(text, env)]
+         elif isinstance(node, ast.BinOp):
+-            result: List[Node] = unparse(node.left)
+-            result.extend(unparse(node.op))
+-            result.extend(unparse(node.right))
++            result: List[Node] = unparse(node.left, is_literal)
++            result.extend(unparse(node.op, is_literal))
++            result.extend(unparse(node.right, is_literal))
+             return result
+         elif isinstance(node, ast.BitOr):
+             return [nodes.Text(' '), addnodes.desc_sig_punctuation('', '|'), nodes.Text(' ')]
+         elif isinstance(node, ast.Constant):  # type: ignore
+-            if node.value is Ellipsis:
+-                return [addnodes.desc_sig_punctuation('', "...")]
+-            else:
+-                return [nodes.Text(node.value)]
++            return _constant_to_node(node.value, is_literal, env)
+         elif isinstance(node, ast.Expr):
+-            return unparse(node.value)
++            return unparse(node.value, is_literal)
+         elif isinstance(node, ast.Index):
+-            return unparse(node.value)
++            return unparse(node.slice, is_literal)
+         elif isinstance(node, ast.List):
+             result = [addnodes.desc_sig_punctuation('', '[')]
+             if node.elts:
+@@ -135,26 +166,27 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+                 # last element of result if the for-loop was run at least
+                 # once
+                 for elem in node.elts:
+-                    result.extend(unparse(elem))
++                    result.extend(unparse(elem, is_literal))
+                     result.append(addnodes.desc_sig_punctuation('', ', '))
+                 result.pop()
+             result.append(addnodes.desc_sig_punctuation('', ']'))
+             return result
+         elif isinstance(node, ast.Module):
+-            return sum((unparse(e) for e in node.body), [])
++            return sum((unparse(e, is_literal) for e in node.body), [])
+         elif isinstance(node, ast.Name):
+-            return [nodes.Text(node.id)]
++            return [type_to_xref(node.id, env)]
+         elif isinstance(node, ast.Subscript):
+-            result = unparse(node.value)
++            is_literal = is_literal or _is_literal_annotation(node.value)
++            result = unparse(node.value, is_literal)
+             result.append(addnodes.desc_sig_punctuation('', '['))
+-            result.extend(unparse(node.slice))
++            result.extend(unparse(node.slice, is_literal))
+             result.append(addnodes.desc_sig_punctuation('', ']'))
+             return result
+         elif isinstance(node, ast.Tuple):
+             if node.elts:
+                 result = []
+                 for elem in node.elts:
+-                    result.extend(unparse(elem))
++                    result.extend(unparse(elem, is_literal))
+                     result.append(addnodes.desc_sig_punctuation('', ', '))
+                 result.pop()
+             else:
+@@ -167,7 +199,7 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+                 if isinstance(node, ast.Ellipsis):
+                     return [addnodes.desc_sig_punctuation('', "...")]
+                 elif isinstance(node, ast.NameConstant):
+-                    return [nodes.Text(node.value)]
++                    return _constant_to_node(node.value, is_literal, env)
+ 
+             raise SyntaxError  # unsupported syntax
+ 
+@@ -178,9 +210,6 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+     try:
+         tree = ast_parse(annotation)
+         result = unparse(tree)
+-        for i, node in enumerate(result):
+-            if isinstance(node, nodes.Text) and node.strip():
+-                result[i] = type_to_xref(str(node), env)
+         return result
+     except SyntaxError:
+         return [type_to_xref(annotation, env)]

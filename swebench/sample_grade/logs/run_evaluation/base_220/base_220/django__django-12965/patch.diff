@@ -1,0 +1,26 @@
+Patch file created
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 29e33c075f..41b44660f0 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1411,7 +1411,9 @@ class SQLDeleteCompiler(SQLCompiler):
+ 
+     def _as_sql(self, query):
+         result = [
+-            'DELETE FROM %s' % self.quote_name_unless_alias(query.base_table)
++            'DELETE FROM %s' % self.quote_name_unless_alias(
++                query.base_table or self.query.model._meta.db_table
++            )
+         ]
+         where, params = self.compile(query.where)
+         if where:
+@@ -1423,7 +1425,8 @@ class SQLDeleteCompiler(SQLCompiler):
+         Create the SQL for this query. Return the SQL string and list of
+         parameters.
+         """
+-        if self.single_alias:
++        where, params = self.compile(self.query.where)
++        if self.single_alias or not where:
+             return self._as_sql(self.query)
+         innerq = self.query.clone()
+         innerq.__class__ = Query

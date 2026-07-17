@@ -1,0 +1,24 @@
+diff --git a/lib/matplotlib/dates.py b/lib/matplotlib/dates.py
+index 0766156d64..473e751c76 100644
+--- a/lib/matplotlib/dates.py
++++ b/lib/matplotlib/dates.py
+@@ -592,13 +592,14 @@ def drange(dstart, dend, delta):
+ 
+ 
+ def _wrap_in_tex(text):
++    # Use \mathrm{} to render alphabetic characters in roman font
++    # within math mode.  Use \  (backslash space) to preserve spaces,
++    # which would otherwise be ignored in math mode.
+     p = r'([a-zA-Z]+)'
+-    ret_text = re.sub(p, r'}$\1$\\mathdefault{', text)
+-
++    ret_text = re.sub(p, r'\\mathrm{\1}', text)
++    ret_text = ret_text.replace(' ', '\\ ')
+     # Braces ensure dashes are not spaced like binary operators.
+-    ret_text = '$\\mathdefault{'+ret_text.replace('-', '{-}')+'}$'
+-    ret_text = ret_text.replace('$\\mathdefault{}$', '')
+-    return ret_text
++    return '$\\mathdefault{' + ret_text.replace('-', '{-}') + '}$'
+ 
+ 
+ ## date tickers and formatters ###

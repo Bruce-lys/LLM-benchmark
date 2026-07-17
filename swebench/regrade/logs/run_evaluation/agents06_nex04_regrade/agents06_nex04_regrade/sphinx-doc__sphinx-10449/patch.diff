@@ -1,0 +1,38 @@
+diff --git a/sphinx/ext/autodoc/typehints.py b/sphinx/ext/autodoc/typehints.py
+index 06768168e..cf64861f0 100644
+--- a/sphinx/ext/autodoc/typehints.py
++++ b/sphinx/ext/autodoc/typehints.py
+@@ -1,5 +1,6 @@
+ """Generating content for autodoc using typehints"""
+ 
++import inspect as stdlib_inspect
+ import re
+ from collections import OrderedDict
+ from typing import Any, Dict, Iterable, Set, cast
+@@ -12,6 +13,14 @@ from sphinx.application import Sphinx
+ from sphinx.util import inspect, typing
+ 
+ 
++def _has_documented_init(obj: Any) -> bool:
++    """Return whether the class has a documented ``__init__`` method."""
++    init = stdlib_inspect.unwrap(getattr(obj, '__init__', None))
++    if not stdlib_inspect.isfunction(init):
++        return False
++    return bool(init.__doc__)
++
++
+ def record_typehints(app: Sphinx, objtype: str, name: str, obj: Any,
+                      options: Dict, args: str, retann: str) -> None:
+     """Record type hints to env object."""
+@@ -29,7 +38,10 @@ def record_typehints(app: Sphinx, objtype: str, name: str, obj: Any,
+                 if param.annotation is not param.empty:
+                     annotation[param.name] = typing.stringify(param.annotation, mode)
+             if sig.return_annotation is not sig.empty:
+-                annotation['return'] = typing.stringify(sig.return_annotation, mode)
++                # The return annotation of __init__ is not a class return type.
++                if not (objtype in ('class', 'exception') and
++                        not _has_documented_init(obj)):
++                    annotation['return'] = typing.stringify(sig.return_annotation, mode)
+     except (TypeError, ValueError):
+         pass
+ 

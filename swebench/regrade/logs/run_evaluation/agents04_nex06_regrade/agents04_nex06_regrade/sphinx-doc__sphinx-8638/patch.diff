@@ -1,0 +1,57 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 000e2e8d3..d783915f6 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -355,7 +355,12 @@ class PyObject(ObjectDescription):
+                      typerolename='class', typenames=('paramtype', 'type'),
+                      can_collapse=True),
+         PyTypedField('variable', label=_('Variables'), rolename='obj',
+-                     names=('var', 'ivar', 'cvar'),
++                     names=('var',),
++                     typerolename='class', typenames=('vartype',),
++                     can_collapse=True),
++        # :ivar: and :cvar: should refer to attributes, not module-level data.
++        PyTypedField('ivar', label=_('Variables'), rolename='attr',
++                     names=('ivar', 'cvar'),
+                      typerolename='class', typenames=('vartype',),
+                      can_collapse=True),
+         PyGroupedField('exceptions', label=_('Raises'), rolename='exc',
+diff --git a/tests/test_domain_py.py b/tests/test_domain_py.py
+index e0c690518..50086eab0 100644
+--- a/tests/test_domain_py.py
++++ b/tests/test_domain_py.py
+@@ -179,6 +179,34 @@ def test_resolve_xref_for_properties(app, status, warning):
+             'prop</span> <span class="pre">method</span></code></a>' in content)
+ 
+ 
++@pytest.mark.sphinx('dummy', testroot='domain-py')
++def test_py_variable_fields_xref(app):
++    text = """.. py:module:: demo_xref
++
++.. py:data:: somevar
++   :value: 1
++
++.. py:class:: Foo
++
++   :ivar somevar: instance variable
++   :cvar somevar: class variable
++   :var somevar: module variable
++"""
++    doctree = restructuredtext.parse(app, text)
++    refnodes = list(doctree.traverse(pending_xref))
++    assert [node.get('reftype') for node in refnodes] == ['attr', 'attr', 'obj']
++    assert [node.get('reftarget') for node in refnodes] == ['somevar', 'somevar', 'somevar']
++
++    domain = app.env.get_domain('py')
++    ivar_ref = refnodes[0]
++    assert domain.find_obj(app.env, 'demo_xref', 'Foo', 'somevar', 'attr', 1) == []
++    assert domain.resolve_xref(app.env, 'index', app.builder, 'attr', 'somevar',
++                               ivar_ref, ivar_ref) is None
++    assert domain.find_obj(app.env, 'demo_xref', 'Foo', 'somevar', 'obj', 1) == [
++        ('demo_xref.somevar', ('index', 'demo_xref.somevar', 'data', False))
++    ]
++
++
+ @pytest.mark.sphinx('dummy', testroot='domain-py')
+ def test_domain_py_find_obj(app, status, warning):
+ 

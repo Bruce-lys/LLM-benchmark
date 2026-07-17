@@ -1,0 +1,129 @@
+diff --git a/astropy/utils/introspection.py b/astropy/utils/introspection.py
+index 3e784f9fc..fa671cf74 100644
+--- a/astropy/utils/introspection.py
++++ b/astropy/utils/introspection.py
+@@ -4,9 +4,15 @@
+ 
+ 
+ import inspect
++import re
+ import types
+ import importlib
+-from distutils.version import LooseVersion
++
++try:
++    from packaging.version import InvalidVersion, Version as _Version
++except ImportError:
++    InvalidVersion = None
++    _Version = None
+ 
+ 
+ __all__ = ['resolve_name', 'minversion', 'find_current_module',
+@@ -16,6 +22,82 @@ __all__ = ['resolve_name', 'minversion', 'find_current_module',
+ __doctest_skip__ = ['find_current_module']
+ 
+ 
++_VERSION_COMPONENT_RE = re.compile(r'(\d+|[a-zA-Z]+|\.)')
++
++
++def _next_version_number(components, index):
++    if (index + 1 < len(components) and
++            components[index + 1].isdigit()):
++        return int(components[index + 1]), index + 2
++    return 0, index + 1
++
++
++def _version_key(vstring):
++    if not isinstance(vstring, str):
++        vstring = str(vstring)
++
++    components = [x for x in _VERSION_COMPONENT_RE.split(vstring)
++                  if x and x != '.']
++    if not components:
++        return ()
++
++    index = 0
++    if components[0].lower() == 'v':
++        index = 1
++
++    release = []
++    while (index < len(components) and
++           components[index].isdigit()):
++        release.append(int(components[index]))
++        index += 1
++
++    while len(release) > 1 and release[-1] == 0:
++        release.pop()
++
++    key = [(0, tuple(release))]
++    has_suffix = False
++    while index < len(components):
++        token = components[index].lower()
++        if token in ('dev', 'd'):
++            number, index = _next_version_number(components, index)
++            key.append((1, -1, number))
++        elif token in ('a', 'alpha'):
++            number, index = _next_version_number(components, index)
++            key.append((1, 0, number))
++        elif token in ('b', 'beta'):
++            number, index = _next_version_number(components, index)
++            key.append((1, 1, number))
++        elif token in ('rc', 'c', 'pre'):
++            number, index = _next_version_number(components, index)
++            key.append((1, 2, number))
++        elif token in ('post', 'rev'):
++            number, index = _next_version_number(components, index)
++            key.append((3, number))
++        elif token in ('final', 'release'):
++            key.append((2, 0))
++            has_suffix = True
++            index += 1
++        else:
++            key.append((2, token))
++            has_suffix = True
++            index += 1
++
++    if not has_suffix:
++        key.append((2, 0))
++
++    return tuple(key)
++
++
++def _compare_versions(version1, version2):
++    key1 = _version_key(version1)
++    key2 = _version_key(version2)
++    if key1 < key2:
++        return -1
++    if key1 > key2:
++        return 1
++    return 0
++
++
+ def resolve_name(name, *additional_parts):
+     """Resolve a name like ``module.object`` to an object and return it.
+ 
+@@ -139,10 +221,22 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
+     else:
+         have_version = resolve_name(module.__name__, version_path)
+ 
++    have_version = str(have_version)
++    version = str(version)
++
++    if _Version is not None:
++        try:
++            if inclusive:
++                return _Version(have_version) >= _Version(version)
++            else:
++                return _Version(have_version) > _Version(version)
++        except InvalidVersion:
++            pass
++
+     if inclusive:
+-        return LooseVersion(have_version) >= LooseVersion(version)
++        return _compare_versions(have_version, version) >= 0
+     else:
+-        return LooseVersion(have_version) > LooseVersion(version)
++        return _compare_versions(have_version, version) > 0
+ 
+ 
+ def find_current_module(depth=1, finddiff=False):

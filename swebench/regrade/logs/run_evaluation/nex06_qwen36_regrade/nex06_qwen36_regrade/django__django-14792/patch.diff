@@ -1,0 +1,64 @@
+diff --git a/django/db/backends/base/operations.py b/django/db/backends/base/operations.py
+index f6a043e31f..a84bf55896 100644
+--- a/django/db/backends/base/operations.py
++++ b/django/db/backends/base/operations.py
+@@ -1,5 +1,6 @@
+ import datetime
+ import decimal
++import re
+ from importlib import import_module
+ 
+ import sqlparse
+@@ -57,6 +58,13 @@ class BaseDatabaseOperations:
+         self.connection = connection
+         self._cache = None
+ 
++    def _is_offset_timezone_name(self, tzname):
++        """Return True if tzname is a fixed offset from UTC."""
++        return (
++            isinstance(tzname, str) and
++            bool(re.match(r"^[+-][0-9]{1,4}(:[0-9]{2})?$", tzname))
++        )
++
+     def autoinc_sql(self, table, column):
+         """
+         Return any SQL needed to support auto-incrementing primary keys, or
+diff --git a/django/db/backends/mysql/operations.py b/django/db/backends/mysql/operations.py
+index 89730cee29..451dd92463 100644
+--- a/django/db/backends/mysql/operations.py
++++ b/django/db/backends/mysql/operations.py
+@@ -76,6 +76,8 @@ class DatabaseOperations(BaseDatabaseOperations):
+             return "DATE(%s)" % (field_name)
+ 
+     def _prepare_tzname_delta(self, tzname):
++        if not self._is_offset_timezone_name(tzname):
++            return tzname
+         if '+' in tzname:
+             return tzname[tzname.find('+'):]
+         elif '-' in tzname:
+diff --git a/django/db/backends/oracle/operations.py b/django/db/backends/oracle/operations.py
+index 4cfc7da070..293a2fc497 100644
+--- a/django/db/backends/oracle/operations.py
++++ b/django/db/backends/oracle/operations.py
+@@ -108,6 +108,8 @@ END;
+     _tzname_re = _lazy_re_compile(r'^[\w/:+-]+$')
+ 
+     def _prepare_tzname_delta(self, tzname):
++        if not self._is_offset_timezone_name(tzname):
++            return tzname
+         if '+' in tzname:
+             return tzname[tzname.find('+'):]
+         elif '-' in tzname:
+diff --git a/django/db/backends/postgresql/operations.py b/django/db/backends/postgresql/operations.py
+index 8d19872bea..a8f381104a 100644
+--- a/django/db/backends/postgresql/operations.py
++++ b/django/db/backends/postgresql/operations.py
+@@ -44,6 +44,8 @@ class DatabaseOperations(BaseDatabaseOperations):
+         return "DATE_TRUNC('%s', %s)" % (lookup_type, field_name)
+ 
+     def _prepare_tzname_delta(self, tzname):
++        if not self._is_offset_timezone_name(tzname):
++            return tzname
+         if '+' in tzname:
+             return tzname.replace('+', '-')
+         elif '-' in tzname:

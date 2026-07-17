@@ -1,0 +1,18 @@
+diff --git a/django/forms/fields.py b/django/forms/fields.py
+index 65d6a9ec82..035285d255 100644
+--- a/django/forms/fields.py
++++ b/django/forms/fields.py
+@@ -1025,7 +1025,12 @@ class MultiValueField(Field):
+             if not value or not [v for v in value if v not in self.empty_values]:
+                 if self.required:
+                     raise ValidationError(self.error_messages['required'], code='required')
+-                else:
++                elif self.require_all_fields:
++                    return self.compress([])
++                elif not value or all(v is None for v in value):
++                    # If the value is truly empty or all values are None,
++                    # return early for an optional field even if
++                    # require_all_fields is False.
+                     return self.compress([])
+         else:
+             raise ValidationError(self.error_messages['invalid'], code='invalid')

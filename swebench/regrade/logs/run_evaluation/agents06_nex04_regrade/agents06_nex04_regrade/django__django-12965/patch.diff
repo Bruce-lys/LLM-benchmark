@@ -1,0 +1,15 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 29e33c075f..ae950a6f97 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1423,6 +1423,10 @@ class SQLDeleteCompiler(SQLCompiler):
+         Create the SQL for this query. Return the SQL string and list of
+         parameters.
+         """
++        # Ensure an uninitialized query has a base table alias so simple
++        # deletes use DELETE FROM rather than a subquery.
++        if all(self.query.alias_refcount[alias] == 0 for alias in self.query.alias_map):
++            self.query.get_initial_alias()
+         if self.single_alias:
+             return self._as_sql(self.query)
+         innerq = self.query.clone()

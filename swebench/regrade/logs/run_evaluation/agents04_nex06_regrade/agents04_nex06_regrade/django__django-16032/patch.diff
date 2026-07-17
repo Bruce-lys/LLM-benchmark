@@ -1,0 +1,59 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 866e38df83..91e413d6b8 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -420,7 +420,11 @@ class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup):
+ 
+         if isinstance(self.rhs, Query):
+             self.rhs.clear_ordering(clear_default=True)
+-            if not self.rhs.has_select_fields:
++            if not (
++                self.rhs.select
++                or self.rhs.values_select
++                or self.rhs.explicit_select
++            ):
+                 self.rhs.clear_select_clause()
+                 self.rhs.add_fields(["pk"])
+         return super().get_prep_lookup()
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 8419dc0d54..db9aadb1e2 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -203,6 +203,8 @@ class Query(BaseExpression):
+     # Holds the selects defined by a call to values() or values_list()
+     # excluding annotation_select and extra_select.
+     values_select = ()
++    # Whether the query was explicitly narrowed to a subset of fields.
++    explicit_select = False
+ 
+     # SQL annotation-related attributes.
+     annotation_select_mask = None
+@@ -266,7 +268,11 @@ class Query(BaseExpression):
+     @property
+     def has_select_fields(self):
+         return bool(
+-            self.select or self.annotation_select_mask or self.extra_select_mask
++            self.select
++            or self.values_select
++            or self.explicit_select
++            or self.annotation_select_mask
++            or self.extra_select_mask
+         )
+ 
+     @cached_property
+@@ -2094,6 +2100,7 @@ class Query(BaseExpression):
+         self.select = ()
+         self.default_cols = False
+         self.select_related = False
++        self.explicit_select = False
+         self.set_extra_mask(())
+         self.set_annotation_mask(())
+ 
+@@ -2381,6 +2388,7 @@ class Query(BaseExpression):
+         self._extra_select_cache = None
+ 
+     def set_values(self, fields):
++        self.explicit_select = True
+         self.select_related = False
+         self.clear_deferred_loading()
+         self.clear_select_fields()

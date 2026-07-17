@@ -1,0 +1,30 @@
+diff --git a/django/urls/base.py b/django/urls/base.py
+index 0e1c3d909c..0aeadfa356 100644
+--- a/django/urls/base.py
++++ b/django/urls/base.py
+@@ -157,6 +157,12 @@ def is_valid_path(path, urlconf=None):
+         return False
+ 
+ 
++def _filter_none_args(match):
++    args = tuple(arg for arg in match.args if arg is not None)
++    kwargs = {key: value for key, value in match.kwargs.items() if value is not None}
++    return args, kwargs
++
++
+ def translate_url(url, lang_code):
+     """
+     Given a URL (absolute or relative), try to get its translated version in
+@@ -169,10 +175,11 @@ def translate_url(url, lang_code):
+     except Resolver404:
+         pass
+     else:
++        args, kwargs = _filter_none_args(match)
+         to_be_reversed = "%s:%s" % (match.namespace, match.url_name) if match.namespace else match.url_name
+         with override(lang_code):
+             try:
+-                url = reverse(to_be_reversed, args=match.args, kwargs=match.kwargs)
++                url = reverse(to_be_reversed, args=args, kwargs=kwargs)
+             except NoReverseMatch:
+                 pass
+             else:

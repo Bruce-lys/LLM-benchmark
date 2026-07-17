@@ -1,0 +1,58 @@
+diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py
+index d9fb088350..23ff513d41 100644
+--- a/django/core/management/commands/runserver.py
++++ b/django/core/management/commands/runserver.py
+@@ -51,6 +51,10 @@ class Command(BaseCommand):
+             '--noreload', action='store_false', dest='use_reloader',
+             help='Tells Django to NOT use the auto-reloader.',
+         )
++        parser.add_argument(
++            '--skip-checks', action='store_true',
++            help='Skip system checks.',
++        )
+ 
+     def execute(self, *args, **options):
+         if options['no_color']:
+@@ -114,8 +118,9 @@ class Command(BaseCommand):
+         shutdown_message = options.get('shutdown_message', '')
+         quit_command = 'CTRL-BREAK' if sys.platform == 'win32' else 'CONTROL-C'
+ 
+-        self.stdout.write("Performing system checks...\n\n")
+-        self.check(display_num_errors=True)
++        if not options['skip_checks']:
++            self.stdout.write("Performing system checks...\n\n")
++            self.check(display_num_errors=True)
+         # Need to check migrations here, so can't use the
+         # requires_migrations_check attribute.
+         self.check_migrations()
+diff --git a/docs/ref/django-admin.txt b/docs/ref/django-admin.txt
+index b7f6e175be..95c9dd4e9c 100644
+--- a/docs/ref/django-admin.txt
++++ b/docs/ref/django-admin.txt
+@@ -996,6 +996,13 @@ Disables the auto-reloader. This means any Python code changes you make while
+ the server is running will *not* take effect if the particular Python modules
+ have already been loaded into memory.
+ 
++.. django-admin-option:: --skip-checks
++
++Skip system checks. By default, the system check framework will check your
++Django project for some common errors when you start the server and each time
++you change Python code while the server is running. If any errors are found,
++they will be printed to standard output.
++
+ .. django-admin-option:: --nothreading
+ 
+ Disables use of threading in the development server. The server is
+diff --git a/docs/releases/4.0.txt b/docs/releases/4.0.txt
+index 52531c1266..4532e8e269 100644
+--- a/docs/releases/4.0.txt
++++ b/docs/releases/4.0.txt
+@@ -153,7 +153,7 @@ Logging
+ Management Commands
+ ~~~~~~~~~~~~~~~~~~~
+ 
+-* ...
++* :djadmin:`runserver` now supports the ``--skip-checks`` option to skip system checks.
+ 
+ Migrations
+ ~~~~~~~~~~

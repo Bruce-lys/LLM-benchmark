@@ -1,0 +1,50 @@
+diff --git a/lib/matplotlib/__init__.py b/lib/matplotlib/__init__.py
+index c268a56724..b02d9d0f8a 100644
+--- a/lib/matplotlib/__init__.py
++++ b/lib/matplotlib/__init__.py
+@@ -1175,7 +1175,16 @@ def get_backend():
+     --------
+     matplotlib.use
+     """
+-    return rcParams['backend']
++    # Avoid resolving the auto sentinel, which can switch backends and close
++    # figures.
++    backend = dict.__getitem__(rcParams, "backend")
++    if backend is not rcsetup._auto_backend_sentinel:
++        return backend
++    from matplotlib import pyplot as plt
++    if plt._backend_mod is None:
++        plt.switch_backend(backend)
++    import matplotlib.backends
++    return matplotlib.backends.backend
+ 
+ 
+ def interactive(b):
+diff --git a/lib/matplotlib/pyplot.py b/lib/matplotlib/pyplot.py
+index e3c66ea67c..985f2eea31 100644
+--- a/lib/matplotlib/pyplot.py
++++ b/lib/matplotlib/pyplot.py
+@@ -222,9 +222,12 @@ def switch_backend(newbackend):
+     global _backend_mod
+     # make sure the init is pulled up so we can assign to it later
+     import matplotlib.backends
+-    close("all")
+-
+     if newbackend is rcsetup._auto_backend_sentinel:
++        # Resolving the auto sentinel is a no-op if a backend is already
++        # loaded; otherwise it resolves to one and may close all figures.
++        if _backend_mod is not None:
++            return
++        close("all")
+         current_framework = cbook._get_running_interactive_framework()
+         mapping = {'qt': 'qtagg',
+                    'gtk3': 'gtk3agg',
+@@ -260,6 +263,8 @@ def switch_backend(newbackend):
+             rcParamsOrig["backend"] = "agg"
+             return
+ 
++    close("all")
++
+     backend_mod = importlib.import_module(
+         cbook._backend_module_name(newbackend))
+     canvas_class = backend_mod.FigureCanvas

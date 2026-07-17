@@ -1,0 +1,25 @@
+# Agents-0.6_Nex-0.4 swebench-kit config (2026-07-08, 防挂机安全口径)
+run:
+  tag: aiden_agents06_nex04_swebench
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 6
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Agents-0.6_Nex-0.4
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.34:8002/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 48
+  namespace: swebench

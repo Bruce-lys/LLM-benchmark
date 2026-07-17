@@ -1,0 +1,47 @@
+diff --git a/django/db/models/fields/related_lookups.py b/django/db/models/fields/related_lookups.py
+index d745ecd5f9..a1e8686681 100644
+--- a/django/db/models/fields/related_lookups.py
++++ b/django/db/models/fields/related_lookups.py
+@@ -44,6 +44,15 @@ def get_normalized_value(value, lhs):
+ 
+ 
+ class RelatedIn(In):
++    def get_group_by_cols(self, alias=None):
++        from django.db.models.sql.query import Query
++
++        cols = self.lhs.get_group_by_cols()
++        # The RHS query is part of the lookup expression; it is not a column to group by.
++        if not isinstance(self.rhs, Query) and hasattr(self.rhs, 'get_group_by_cols'):
++            cols.extend(self.rhs.get_group_by_cols())
++        return cols
++
+     def get_prep_lookup(self):
+         if not isinstance(self.lhs, MultiColSource) and self.rhs_is_direct_value():
+             # If we get here, we are dealing with single-column relations.
+@@ -86,8 +95,7 @@ class RelatedIn(In):
+                     AND)
+             return root_constraint.as_sql(compiler, connection)
+         else:
+-            if (not getattr(self.rhs, 'has_select_fields', True) and
+-                    not getattr(self.lhs.field.target_field, 'primary_key', False)):
++            if not getattr(self.rhs, 'has_select_fields', True):
+                 self.rhs.clear_select_clause()
+                 if (getattr(self.lhs.output_field, 'primary_key', False) and
+                         self.lhs.output_field.model == self.rhs.model):
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 5089737034..7877191187 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -115,8 +115,11 @@ class Lookup:
+         return new
+ 
+     def get_group_by_cols(self, alias=None):
++        from django.db.models.sql.query import Query
++
+         cols = self.lhs.get_group_by_cols()
+-        if hasattr(self.rhs, 'get_group_by_cols'):
++        # The RHS query is part of the lookup expression; it is not a column to group by.
++        if not isinstance(self.rhs, Query) and hasattr(self.rhs, 'get_group_by_cols'):
+             cols.extend(self.rhs.get_group_by_cols())
+         return cols
+ 

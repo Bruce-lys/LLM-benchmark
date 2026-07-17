@@ -1,0 +1,65 @@
+diff --git a/django/db/models/fields/json.py b/django/db/models/fields/json.py
+index fafc1beee8..52371eaaa7 100644
+--- a/django/db/models/fields/json.py
++++ b/django/db/models/fields/json.py
+@@ -479,6 +479,52 @@ class KeyTransformGte(KeyTransformNumericLookupMixin, lookups.GreaterThanOrEqual
+     pass
+ 
+ 
++class KeyTransformIn(lookups.In):
++    def batch_process_rhs(self, compiler, connection, rhs=None):
++        sqls, sqls_params = super().batch_process_rhs(compiler, connection, rhs)
++        if connection.vendor == 'oracle':
++            func = []
++            for value in sqls_params:
++                if value is None:
++                    func.append('NULL')
++                else:
++                    value = json.loads(value)
++                    function = 'JSON_QUERY' if isinstance(value, (list, dict)) else 'JSON_VALUE'
++                    func.append("%s('%s', '$.value')" % (
++                        function,
++                        json.dumps({'value': value}),
++                    ))
++            return func, []
++        elif connection.vendor in ('mysql', 'sqlite'):
++            sqls = [
++                "JSON_EXTRACT(%s, '$')" if value != 'null' else '%s'
++                for value in sqls_params
++            ]
++        return sqls, sqls_params
++
++    def split_parameter_list_as_sql(self, compiler, connection):
++        if connection.vendor == 'oracle':
++            # For Oracle, values are embedded in SQL, so use len(rhs) not
++            # len(rhs_params) to chunk.
++            lhs, lhs_params = self.process_lhs(compiler, connection)
++            rhs, rhs_params = self.batch_process_rhs(compiler, connection)
++            max_in_list_size = connection.ops.max_in_list_size()
++            in_clause_elements = ['(']
++            params = []
++            for offset in range(0, len(rhs), max_in_list_size):
++                if offset > 0:
++                    in_clause_elements.append(' OR ')
++                in_clause_elements.append('%s IN (' % lhs)
++                params.extend(lhs_params)
++                sqls = rhs[offset: offset + max_in_list_size]
++                param_group = ', '.join(sqls)
++                in_clause_elements.append(param_group)
++                in_clause_elements.append(')')
++            in_clause_elements.append(')')
++            return ''.join(in_clause_elements), params
++        return super().split_parameter_list_as_sql(compiler, connection)
++
++
+ KeyTransform.register_lookup(KeyTransformExact)
+ KeyTransform.register_lookup(KeyTransformIExact)
+ KeyTransform.register_lookup(KeyTransformIsNull)
+@@ -494,6 +540,7 @@ KeyTransform.register_lookup(KeyTransformLt)
+ KeyTransform.register_lookup(KeyTransformLte)
+ KeyTransform.register_lookup(KeyTransformGt)
+ KeyTransform.register_lookup(KeyTransformGte)
++KeyTransform.register_lookup(KeyTransformIn)
+ 
+ 
+ class KeyTransformFactory:

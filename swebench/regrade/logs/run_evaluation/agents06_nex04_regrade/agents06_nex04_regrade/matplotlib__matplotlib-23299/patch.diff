@@ -1,0 +1,95 @@
+diff --git a/lib/matplotlib/__init__.py b/lib/matplotlib/__init__.py
+index c268a56724..43fdc6912d 100644
+--- a/lib/matplotlib/__init__.py
++++ b/lib/matplotlib/__init__.py
+@@ -674,7 +674,7 @@ class RcParams(MutableMapping, dict):
+             val = dict.__getitem__(self, key)
+             if val is rcsetup._auto_backend_sentinel:
+                 from matplotlib import pyplot as plt
+-                plt.switch_backend(rcsetup._auto_backend_sentinel)
++                plt._get_backend_mod()
+ 
+         return dict.__getitem__(self, key)
+ 
+diff --git a/lib/matplotlib/pyplot.py b/lib/matplotlib/pyplot.py
+index e3c66ea67c..8458c18291 100644
+--- a/lib/matplotlib/pyplot.py
++++ b/lib/matplotlib/pyplot.py
+@@ -200,9 +200,12 @@ def _get_backend_mod():
+     """
+     if _backend_mod is None:
+         # Use __getitem__ here to avoid going through the fallback logic (which
+-        # will (re)import pyplot and then call switch_backend if we need to
+-        # resolve the auto sentinel)
+-        switch_backend(dict.__getitem__(rcParams, "backend"))
++        # will (re)import pyplot and then call the backend loader if we need to
++        # resolve the auto sentinel.  Resolve without closing figures since
++        # this is just initialization, not a requested backend switch.
++        _switch_backend(dict.__getitem__(rcParams, "backend"), close_all=False)
++    elif dict.__getitem__(rcParams, "backend") is rcsetup._auto_backend_sentinel:
++        dict.__setitem__(rcParams, "backend", rcParamsDefault["backend"])
+     return _backend_mod
+ 
+ 
+@@ -219,10 +222,16 @@ def switch_backend(newbackend):
+     newbackend : str
+         The name of the backend to use.
+     """
++    _switch_backend(newbackend)
++
++
++def _switch_backend(newbackend, *, close_all=True):
++    """Set the Matplotlib backend without closing figures if requested."""
+     global _backend_mod
+     # make sure the init is pulled up so we can assign to it later
+     import matplotlib.backends
+-    close("all")
++    if close_all:
++        close("all")
+ 
+     if newbackend is rcsetup._auto_backend_sentinel:
+         current_framework = cbook._get_running_interactive_framework()
+@@ -247,7 +256,7 @@ def switch_backend(newbackend):
+         # are of worse quality.
+         for candidate in candidates:
+             try:
+-                switch_backend(candidate)
++                _switch_backend(candidate, close_all=False)
+             except ImportError:
+                 continue
+             else:
+@@ -256,7 +265,7 @@ def switch_backend(newbackend):
+         else:
+             # Switching to Agg should always succeed; if it doesn't, let the
+             # exception propagate out.
+-            switch_backend("agg")
++            _switch_backend("agg", close_all=False)
+             rcParamsOrig["backend"] = "agg"
+             return
+ 
+@@ -330,14 +339,14 @@ def _warn_if_gui_out_of_main_thread():
+             "fail.")
+ 
+ 
+-# This function's signature is rewritten upon backend-load by switch_backend.
++# This function's signature is rewritten upon backend-load by _switch_backend.
+ def new_figure_manager(*args, **kwargs):
+     """Create a new figure manager instance."""
+     _warn_if_gui_out_of_main_thread()
+     return _get_backend_mod().new_figure_manager(*args, **kwargs)
+ 
+ 
+-# This function's signature is rewritten upon backend-load by switch_backend.
++# This function's signature is rewritten upon backend-load by _switch_backend.
+ def draw_if_interactive(*args, **kwargs):
+     """
+     Redraw the current figure if in interactive mode.
+@@ -350,7 +359,7 @@ def draw_if_interactive(*args, **kwargs):
+     return _get_backend_mod().draw_if_interactive(*args, **kwargs)
+ 
+ 
+-# This function's signature is rewritten upon backend-load by switch_backend.
++# This function's signature is rewritten upon backend-load by _switch_backend.
+ def show(*args, **kwargs):
+     """
+     Display all open figures.

@@ -1,0 +1,40 @@
+diff --git a/sympy/core/mod.py b/sympy/core/mod.py
+index eae25630c..c1eace93a 100644
+--- a/sympy/core/mod.py
++++ b/sympy/core/mod.py
+@@ -123,9 +123,10 @@ def doit(p, q):
+             for arg in p.args:
+                 both_l[isinstance(arg, cls)].append(arg)
+ 
++            non_mod_l2 = [cls(x, q) for x in non_mod_l]
+             if mod_l and all(inner.args[1] == q for inner in mod_l):
+                 # finding distributive term
+-                non_mod_l = [cls(x, q) for x in non_mod_l]
++                non_mod_l = non_mod_l2
+                 mod = []
+                 non_mod = []
+                 for j in non_mod_l:
+@@ -138,6 +139,23 @@ def doit(p, q):
+                 prod_mod1 = Mul(*[i.args[0] for i in mod_l])
+                 net = prod_mod1*prod_mod
+                 return prod_non_mod*cls(net, q)
++            elif any((not isinstance(j, cls)) and j.is_integer and j in (S.Zero, S.One, -S.One)
++                      for j in non_mod_l2):
++                # finding distributive term
++                non_mod_l = non_mod_l2
++                mod = []
++                non_mod = []
++                for j in non_mod_l:
++                    if isinstance(j, cls):
++                        mod.append(j.args[0])
++                    else:
++                        non_mod.append(j)
++                prod_mod = Mul(*mod)
++                prod_non_mod = Mul(*non_mod)
++                prod_mod1 = Mul(*[i.args[0] for i in mod_l])
++                net = prod_mod1*prod_mod
++                if prod_non_mod.is_integer and net.is_integer:
++                    return prod_non_mod*cls(net, q)
+ 
+         # XXX other possibilities?
+ 

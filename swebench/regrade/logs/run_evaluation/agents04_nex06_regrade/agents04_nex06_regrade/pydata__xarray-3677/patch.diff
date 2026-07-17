@@ -1,0 +1,51 @@
+diff --git a/xarray/core/merge.py b/xarray/core/merge.py
+index 10c7804d..9b3f6b68 100644
+--- a/xarray/core/merge.py
++++ b/xarray/core/merge.py
+@@ -39,7 +39,7 @@ if TYPE_CHECKING:
+     XarrayValue = Union[DataArray, Variable, VariableLike]
+     DatasetLike = Union[Dataset, Mapping[Hashable, XarrayValue]]
+     CoercibleValue = Union[XarrayValue, pd.Series, pd.DataFrame]
+-    CoercibleMapping = Union[Dataset, Mapping[Hashable, CoercibleValue]]
++    CoercibleMapping = Union[Dataset, DataArray, Mapping[Hashable, CoercibleValue]]
+ 
+ 
+ PANDAS_TYPES = (pd.Series, pd.DataFrame, pdcompat.Panel)
+@@ -371,7 +371,7 @@ def coerce_pandas_values(objects: Iterable["CoercibleMapping"]) -> List["Dataset
+ 
+     Parameters
+     ----------
+-    objects : list of Dataset or mappings
++    objects : list of Dataset, DataArray or mappings
+         The mappings may contain any sort of objects coercible to
+         xarray.Variables as keys, including pandas objects.
+ 
+@@ -385,8 +385,10 @@ def coerce_pandas_values(objects: Iterable["CoercibleMapping"]) -> List["Dataset
+ 
+     out = []
+     for obj in objects:
+-        if isinstance(obj, Dataset):
+-            variables: "DatasetLike" = obj
++        if isinstance(obj, DataArray):
++            variables: "DatasetLike" = obj.to_dataset()
++        elif isinstance(obj, Dataset):
++            variables = obj
+         else:
+             variables = {}
+             if isinstance(obj, PANDAS_TYPES):
+@@ -805,10 +807,15 @@ def dataset_merge_method(
+ ) -> _MergeResult:
+     """Guts of the Dataset.merge method.
+     """
++    from .dataarray import DataArray
++
+     # we are locked into supporting overwrite_vars for the Dataset.merge
+     # method due for backwards compatibility
+     # TODO: consider deprecating it?
+ 
++    if isinstance(other, DataArray):
++        other = other.to_dataset()
++
+     if isinstance(overwrite_vars, Iterable) and not isinstance(overwrite_vars, str):
+         overwrite_vars = set(overwrite_vars)
+     else:

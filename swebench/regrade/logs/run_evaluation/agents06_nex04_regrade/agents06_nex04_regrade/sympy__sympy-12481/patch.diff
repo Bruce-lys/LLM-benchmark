@@ -1,0 +1,80 @@
+diff --git a/sympy/combinatorics/permutations.py b/sympy/combinatorics/permutations.py
+index 136ed5a47..1d963efa5 100644
+--- a/sympy/combinatorics/permutations.py
++++ b/sympy/combinatorics/permutations.py
+@@ -479,7 +479,7 @@ class Permutation(Basic):
+     Permutations Notation
+     =====================
+ 
+-    Permutations are commonly represented in disjoint cycle or array forms.
++    Permutations are commonly represented in cycle or array forms.
+ 
+     Array Notation and 2-line Form
+     ------------------------------------
+@@ -522,10 +522,10 @@ class Permutation(Basic):
+     >>> [p(q(i)) for i in range(p.size)]
+     [1, 2, 0]
+ 
+-    Disjoint Cycle Notation
++    Cycle Notation
+     -----------------------
+ 
+-    In disjoint cycle notation, only the elements that have shifted are
++    In cycle notation, only the elements that have shifted are
+     indicated. In the above case, the 2 and 1 switched places. This can
+     be entered in two ways:
+ 
+@@ -537,19 +537,22 @@ class Permutation(Basic):
+     >>> Permutation(1,2,3) == Permutation(2,3,1) == Permutation(3,1,2)
+     True
+ 
+-    The disjoint cycle notation is convenient when representing permutations
+-    that have several cycles in them:
++    The cycle notation is convenient when representing permutations
++    that have several cycles in them; the cycles need not be disjoint.
++    If cycles are not disjoint, they are applied from left to right:
+ 
+     >>> Permutation(1, 2)(3, 5) == Permutation([[1, 2], [3, 5]])
+     True
+ 
+     It also provides some economy in entry when computing products of
+-    permutations that are written in disjoint cycle notation:
++    permutations that are written in cycle notation:
+ 
+     >>> Permutation(1, 2)(1, 3)(2, 3)
+     Permutation([0, 3, 2, 1])
+     >>> _ == Permutation([[1, 2]])*Permutation([[1, 3]])*Permutation([[2, 3]])
+     True
++    >>> Permutation([[0, 1], [0, 1]])
++    Permutation([0, 1])
+ 
+     Entering a singleton in a permutation is a way to indicate the size of the
+     permutation. The ``size`` keyword can also be used.
+@@ -801,8 +804,7 @@ class Permutation(Basic):
+     def __new__(cls, *args, **kwargs):
+         """
+         Constructor for the Permutation object from a list or a
+-        list of lists in which all elements of the permutation may
+-        appear only once.
++        list of lists, where cycles need not be disjoint.
+ 
+         Examples
+         ========
+@@ -895,12 +897,11 @@ def __new__(cls, *args, **kwargs):
+         # counting starts from 1.
+ 
+         temp = flatten(args)
+-        if has_dups(temp):
+-            if is_cycle:
+-                raise ValueError('there were repeated elements; to resolve '
+-                'cycles use Cycle%s.' % ''.join([str(tuple(c)) for c in args]))
+-            else:
+-                raise ValueError('there were repeated elements.')
++        if not is_cycle and has_dups(temp):
++            raise ValueError('there were repeated elements.')
++        if is_cycle and any(has_dups(c) for c in args):
++            raise ValueError('there were repeated elements; to resolve '
++            'cycles use Cycle%s.' % ''.join([str(tuple(c)) for c in args]))
+         temp = set(temp)
+ 
+         if not is_cycle and \

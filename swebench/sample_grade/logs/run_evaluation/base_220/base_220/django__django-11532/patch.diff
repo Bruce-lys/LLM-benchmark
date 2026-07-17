@@ -1,0 +1,22 @@
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..0f2d958a2d 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -13,7 +13,16 @@ class CachedDnsName:
+ 
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+-            self._fqdn = socket.getfqdn()
++            # Use IDNA encoding to convert non-ASCII domain names to ASCII
++            # (punycode). This ensures the domain can be used in email headers
++            # regardless of the email encoding.
++            fqdn = socket.getfqdn()
++            try:
++                fqdn = fqdn.encode('idna').decode('ascii')
++            except UnicodeError:
++                # If IDNA encoding fails, keep the original fqdn
++                pass
++            self._fqdn = fqdn
+         return self._fqdn
+ 
+ 

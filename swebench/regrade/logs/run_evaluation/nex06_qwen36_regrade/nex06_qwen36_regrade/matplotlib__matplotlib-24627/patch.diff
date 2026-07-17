@@ -1,0 +1,87 @@
+diff --git a/lib/matplotlib/artist.py b/lib/matplotlib/artist.py
+index 99577ece53..a6aa8286bb 100644
+--- a/lib/matplotlib/artist.py
++++ b/lib/matplotlib/artist.py
+@@ -233,6 +233,22 @@ class Artist:
+         # be no distinction between axes.add_line, axes.add_patch, etc.
+         # TODO: add legend support
+ 
++    def _unset_axes_figure_and_callbacks(self):
++        """
++        Deparent this artist from its axes and figure.
++
++        This is used by clearing methods to reset artist state consistently
++        with `Artist.remove()`.
++        """
++        if hasattr(self, 'axes') and self.axes:
++            try:
++                self.axes = None
++            except AttributeError:
++                pass
++        if hasattr(self, 'figure') and self.figure:
++            self.figure = None
++        self.stale_callback = None
++
+     def have_units(self):
+         """Return whether units are set on any axis."""
+         ax = self.axes
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 90b0bf117e..1b4f5157dc 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -1278,6 +1278,7 @@ class _AxesBase(martist.Artist):
+         # stash the current visibility state
+         if hasattr(self, 'patch'):
+             patch_visible = self.patch.get_visible()
++            self.patch._unset_axes_figure_and_callbacks()
+         else:
+             patch_visible = True
+ 
+@@ -1289,6 +1290,13 @@ class _AxesBase(martist.Artist):
+         for spine in self.spines.values():
+             spine.clear()
+ 
++        # Deparent old titles that will be replaced.
++        for title in (getattr(self, 'title', None),
++                      getattr(self, '_left_title', None),
++                      getattr(self, '_right_title', None)):
++            if title is not None:
++                title._unset_axes_figure_and_callbacks()
++
+         self.ignore_existing_data_limits = True
+         self.callbacks = cbook.CallbackRegistry(
+             signals=["xlim_changed", "ylim_changed", "zlim_changed"])
+@@ -1308,6 +1316,16 @@ class _AxesBase(martist.Artist):
+         self._get_patches_for_fill = _process_plot_var_args(self, 'fill')
+ 
+         self._gridOn = mpl.rcParams['axes.grid']
++        # Deparent all artists that will be removed.
++        for child in self._children:
++            child._unset_axes_figure_and_callbacks()
++        if hasattr(self, 'child_axes'):
++            for child in self.child_axes:
++                child._unset_axes_figure_and_callbacks()
++        if hasattr(self, 'legend_') and self.legend_ is not None:
++            self.legend_._unset_axes_figure_and_callbacks()
++        # Containers don't have .axes/.figure, but their contained artists do.
++        # Those artists are already deparented via self._children above.
+         self._children = []
+         self._mouseover_set = _OrderedSet()
+         self.child_axes = []
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index 6c18ba1a64..d111f14106 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -947,8 +947,12 @@ default: %(va)s
+ 
+         for ax in tuple(self.axes):  # Iterate over the copy.
+             ax.clear()
++            ax._unset_axes_figure_and_callbacks()
+             self.delaxes(ax)  # Remove ax from self._axstack.
+ 
++        for artist in (*self.artists, *self.lines, *self.patches,
++                       *self.texts, *self.images, *self.legends):
++            artist._unset_axes_figure_and_callbacks()
+         self.artists = []
+         self.lines = []
+         self.patches = []

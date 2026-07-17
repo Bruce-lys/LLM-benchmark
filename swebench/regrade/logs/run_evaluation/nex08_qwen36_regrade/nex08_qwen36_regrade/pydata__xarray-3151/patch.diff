@@ -1,0 +1,18 @@
+diff --git a/xarray/core/combine.py b/xarray/core/combine.py
+index 37ae903b..4295185f 100644
+--- a/xarray/core/combine.py
++++ b/xarray/core/combine.py
+@@ -500,8 +500,12 @@ def combine_by_coords(datasets, compat='no_conflicts', data_vars='all',
+                                    data_vars=data_vars, coords=coords,
+                                    fill_value=fill_value)
+ 
+-        # Check the overall coordinates are monotonically increasing
++        # Check the overall coordinates are monotonically increasing along
++        # dimensions used for ordering. Identical coordinate dimensions are
++        # bystanders and need not be monotonic globally.
+         for dim in concatenated.dims:
++            if dim not in concat_dims:
++                continue
+             if dim in concatenated:
+                 indexes = concatenated.indexes.get(dim)
+                 if not (indexes.is_monotonic_increasing

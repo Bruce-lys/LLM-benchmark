@@ -1,0 +1,56 @@
+diff --git a/sphinx/directives/code.py b/sphinx/directives/code.py
+index dc44ed314..9ae0a4e44 100644
+--- a/sphinx/directives/code.py
++++ b/sphinx/directives/code.py
+@@ -224,9 +224,9 @@ class LiteralIncludeReader:
+                        self.start_filter,
+                        self.end_filter,
+                        self.lines_filter,
++                       self.dedent_filter,
+                        self.prepend_filter,
+-                       self.append_filter,
+-                       self.dedent_filter]
++                       self.append_filter]
+             lines = self.read_file(self.filename, location=location)
+             for func in filters:
+                 lines = func(lines, location=location)
+@@ -396,11 +396,39 @@ class LiteralInclude(SphinxDirective):
+         'diff': directives.unchanged_required,
+     }
+ 
++    def _restore_prepend_append_whitespace(self) -> None:
++        # docutils strips indentation from field bodies; recover it
++        # for these options.
++        for option in ('prepend', 'append'):
++            if option not in self.options:
++                continue
++
++            value = self.options[option]
++            if not value:
++                continue
++
++            marker = ':' + option + ':'
++            for line in self.block_text.splitlines():
++                if marker not in line:
++                    continue
++                if not line.strip().startswith(marker):
++                    continue
++                raw_value = line.split(marker, 1)[1].rstrip()
++                if raw_value.endswith(value):
++                    leading_whitespace = raw_value[:-len(value)]
++                    if leading_whitespace:
++                        # The first whitespace is the option separator.
++                        leading_whitespace = leading_whitespace[1:]
++                    self.options[option] = leading_whitespace + value
++                break
++
+     def run(self) -> List[Node]:
+         document = self.state.document
+         if not document.settings.file_insertion_enabled:
+             return [document.reporter.warning('File insertion disabled',
+                                               line=self.lineno)]
++        self._restore_prepend_append_whitespace()
++
+         # convert options['diff'] to absolute path
+         if 'diff' in self.options:
+             _, path = self.env.relfn2path(self.options['diff'])

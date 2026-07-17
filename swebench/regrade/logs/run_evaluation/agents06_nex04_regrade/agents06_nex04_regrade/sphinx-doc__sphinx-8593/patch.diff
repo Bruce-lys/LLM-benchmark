@@ -1,0 +1,30 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 76265f5be..7c3853926 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -726,9 +726,25 @@ class Documenter:
+                 # hack for ClassDocumenter to inject docstring via ObjectMember
+                 doc = obj.docstring
+ 
++            doc_comment = None
++            # Attribute doc comments can also contain :meta: fields.
++            if self.analyzer:
++                key = (namespace, membername)
++                if key in attr_docs:
++                    doc_comment = '\n'.join(attr_docs[key])
++
++            if doc is None:
++                doc = doc_comment
++
+             has_doc = bool(doc)
++            if not has_doc and doc_comment:
++                has_doc = bool(doc_comment.strip())
++                if has_doc:
++                    doc = doc_comment
+ 
+             metadata = extract_metadata(doc)
++            if doc_comment:
++                metadata.update(extract_metadata(doc_comment))
+             if 'private' in metadata:
+                 # consider a member private if docstring has "private" metadata
+                 isprivate = True

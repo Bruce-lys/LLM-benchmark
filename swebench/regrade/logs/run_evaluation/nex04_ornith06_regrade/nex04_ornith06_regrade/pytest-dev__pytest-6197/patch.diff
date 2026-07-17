@@ -1,0 +1,42 @@
+diff --git a/src/_pytest/python.py b/src/_pytest/python.py
+index 306e5f217..844524639 100644
+--- a/src/_pytest/python.py
++++ b/src/_pytest/python.py
+@@ -570,17 +570,21 @@ class Package(Module):
+     def setup(self):
+         # not using fixtures to call setup_module here because autouse fixtures
+         # from packages are not called automatically (#4085)
++        try:
++            obj = self.obj
++        except Exception:
++            return
+         setup_module = _get_first_non_fixture_func(
+-            self.obj, ("setUpModule", "setup_module")
++            obj, ("setUpModule", "setup_module")
+         )
+         if setup_module is not None:
+-            _call_with_optional_argument(setup_module, self.obj)
++            _call_with_optional_argument(setup_module, obj)
+ 
+         teardown_module = _get_first_non_fixture_func(
+-            self.obj, ("tearDownModule", "teardown_module")
++            obj, ("tearDownModule", "teardown_module")
+         )
+         if teardown_module is not None:
+-            func = partial(_call_with_optional_argument, teardown_module, self.obj)
++            func = partial(_call_with_optional_argument, teardown_module, obj)
+             self.addfinalizer(func)
+ 
+     def _recurse(self, dirpath):
+@@ -639,7 +643,10 @@ class Package(Module):
+         return path in self.session._initialpaths
+ 
+     def collect(self):
+-        self._mount_obj_if_needed()
++        try:
++            self._mount_obj_if_needed()
++        except Exception:
++            pass
+         this_path = self.fspath.dirpath()
+         init_module = this_path.join("__init__.py")
+         if init_module.check(file=1) and path_matches_patterns(

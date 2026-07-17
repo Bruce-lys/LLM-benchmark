@@ -1,0 +1,369 @@
+diff --git a/sklearn/compose/_column_transformer.py b/sklearn/compose/_column_transformer.py
+index 5f76c2cc9..49f5ca7ee 100644
+--- a/sklearn/compose/_column_transformer.py
++++ b/sklearn/compose/_column_transformer.py
+@@ -271,7 +271,7 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+         except (TypeError, ValueError):
+             self.transformers = value
+ 
+-    def set_output(self, *, transform=None):
++    def set_output(self, *, transform=None, dtypes=None):
+         """Set the output container when `"transform"` and `"fit_transform"` are called.
+ 
+         Calling `set_output` will set the output of all estimators in `transformers`
+@@ -286,12 +286,18 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+             - `"pandas"`: DataFrame output
+             - `None`: Transform configuration is unchanged
+ 
++        dtypes : {"original"} or mapping of column names to dtypes, default=None
++            Configure dtype preservation of the pandas output. If `"original"`,
++            the dtypes of the original input DataFrame are used when available.
++            If a mapping is provided, columns are cast to the requested dtypes.
++            `None` leaves the dtype configuration unchanged.
++
+         Returns
+         -------
+         self : estimator instance
+             Estimator instance.
+         """
+-        super().set_output(transform=transform)
++        super().set_output(transform=transform, dtypes=dtypes)
+         transformers = (
+             trans
+             for _, trans, _ in chain(
+@@ -300,7 +306,7 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+             if trans not in {"passthrough", "drop"}
+         )
+         for trans in transformers:
+-            _safe_set_output(trans, transform=transform)
++            _safe_set_output(trans, transform=transform, dtypes=dtypes)
+ 
+         return self
+ 
+diff --git a/sklearn/pipeline.py b/sklearn/pipeline.py
+index 94d9465d7..5acd07296 100644
+--- a/sklearn/pipeline.py
++++ b/sklearn/pipeline.py
+@@ -154,7 +154,7 @@ class Pipeline(_BaseComposition):
+         self.memory = memory
+         self.verbose = verbose
+ 
+-    def set_output(self, *, transform=None):
++    def set_output(self, *, transform=None, dtypes=None):
+         """Set the output container when `"transform"` and `"fit_transform"` are called.
+ 
+         Calling `set_output` will set the output of all estimators in `steps`.
+@@ -168,13 +168,19 @@ class Pipeline(_BaseComposition):
+             - `"pandas"`: DataFrame output
+             - `None`: Transform configuration is unchanged
+ 
++        dtypes : {"original"} or mapping of column names to dtypes, default=None
++            Configure dtype preservation of the pandas output. If `"original"`,
++            the dtypes of the original input DataFrame are used when available.
++            If a mapping is provided, columns are cast to the requested dtypes.
++            `None` leaves the dtype configuration unchanged.
++
+         Returns
+         -------
+         self : estimator instance
+             Estimator instance.
+         """
+         for _, _, step in self._iter():
+-            _safe_set_output(step, transform=transform)
++            _safe_set_output(step, transform=transform, dtypes=dtypes)
+         return self
+ 
+     def get_params(self, deep=True):
+@@ -1027,7 +1033,7 @@ class FeatureUnion(TransformerMixin, _BaseComposition):
+         self.transformer_weights = transformer_weights
+         self.verbose = verbose
+ 
+-    def set_output(self, *, transform=None):
++    def set_output(self, *, transform=None, dtypes=None):
+         """Set the output container when `"transform"` and `"fit_transform"` are called.
+ 
+         `set_output` will set the output of all estimators in `transformer_list`.
+@@ -1041,14 +1047,20 @@ class FeatureUnion(TransformerMixin, _BaseComposition):
+             - `"pandas"`: DataFrame output
+             - `None`: Transform configuration is unchanged
+ 
++        dtypes : {"original"} or mapping of column names to dtypes, default=None
++            Configure dtype preservation of the pandas output. If `"original"`,
++            the dtypes of the original input DataFrame are used when available.
++            If a mapping is provided, columns are cast to the requested dtypes.
++            `None` leaves the dtype configuration unchanged.
++
+         Returns
+         -------
+         self : estimator instance
+             Estimator instance.
+         """
+-        super().set_output(transform=transform)
++        super().set_output(transform=transform, dtypes=dtypes)
+         for _, step, _ in self._iter():
+-            _safe_set_output(step, transform=transform)
++            _safe_set_output(step, transform=transform, dtypes=dtypes)
+         return self
+ 
+     @property
+diff --git a/sklearn/preprocessing/_function_transformer.py b/sklearn/preprocessing/_function_transformer.py
+index a4f5448a0..cd77d92db 100644
+--- a/sklearn/preprocessing/_function_transformer.py
++++ b/sklearn/preprocessing/_function_transformer.py
+@@ -316,7 +316,7 @@ class FunctionTransformer(TransformerMixin, BaseEstimator):
+     def _more_tags(self):
+         return {"no_validation": not self.validate, "stateless": True}
+ 
+-    def set_output(self, *, transform=None):
++    def set_output(self, *, transform=None, dtypes=None):
+         """Set output container.
+ 
+         See :ref:`sphx_glr_auto_examples_miscellaneous_plot_set_output.py`
+@@ -331,13 +331,19 @@ class FunctionTransformer(TransformerMixin, BaseEstimator):
+             - `"pandas"`: DataFrame output
+             - `None`: Transform configuration is unchanged
+ 
++        dtypes : {"original"} or mapping of column names to dtypes, default=None
++            Configure dtype preservation of the pandas output. If `"original"`,
++            the dtypes of the original input DataFrame are used when available.
++            If a mapping is provided, columns are cast to the requested dtypes.
++            `None` leaves the dtype configuration unchanged.
++
+         Returns
+         -------
+         self : estimator instance
+             Estimator instance.
+         """
+         if hasattr(super(), "set_output"):
+-            return super().set_output(transform=transform)
++            return super().set_output(transform=transform, dtypes=dtypes)
+ 
+         if transform == "pandas" and self.feature_names_out is None:
+             warnings.warn(
+diff --git a/sklearn/utils/_set_output.py b/sklearn/utils/_set_output.py
+index 335773c6a..35d835b4d 100644
+--- a/sklearn/utils/_set_output.py
++++ b/sklearn/utils/_set_output.py
+@@ -1,3 +1,4 @@
++from collections.abc import Mapping
+ from functools import wraps
+ 
+ from scipy.sparse import issparse
+@@ -12,6 +13,7 @@ def _wrap_in_pandas_container(
+     *,
+     columns,
+     index=None,
++    dtypes=None,
+ ):
+     """Create a Pandas DataFrame.
+ 
+@@ -36,6 +38,11 @@ def _wrap_in_pandas_container(
+     index : array-like, default=None
+         Index for data.
+ 
++    dtypes : "original" or mapping of column names to dtypes, default=None
++        If not `None`, the returned DataFrame's columns are cast to the
++        requested dtypes. If `"original"`, the dtypes of the original input
++        DataFrame are used when available.
++
+     Returns
+     -------
+     dataframe : DataFrame
+@@ -57,9 +64,26 @@ def _wrap_in_pandas_container(
+             data_to_wrap.columns = columns
+         if index is not None:
+             data_to_wrap.index = index
++        if dtypes is not None:
++            if hasattr(dtypes, "loc"):
++                dtypes = {
++                    column: dtypes[column]
++                    for column in data_to_wrap.columns
++                    if column in dtypes.index
++                }
++            data_to_wrap = data_to_wrap.astype(dtypes)
+         return data_to_wrap
+ 
+-    return pd.DataFrame(data_to_wrap, index=index, columns=columns)
++    data = pd.DataFrame(data_to_wrap, index=index, columns=columns)
++    if dtypes is not None:
++        if hasattr(dtypes, "loc"):
++            dtypes = {
++                column: dtypes[column]
++                for column in data.columns
++                if column in dtypes.index
++            }
++        data = data.astype(dtypes)
++    return data
+ 
+ 
+ def _get_output_config(method, estimator=None):
+@@ -81,6 +105,8 @@ def _get_output_config(method, estimator=None):
+ 
+         - "dense": specifies the dense container for `method`. This can be
+           `"default"` or `"pandas"`.
++        - "dtypes": specifies the dtypes to preserve for `method`. This can
++          be `"original"` or a mapping of column names to dtypes.
+     """
+     est_sklearn_output_config = getattr(estimator, "_sklearn_output_config", {})
+     if method in est_sklearn_output_config:
+@@ -93,7 +119,61 @@ def _get_output_config(method, estimator=None):
+             f"output config must be 'default' or 'pandas' got {dense_config}"
+         )
+ 
+-    return {"dense": dense_config}
++    config = {"dense": dense_config}
++    if estimator is not None:
++        config["dtypes"] = est_sklearn_output_config.get("transform_dtypes")
++    return config
++
++
++def _prepare_dtypes_for_original(
++    data_to_wrap, original_input, columns, feature_names_in_=None
++):
++    """Get dtypes from the original input when requested."""
++    original_dtypes = getattr(original_input, "dtypes", None)
++    if original_dtypes is None or data_to_wrap is None:
++        return None
++
++    try:
++        if callable(columns):
++            output_columns = columns()
++        else:
++            output_columns = columns
++        if output_columns is None:
++            if not hasattr(data_to_wrap, "shape"):
++                return None
++            output_columns = range(data_to_wrap.shape[1])
++        output_columns = list(output_columns)
++    except Exception:
++        return None
++
++    if not hasattr(original_dtypes, "iloc") or len(output_columns) == 0:
++        return None
++
++    if feature_names_in_ is None:
++        dtypes = {}
++        for column in output_columns:
++            try:
++                dtypes[column] = original_dtypes.loc[column]
++            except (KeyError, TypeError):
++                pass
++        return dtypes
++
++    try:
++        feature_names_in_ = list(feature_names_in_)
++    except TypeError:
++        return None
++
++    feature_names_to_index = {name: i for i, name in enumerate(feature_names_in_)}
++
++    dtypes = {}
++    for column in output_columns:
++        index = feature_names_to_index.get(column)
++        if index is None:
++            continue
++        if index < len(original_dtypes):
++            dtypes[column] = original_dtypes.iloc[index]
++
++    return dtypes
+ 
+ 
+ def _wrap_data_with_container(method, data_to_wrap, original_input, estimator):
+@@ -127,10 +207,21 @@ def _wrap_data_with_container(method, data_to_wrap, original_input, estimator):
+         return data_to_wrap
+ 
+     # dense_config == "pandas"
++    dtypes = output_config.get("dtypes")
++    if isinstance(dtypes, str):
++        if dtypes == "original":
++            dtypes = _prepare_dtypes_for_original(
++                data_to_wrap=data_to_wrap,
++                original_input=original_input,
++                columns=estimator.get_feature_names_out,
++                feature_names_in_=getattr(estimator, "feature_names_in_", None),
++            )
++
+     return _wrap_in_pandas_container(
+         data_to_wrap=data_to_wrap,
+         index=getattr(original_input, "index", None),
+         columns=estimator.get_feature_names_out,
++        dtypes=dtypes,
+     )
+ 
+ 
+@@ -208,7 +299,7 @@ class _SetOutputMixin:
+             setattr(cls, method, wrapped_method)
+ 
+     @available_if(_auto_wrap_is_configured)
+-    def set_output(self, *, transform=None):
++    def set_output(self, *, transform=None, dtypes=None):
+         """Set output container.
+ 
+         See :ref:`sphx_glr_auto_examples_miscellaneous_plot_set_output.py`
+@@ -223,22 +314,44 @@ class _SetOutputMixin:
+             - `"pandas"`: DataFrame output
+             - `None`: Transform configuration is unchanged
+ 
++        dtypes : {"original"} or mapping of column names to dtypes, default=None
++            Configure dtype preservation of the pandas output. If `"original"`,
++            the dtypes of the original input DataFrame are used when available.
++            If a mapping is provided, columns are cast to the requested dtypes.
++            `None` leaves the dtype configuration unchanged.
++
+         Returns
+         -------
+         self : estimator instance
+             Estimator instance.
+         """
+-        if transform is None:
++        if dtypes is not None:
++            if isinstance(dtypes, str):
++                if dtypes != "original":
++                    raise ValueError(
++                        "dtypes must be 'original' or a dict-like mapping of "
++                        "column names to dtypes."
++                    )
++            elif not isinstance(dtypes, Mapping) and not hasattr(dtypes, "items"):
++                raise ValueError(
++                    "dtypes must be 'original' or a dict-like mapping of column "
++                    "names to dtypes."
++                )
++
++        if transform is None and dtypes is None:
+             return self
+ 
+         if not hasattr(self, "_sklearn_output_config"):
+             self._sklearn_output_config = {}
+ 
+-        self._sklearn_output_config["transform"] = transform
++        if transform is not None:
++            self._sklearn_output_config["transform"] = transform
++        if dtypes is not None:
++            self._sklearn_output_config["transform_dtypes"] = dtypes
+         return self
+ 
+ 
+-def _safe_set_output(estimator, *, transform=None):
++def _safe_set_output(estimator, *, transform=None, dtypes=None):
+     """Safely call estimator.set_output and error if it not available.
+ 
+     This is used by meta-estimators to set the output for child estimators.
+@@ -254,7 +367,9 @@ def _safe_set_output(estimator, *, transform=None):
+         - `"transform"`
+         - `"fit_transform"`
+ 
+-        If `None`, this operation is a no-op.
++    dtypes : {"original"} or mapping of column names to dtypes, default=None
++        Configure dtype preservation of the pandas output for the following
++        estimator's methods. If `None`, the dtype configuration is unchanged.
+ 
+     Returns
+     -------
+@@ -276,4 +391,6 @@ def _safe_set_output(estimator, *, transform=None):
+             f"Unable to configure output for {estimator} because `set_output` "
+             "is not available."
+         )
+-    return estimator.set_output(transform=transform)
++    if dtypes is None:
++        return estimator.set_output(transform=transform)
++    return estimator.set_output(transform=transform, dtypes=dtypes)

@@ -1,0 +1,16 @@
+diff --git a/sympy/core/basic.py b/sympy/core/basic.py
+index bac4d4032..fc9898e4d 100644
+--- a/sympy/core/basic.py
++++ b/sympy/core/basic.py
+@@ -137,6 +137,11 @@ def _hashable_content(self):
+         been defined by a class. See note about this in Basic.__eq__."""
+         return self._args
+ 
++    def _eval_is_finite(self):
++        # Even numbers are integers, hence finite.
++        if self.is_even:
++            return True
++
+     @property
+     def assumptions0(self):
+         """

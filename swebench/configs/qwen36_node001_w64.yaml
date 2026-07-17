@@ -1,0 +1,25 @@
+# Qwen3.6-35B-A3B-hf verified500 @ gpu-node01-001 (10.0.3.100:8000), gen workers=64 (2026-07-09)
+run:
+  tag: aiden_qwen36_node001_w64
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 64
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B-hf
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.100:8000/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 48
+  namespace: swebench

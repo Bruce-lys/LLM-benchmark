@@ -1,0 +1,40 @@
+diff --git a/seaborn/_core/plot.py b/seaborn/_core/plot.py
+index 4f0290a4..f7835735 100644
+--- a/seaborn/_core/plot.py
++++ b/seaborn/_core/plot.py
+@@ -25,7 +25,7 @@ from seaborn._marks.base import Mark
+ from seaborn._stats.base import Stat
+ from seaborn._core.data import PlotData
+ from seaborn._core.moves import Move
+-from seaborn._core.scales import Scale
++from seaborn._core.scales import Scale, Nominal
+ from seaborn._core.subplots import Subplots
+ from seaborn._core.groupby import GroupBy
+ from seaborn._core.properties import PROPERTIES, Property
+@@ -1644,6 +1644,26 @@ class Plotter:
+                         hi = cast(float, hi) + 0.5
+                     ax.set(**{f"{axis}lim": (lo, hi)})
+ 
++                # Axis rules for nominal scales
++                # Respect explicit limits while applying categorical defaults otherwise.
++                if (
++                    axis_key in self._scales
++                    and isinstance(self._scales[axis_key], Nominal)
++                ):
++                    axis_obj = getattr(ax, f"{axis}axis")
++                    if axis_key not in p._limits:
++                        locs = axis_obj.get_majorticklocs()
++                        if locs:
++                            lo, hi = min(locs) - .5, max(locs) + .5
++                            ax.set(**{f"{axis}lim": (lo, hi)})
++                    axis_obj.grid(False)
++                    if axis == "y":
++                        try:
++                            ax.yaxis.set_inverted(True)
++                        except AttributeError:
++                            if not ax.yaxis_inverted():
++                                ax.invert_yaxis()
++
+         engine_default = None if p._target is not None else "tight"
+         layout_engine = p._layout_spec.get("engine", engine_default)
+         set_layout_engine(self._figure, layout_engine)

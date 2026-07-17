@@ -1,0 +1,31 @@
+diff --git a/sklearn/ensemble/_iforest.py b/sklearn/ensemble/_iforest.py
+index 4d6c1c3f0..136955337 100644
+--- a/sklearn/ensemble/_iforest.py
++++ b/sklearn/ensemble/_iforest.py
+@@ -288,6 +288,11 @@ class IsolationForest(OutlierMixin, BaseBagging):
+             Fitted estimator.
+         """
+         self._validate_params()
++        # Keep the original X to preserve feature names when computing the
++        # offset. After validation X is converted to an ndarray, so calling
++        # score_samples on it would raise a warning even though the original
++        # input had valid feature names.
++        X_for_offset = X if hasattr(X, "columns") else None
+         X = self._validate_data(X, accept_sparse=["csc"], dtype=tree_dtype)
+         if issparse(X):
+             # Pre-sort indices to avoid that each individual tree of the
+@@ -345,7 +350,13 @@ class IsolationForest(OutlierMixin, BaseBagging):
+             return self
+ 
+         # else, define offset_ wrt contamination parameter
+-        self.offset_ = np.percentile(self.score_samples(X), 100.0 * self.contamination)
++        if X_for_offset is None:
++            X_for_offset = X
++            if issparse(X):
++                X_for_offset = X.tocsr().astype(tree_dtype, copy=False)
++        self.offset_ = np.percentile(
++            self.score_samples(X_for_offset), 100.0 * self.contamination
++        )
+ 
+         return self
+ 

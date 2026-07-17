@@ -1,0 +1,44 @@
+diff --git a/requests/models.py b/requests/models.py
+index 3f6a4f9..c9bff0a 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -31,7 +31,7 @@ from .utils import (
+     iter_slices, guess_json_utf, super_len, to_native_string)
+ from .compat import (
+     cookielib, urlunparse, urlsplit, urlencode, str, bytes, StringIO,
+-    is_py2, chardet, json, builtin_str, basestring)
++    is_py2, is_py3, chardet, json, builtin_str, basestring)
+ from .status_codes import codes
+ 
+ #: The set of HTTP status codes that indicate an automatically
+@@ -327,6 +327,8 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+     def prepare_method(self, method):
+         """Prepares the given HTTP method."""
++        if is_py3 and isinstance(method, bytes):
++            method = method.decode('ascii')
+         self.method = method
+         if self.method is not None:
+             self.method = self.method.upper()
+diff --git a/requests/sessions.py b/requests/sessions.py
+index d701ff2..a94b264 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -13,7 +13,7 @@ from collections import Mapping
+ from datetime import datetime
+ 
+ from .auth import _basic_auth_str
+-from .compat import cookielib, OrderedDict, urljoin, urlparse, builtin_str
++from .compat import cookielib, OrderedDict, urljoin, urlparse, builtin_str, bytes, is_py3
+ from .cookies import (
+     cookiejar_from_dict, extract_cookies_to_jar, RequestsCookieJar, merge_cookies)
+ from .models import Request, PreparedRequest, DEFAULT_REDIRECT_LIMIT
+@@ -425,6 +425,8 @@ class Session(SessionRedirectMixin):
+             If Tuple, ('cert', 'key') pair.
+         """
+ 
++        if is_py3 and isinstance(method, bytes):
++            method = method.decode('ascii')
+         method = builtin_str(method)
+ 
+         # Create the Request.

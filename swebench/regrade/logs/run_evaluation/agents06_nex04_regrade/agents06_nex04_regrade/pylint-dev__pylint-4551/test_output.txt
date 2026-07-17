@@ -1,0 +1,623 @@
++ source /opt/miniconda3/bin/activate
+++ _CONDA_ROOT=/opt/miniconda3
+++ . /opt/miniconda3/etc/profile.d/conda.sh
++++ export CONDA_EXE=/opt/miniconda3/bin/conda
++++ CONDA_EXE=/opt/miniconda3/bin/conda
++++ export _CE_M=
++++ _CE_M=
++++ export _CE_CONDA=
++++ _CE_CONDA=
++++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ '[' -z '' ']'
++++ export CONDA_SHLVL=0
++++ CONDA_SHLVL=0
++++ '[' -n '' ']'
++++++ dirname /opt/miniconda3/bin/conda
+++++ dirname /opt/miniconda3/bin
++++ PATH=/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++++ export PATH
++++ '[' -z '' ']'
++++ PS1=
+++ conda activate
+++ local cmd=activate
+++ case "$cmd" in
+++ __conda_activate activate
+++ '[' -n '' ']'
+++ local ask_conda
++++ PS1=
++++ __conda_exe shell.posix activate
++++ /opt/miniconda3/bin/conda shell.posix activate
+++ ask_conda='PS1='\''(base) '\''
+export PATH='\''/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3'\''
+export CONDA_SHLVL='\''1'\''
+export CONDA_DEFAULT_ENV='\''base'\''
+export CONDA_PROMPT_MODIFIER='\''(base) '\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
+++ eval 'PS1='\''(base) '\''
+export PATH='\''/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3'\''
+export CONDA_SHLVL='\''1'\''
+export CONDA_DEFAULT_ENV='\''base'\''
+export CONDA_PROMPT_MODIFIER='\''(base) '\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
++++ PS1='(base) '
++++ export PATH=/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++++ PATH=/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++++ export CONDA_PREFIX=/opt/miniconda3
++++ CONDA_PREFIX=/opt/miniconda3
++++ export CONDA_SHLVL=1
++++ CONDA_SHLVL=1
++++ export CONDA_DEFAULT_ENV=base
++++ CONDA_DEFAULT_ENV=base
++++ export 'CONDA_PROMPT_MODIFIER=(base) '
++++ CONDA_PROMPT_MODIFIER='(base) '
++++ export CONDA_EXE=/opt/miniconda3/bin/conda
++++ CONDA_EXE=/opt/miniconda3/bin/conda
++++ export _CE_M=
++++ _CE_M=
++++ export _CE_CONDA=
++++ _CE_CONDA=
++++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
+++ __conda_hashr
+++ '[' -n '' ']'
+++ '[' -n '' ']'
+++ hash -r
++ conda activate testbed
++ local cmd=activate
++ case "$cmd" in
++ __conda_activate activate testbed
++ '[' -n '' ']'
++ local ask_conda
+++ PS1='(base) '
+++ __conda_exe shell.posix activate testbed
+++ /opt/miniconda3/bin/conda shell.posix activate testbed
++ ask_conda='PS1='\''(testbed) '\''
+export PATH='\''/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_SHLVL='\''2'\''
+export CONDA_DEFAULT_ENV='\''testbed'\''
+export CONDA_PROMPT_MODIFIER='\''(testbed) '\''
+export CONDA_PREFIX_1='\''/opt/miniconda3'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
++ eval 'PS1='\''(testbed) '\''
+export PATH='\''/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_SHLVL='\''2'\''
+export CONDA_DEFAULT_ENV='\''testbed'\''
+export CONDA_PROMPT_MODIFIER='\''(testbed) '\''
+export CONDA_PREFIX_1='\''/opt/miniconda3'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
+++ PS1='(testbed) '
+++ export PATH=/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export CONDA_PREFIX=/opt/miniconda3/envs/testbed
+++ CONDA_PREFIX=/opt/miniconda3/envs/testbed
+++ export CONDA_SHLVL=2
+++ CONDA_SHLVL=2
+++ export CONDA_DEFAULT_ENV=testbed
+++ CONDA_DEFAULT_ENV=testbed
+++ export 'CONDA_PROMPT_MODIFIER=(testbed) '
+++ CONDA_PROMPT_MODIFIER='(testbed) '
+++ export CONDA_PREFIX_1=/opt/miniconda3
+++ CONDA_PREFIX_1=/opt/miniconda3
+++ export CONDA_EXE=/opt/miniconda3/bin/conda
+++ CONDA_EXE=/opt/miniconda3/bin/conda
+++ export _CE_M=
+++ _CE_M=
+++ export _CE_CONDA=
+++ _CE_CONDA=
+++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
+++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++ __conda_hashr
++ '[' -n '' ']'
++ '[' -n '' ']'
++ hash -r
++ cd /testbed
++ git config --global --add safe.directory /testbed
++ cd /testbed
++ git status
+On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   pylint/pyreverse/diagrams.py
+	modified:   pylint/pyreverse/inspector.py
+	modified:   pylint/pyreverse/writer.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
++ git show
++ git -c core.fileMode=false diff 99589b08de8c5a2c6cc61e13a37420a868c80599
+commit 2981dcff6a20b74ae1fc27dee9b7517fb28d7a21
+Author: SWE-bench <setup@swebench.config>
+Date:   Wed Sep 10 15:08:17 2025 +0000
+
+    SWE-bench
+diff --git a/pylint/pyreverse/diagrams.py b/pylint/pyreverse/diagrams.py
+index bf9f67af..57621bd6 100644
+--- a/pylint/pyreverse/diagrams.py
++++ b/pylint/pyreverse/diagrams.py
+@@ -91,7 +91,15 @@ class ClassDiagram(Figure, FilterMixIn):
+         ):
+             if not self.show_attr(node_name):
+                 continue
+-            names = self.class_names(associated_nodes)
++            annotation_nodes = getattr(node, "instance_attrs_annotation", {}).get(
++                node_name
++            )
++            if not annotation_nodes:
++                annotation_nodes = getattr(node, "locals_annotation", {}).get(node_name)
++            type_nodes = annotation_nodes or associated_nodes
++            names = self.class_names(
++                type_nodes, format_annotations=bool(annotation_nodes)
++            )
+             if names:
+                 node_name = "{} : {}".format(node_name, ", ".join(names))
+             attrs.append(node_name)
+@@ -115,20 +123,28 @@ class ClassDiagram(Figure, FilterMixIn):
+         self._nodes[node] = ent
+         self.objects.append(ent)
+ 
+-    def class_names(self, nodes):
++    def class_names(self, nodes, format_annotations=False):
+         """return class names if needed in diagram"""
+         names = []
+         for node in nodes:
+             if isinstance(node, astroid.Instance):
+                 node = node._proxied
+-            if (
+-                isinstance(node, astroid.ClassDef)
+-                and hasattr(node, "name")
+-                and not self.has_node(node)
+-            ):
+-                if node.name not in names:
++            if isinstance(node, astroid.ClassDef):
++                if (
++                    hasattr(node, "name")
++                    and not self.has_node(node)
++                    and node.name not in names
++                ):
+                     node_name = node.name
+                     names.append(node_name)
++            elif (
++                format_annotations
++                and isinstance(node, astroid.NodeNG)
++                and not isinstance(node, astroid.Unknown)
++            ):
++                node_name = node.as_string()
++                if node_name and node_name not in names:
++                    names.append(node_name)
+         return names
+ 
+     def nodes(self):
+diff --git a/pylint/pyreverse/inspector.py b/pylint/pyreverse/inspector.py
+index 8fa12202..9fd1b1f5 100644
+--- a/pylint/pyreverse/inspector.py
++++ b/pylint/pyreverse/inspector.py
+@@ -94,6 +94,12 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+ 
+     * instance_attrs_type
+       as locals_type but for klass member attributes (only on astroid.Class)
++    * locals_annotation
++      mapping from locals names to their type annotations (only on astroid.Class
++      and astroid.Function)
++    * instance_attrs_annotation
++      mapping from instance attributes names to their type annotations (only on
++      astroid.Class)
+ 
+     * implements,
+       list of implemented interface _objects_ (only on astroid.Class nodes)
+@@ -153,6 +159,7 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         if hasattr(node, "locals_type"):
+             return
+         node.locals_type = collections.defaultdict(list)
++        node.locals_annotation = collections.defaultdict(list)
+         if self.tag:
+             node.uid = self.generate_id()
+         # resolve ancestors
+@@ -162,10 +169,13 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+             baseobj.specializations = specializations
+         # resolve instance attributes
+         node.instance_attrs_type = collections.defaultdict(list)
++        node.instance_attrs_annotation = collections.defaultdict(list)
+         for assignattrs in node.instance_attrs.values():
+             for assignattr in assignattrs:
+                 if not isinstance(assignattr, astroid.Unknown):
+                     self.handle_assignattr_type(assignattr, node)
++                    self._add_annotation_from_instance_attr(assignattr, node)
++        self._add_annotations_from_class_body(node)
+         # resolve implemented interface
+         try:
+             node.implements = list(interfaces(node, self.inherited_interfaces))
+@@ -181,6 +191,8 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         if hasattr(node, "locals_type"):
+             return
+         node.locals_type = collections.defaultdict(list)
++        node.locals_annotation = collections.defaultdict(list)
++        self._add_function_annotations(node)
+         if self.tag:
+             node.uid = self.generate_id()
+ 
+@@ -236,6 +248,81 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         except astroid.InferenceError:
+             pass
+ 
++    def _add_function_annotations(self, node):
++        """add function argument annotations to locals_annotation."""
++        for arg, annotation in self._function_arguments(node):
++            if annotation is not None:
++                node.locals_annotation[arg.name].append(annotation)
++        for arg_name, annotation in self._vararg_annotations(node):
++            if annotation is not None:
++                node.locals_annotation[arg_name].append(annotation)
++
++    def _function_arguments(self, node):
++        """Return all function arguments paired with their annotations."""
++        arguments = (
++            list(node.args.posonlyargs or [])
++            + list(node.args.args or [])
++            + list(node.args.kwonlyargs or [])
++        )
++        annotations = (
++            list(node.args.posonlyargs_annotations or [])
++            + list(node.args.annotations or [])
++            + list(node.args.kwonlyargs_annotations or [])
++        )
++        yield from zip(arguments, annotations)
++
++    def _vararg_annotations(self, node):
++        """Return vararg and kwarg annotations paired with their names."""
++        if node.args.vararg and node.args.varargannotation:
++            yield node.args.vararg, node.args.varargannotation
++        if node.args.kwarg and node.args.kwargannotation:
++            yield node.args.kwarg, node.args.kwargannotation
++
++    def _add_annotations_from_class_body(self, node):
++        """Add annotations from class variable AnnAssign nodes."""
++        for statement in node.body:
++            if not isinstance(statement, astroid.AnnAssign):
++                continue
++            self._add_annotation(statement.target, statement.annotation, node)
++
++    def _add_annotation_from_instance_attr(self, node, parent):
++        """Add annotations from annotated instance attributes or parameters."""
++        statement = node.statement()
++        annotation = None
++        if isinstance(statement, astroid.AnnAssign):
++            annotation = statement.annotation
++        elif isinstance(statement, astroid.Assign):
++            annotation = self._annotation_from_value(statement.value, statement.frame())
++        if annotation is not None:
++            parent.instance_attrs_annotation[node.attrname].append(annotation)
++
++    def _annotation_from_value(self, value, frame):
++        """Return an annotation from a value if it comes from an annotated parameter."""
++        if (
++            not isinstance(value, astroid.Name)
++            or not isinstance(frame, astroid.FunctionDef)
++        ):
++            return None
++        for arg, annotation in self._function_arguments(frame):
++            if arg.name == value.name:
++                return annotation
++        return None
++
++    def _add_annotation(self, target, annotation, frame):
++        """Add an annotation node to a frame's annotation mapping."""
++        if annotation is None:
++            return
++        if isinstance(target, astroid.AssignName):
++            frame.locals_annotation[target.name].append(annotation)
++        elif isinstance(target, astroid.AssignAttr):
++            class_frame = target.frame()
++            if isinstance(class_frame, astroid.FunctionDef):
++                class_frame = class_frame.frame()
++            if isinstance(class_frame, astroid.ClassDef):
++                class_frame.instance_attrs_annotation[target.attrname].append(
++                    annotation
++                )
++
+     def visit_import(self, node):
+         """visit an astroid.Import node
+ 
+diff --git a/pylint/pyreverse/writer.py b/pylint/pyreverse/writer.py
+index 0d80bb9c..c7603fdd 100644
+--- a/pylint/pyreverse/writer.py
++++ b/pylint/pyreverse/writer.py
+@@ -94,6 +94,70 @@ class DiagramWriter:
+         """get label and shape for classes."""
+         raise NotImplementedError
+ 
++    def _format_function_args(self, func):
++        """Format function arguments with type annotations."""
++        args = []
++        for arg, annotation in self._function_arguments(func):
++            if arg.name == "self":
++                continue
++            args.append(self._format_function_arg(arg, annotation))
++        if func.args.vararg:
++            args.append(self._format_function_vararg(
++                func.args.vararg, func.args.varargannotation
++            ))
++        if func.args.kwarg:
++            args.append(
++                self._format_function_kwarg(func.args.kwarg, func.args.kwargannotation)
++            )
++        return args
++
++    def _function_arguments(self, func):
++        """Return all function arguments paired with their annotations."""
++        arguments = (
++            list(func.args.posonlyargs or [])
++            + list(func.args.args or [])
++            + list(func.args.kwonlyargs or [])
++        )
++        annotations = (
++            list(func.args.posonlyargs_annotations or [])
++            + list(func.args.annotations or [])
++            + list(func.args.kwonlyargs_annotations or [])
++        )
++        yield from zip(arguments, annotations)
++
++    def _format_function_arg(self, arg, annotation):
++        """Format a function argument with its type annotation."""
++        if annotation is None:
++            return arg.name
++        return "{}: {}".format(arg.name, annotation.as_string())
++
++    def _format_function_vararg(self, arg, annotation):
++        """Format a vararg argument with its type annotation."""
++        name = "*{}".format(arg if isinstance(arg, str) else arg.name)
++        if annotation is not None:
++            name += ": {}".format(annotation.as_string())
++        return name
++
++    def _format_function_kwarg(self, arg, annotation):
++        """Format a keyword argument with its type annotation."""
++        name = "**{}".format(arg if isinstance(arg, str) else arg.name)
++        if annotation is not None:
++            name += ": {}".format(annotation.as_string())
++        return name
++
++    def _format_function_return(self, func):
++        """Format a function return annotation."""
++        if func.returns is None:
++            return ""
++        return " -> {}".format(func.returns.as_string())
++
++    def _format_function_signature(self, func):
++        """Format a complete function signature."""
++        args = self._format_function_args(func)
++        signature = "{}({})".format(func.name, ", ".join(args))
++        signature += self._format_function_return(func)
++        return signature
++
+     def close_graph(self):
+         """finalize the graph"""
+         raise NotImplementedError
+@@ -134,11 +198,7 @@ class DotWriter(DiagramWriter):
+         if not self.config.only_classnames:
+             label = r"{}|{}\l|".format(label, r"\l".join(obj.attrs))
+             for func in obj.methods:
+-                if func.args.args:
+-                    args = [arg.name for arg in func.args.args if arg.name != "self"]
+-                else:
+-                    args = []
+-                label = r"{}{}({})\l".format(label, func.name, ", ".join(args))
++                label = r"{}{}\l".format(label, self._format_function_signature(func))
+             label = "{%s}" % label
+         if is_exception(obj.node):
+             return dict(fontcolor="red", label=label, shape="record")
+@@ -199,7 +259,7 @@ class VCGWriter(DiagramWriter):
+             shape = "box"
+         if not self.config.only_classnames:
+             attrs = obj.attrs
+-            methods = [func.name for func in obj.methods]
++            methods = [self._format_function_signature(func) for func in obj.methods]
+             # box width for UML like diagram
+             maxlen = max(len(name) for name in [obj.title] + methods + attrs)
+             line = "_" * (maxlen + 2)
+@@ -209,7 +269,7 @@ class VCGWriter(DiagramWriter):
+             if attrs:
+                 label = fr"{label}\n\f{line}"
+             for func in methods:
+-                label = fr"{label}\n\f10{func}()"
++                label = fr"{label}\n\f10{func}"
+         return dict(label=label, shape=shape)
+ 
+     def close_graph(self):
++ source /opt/miniconda3/bin/activate
+++ _CONDA_ROOT=/opt/miniconda3
+++ . /opt/miniconda3/etc/profile.d/conda.sh
++++ export CONDA_EXE=/opt/miniconda3/bin/conda
++++ CONDA_EXE=/opt/miniconda3/bin/conda
++++ export _CE_M=
++++ _CE_M=
++++ export _CE_CONDA=
++++ _CE_CONDA=
++++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ '[' -z x ']'
+++ conda activate
+++ local cmd=activate
+++ case "$cmd" in
+++ __conda_activate activate
+++ '[' -n '' ']'
+++ local ask_conda
++++ PS1='(testbed) '
++++ __conda_exe shell.posix activate
++++ /opt/miniconda3/bin/conda shell.posix activate
+++ ask_conda='PS1='\''(base) '\''
+export PATH='\''/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3'\''
+export CONDA_SHLVL='\''3'\''
+export CONDA_DEFAULT_ENV='\''base'\''
+export CONDA_PROMPT_MODIFIER='\''(base) '\''
+export CONDA_PREFIX_2='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
+++ eval 'PS1='\''(base) '\''
+export PATH='\''/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3'\''
+export CONDA_SHLVL='\''3'\''
+export CONDA_DEFAULT_ENV='\''base'\''
+export CONDA_PROMPT_MODIFIER='\''(base) '\''
+export CONDA_PREFIX_2='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
++++ PS1='(base) '
++++ export PATH=/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++++ PATH=/opt/miniconda3/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++++ export CONDA_PREFIX=/opt/miniconda3
++++ CONDA_PREFIX=/opt/miniconda3
++++ export CONDA_SHLVL=3
++++ CONDA_SHLVL=3
++++ export CONDA_DEFAULT_ENV=base
++++ CONDA_DEFAULT_ENV=base
++++ export 'CONDA_PROMPT_MODIFIER=(base) '
++++ CONDA_PROMPT_MODIFIER='(base) '
++++ export CONDA_PREFIX_2=/opt/miniconda3/envs/testbed
++++ CONDA_PREFIX_2=/opt/miniconda3/envs/testbed
++++ export CONDA_EXE=/opt/miniconda3/bin/conda
++++ CONDA_EXE=/opt/miniconda3/bin/conda
++++ export _CE_M=
++++ _CE_M=
++++ export _CE_CONDA=
++++ _CE_CONDA=
++++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
+++ __conda_hashr
+++ '[' -n '' ']'
+++ '[' -n '' ']'
+++ hash -r
++ conda activate testbed
++ local cmd=activate
++ case "$cmd" in
++ __conda_activate activate testbed
++ '[' -n '' ']'
++ local ask_conda
+++ PS1='(base) '
+++ __conda_exe shell.posix activate testbed
+++ /opt/miniconda3/bin/conda shell.posix activate testbed
++ ask_conda='PS1='\''(testbed) '\''
+export PATH='\''/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_SHLVL='\''4'\''
+export CONDA_DEFAULT_ENV='\''testbed'\''
+export CONDA_PROMPT_MODIFIER='\''(testbed) '\''
+export CONDA_PREFIX_3='\''/opt/miniconda3'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
++ eval 'PS1='\''(testbed) '\''
+export PATH='\''/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\''
+export CONDA_PREFIX='\''/opt/miniconda3/envs/testbed'\''
+export CONDA_SHLVL='\''4'\''
+export CONDA_DEFAULT_ENV='\''testbed'\''
+export CONDA_PROMPT_MODIFIER='\''(testbed) '\''
+export CONDA_PREFIX_3='\''/opt/miniconda3'\''
+export CONDA_EXE='\''/opt/miniconda3/bin/conda'\''
+export _CE_M='\'''\''
+export _CE_CONDA='\'''\''
+export CONDA_PYTHON_EXE='\''/opt/miniconda3/bin/python'\'''
+++ PS1='(testbed) '
+++ export PATH=/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/opt/miniconda3/envs/testbed/bin:/opt/miniconda3/condabin:/opt/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export CONDA_PREFIX=/opt/miniconda3/envs/testbed
+++ CONDA_PREFIX=/opt/miniconda3/envs/testbed
+++ export CONDA_SHLVL=4
+++ CONDA_SHLVL=4
+++ export CONDA_DEFAULT_ENV=testbed
+++ CONDA_DEFAULT_ENV=testbed
+++ export 'CONDA_PROMPT_MODIFIER=(testbed) '
+++ CONDA_PROMPT_MODIFIER='(testbed) '
+++ export CONDA_PREFIX_3=/opt/miniconda3
+++ CONDA_PREFIX_3=/opt/miniconda3
+++ export CONDA_EXE=/opt/miniconda3/bin/conda
+++ CONDA_EXE=/opt/miniconda3/bin/conda
+++ export _CE_M=
+++ _CE_M=
+++ export _CE_CONDA=
+++ _CE_CONDA=
+++ export CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
+++ CONDA_PYTHON_EXE=/opt/miniconda3/bin/python
++ __conda_hashr
++ '[' -n '' ']'
++ '[' -n '' ']'
++ hash -r
++ python -m pip install -e .
+Obtaining file:///testbed
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Requirement already satisfied: astroid<2.7,>=2.6.0 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from pylint==2.9.0.dev1) (2.6.5)
+Requirement already satisfied: isort<6,>=4.2.5 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from pylint==2.9.0.dev1) (5.9.2)
+Requirement already satisfied: mccabe<0.7,>=0.6 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from pylint==2.9.0.dev1) (0.6.1)
+Requirement already satisfied: toml>=0.7.1 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from pylint==2.9.0.dev1) (0.10.2)
+Requirement already satisfied: lazy-object-proxy>=1.4.0 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from astroid<2.7,>=2.6.0->pylint==2.9.0.dev1) (1.10.0)
+Requirement already satisfied: wrapt<1.13,>=1.11 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from astroid<2.7,>=2.6.0->pylint==2.9.0.dev1) (1.12.1)
+Requirement already satisfied: setuptools>=20.0 in /opt/miniconda3/envs/testbed/lib/python3.9/site-packages (from astroid<2.7,>=2.6.0->pylint==2.9.0.dev1) (75.1.0)
+Installing collected packages: pylint
+  Attempting uninstall: pylint
+    Found existing installation: pylint 2.9.0.dev1
+    Uninstalling pylint-2.9.0.dev1:
+      Successfully uninstalled pylint-2.9.0.dev1
+  DEPRECATION: Legacy editable install of pylint==2.9.0.dev1 from file:///testbed (setup.py develop) is deprecated. pip 25.0 will enforce this behaviour change. A possible replacement is to add a pyproject.toml or enable --use-pep517, and use setuptools >= 64. If the resulting installation is not behaving as expected, try using --config-settings editable_mode=compat. Please consult the setuptools documentation for more information. Discussion can be found at https://github.com/pypa/pip/issues/11457
+  Running setup.py develop for pylint
+Successfully installed pylint
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable.It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
++ git checkout 99589b08de8c5a2c6cc61e13a37420a868c80599 tests/unittest_pyreverse_writer.py
+Updated 0 paths from 1a619db3
++ git apply -v -
+Checking patch tests/unittest_pyreverse_writer.py...
+Applied patch tests/unittest_pyreverse_writer.py cleanly.
++ : '>>>>> Start Test Output'
++ pytest -rA tests/unittest_pyreverse_writer.py
+============================= test session starts ==============================
+platform linux -- Python 3.9.20, pytest-6.2.5, py-1.11.0, pluggy-1.5.0
+benchmark: 3.4.1 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /testbed, configfile: setup.cfg
+plugins: cov-2.12.1, profiling-1.7.0, xdist-2.5.0, forked-1.6.0, benchmark-3.4.1
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests/unittest_pyreverse_writer.py ______________
+ImportError while importing test module '/testbed/tests/unittest_pyreverse_writer.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/miniconda3/envs/testbed/lib/python3.9/importlib/__init__.py:127: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests/unittest_pyreverse_writer.py:32: in <module>
+    from pylint.pyreverse.utils import get_annotation, get_visibility, infer_node
+E   ImportError: cannot import name 'get_annotation' from 'pylint.pyreverse.utils' (/testbed/pylint/pyreverse/utils.py)
+=============================== warnings summary ===============================
+../opt/miniconda3/envs/testbed/lib/python3.9/site-packages/astroid/interpreter/_import/util.py:6
+  /opt/miniconda3/envs/testbed/lib/python3.9/site-packages/astroid/interpreter/_import/util.py:6: DeprecationWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html
+    import pkg_resources
+
+-- Docs: https://docs.pytest.org/en/stable/warnings.html
+=========================== short test summary info ============================
+ERROR tests/unittest_pyreverse_writer.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+========================= 1 warning, 1 error in 0.15s ==========================
++ : '>>>>> End Test Output'
++ git checkout 99589b08de8c5a2c6cc61e13a37420a868c80599 tests/unittest_pyreverse_writer.py
+Updated 1 path from 1a619db3

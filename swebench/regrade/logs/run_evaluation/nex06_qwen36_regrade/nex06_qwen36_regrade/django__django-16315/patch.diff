@@ -1,0 +1,46 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 0562a71dd1..4bfee782f5 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -4,7 +4,7 @@ import re
+ from functools import partial
+ from itertools import chain
+ 
+-from django.core.exceptions import EmptyResultSet, FieldError, FullResultSet
++from django.core.exceptions import EmptyResultSet, FieldDoesNotExist, FieldError, FullResultSet
+ from django.db import DatabaseError, NotSupportedError
+ from django.db.models.constants import LOOKUP_SEP
+ from django.db.models.expressions import F, OrderBy, RawSQL, Ref, Value
+@@ -1722,11 +1722,29 @@ class SQLInsertCompiler(SQLCompiler):
+ 
+         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
+ 
++        # on_conflict_suffix_sql() expects database column names.
++        def get_column_name(field):
++            if hasattr(field, "column"):
++                return field.column
++            try:
++                return opts.get_field(field).column
++            except FieldDoesNotExist:
++                if field == "pk":
++                    return opts.pk.column
++                return field
++
++        field_names = [get_column_name(field) for field in fields]
++        update_field_names = [
++            get_column_name(field) for field in self.query.update_fields
++        ]
++        unique_field_names = [
++            get_column_name(field) for field in self.query.unique_fields
++        ]
+         on_conflict_suffix_sql = self.connection.ops.on_conflict_suffix_sql(
+-            fields,
++            field_names,
+             self.query.on_conflict,
+-            self.query.update_fields,
+-            self.query.unique_fields,
++            update_field_names,
++            unique_field_names,
+         )
+         if (
+             self.returning_fields

@@ -1,0 +1,70 @@
+diff --git a/astropy/io/fits/diff.py b/astropy/io/fits/diff.py
+index 100cdf1b8..ca8561630 100644
+--- a/astropy/io/fits/diff.py
++++ b/astropy/io/fits/diff.py
+@@ -55,6 +55,39 @@ _COL_ATTRS = [
+ ]
+ 
+ 
++def _values_equal(a, b, rtol=0.0, atol=0.0):
++    """
++    Compare two values, with special handling for NumPy arrays.
++    """
++    if isinstance(a, np.ndarray) and isinstance(b, np.ndarray):
++        if a.shape != b.shape:
++            return False
++
++        if (
++            np.issubdtype(a.dtype, np.floating) and np.issubdtype(b.dtype, np.floating)
++        ) or (
++            np.issubdtype(a.dtype, np.complexfloating)
++            and np.issubdtype(b.dtype, np.complexfloating)
++        ):
++            return np.allclose(a, b, rtol=rtol, atol=atol)
++
++        return np.array_equal(a, b)
++
++    return diff_values(a, b, rtol=rtol, atol=atol)
++
++
++def _diff_vla_column(a, b, rtol=0.0, atol=0.0):
++    """
++    Compare two variable-length array columns element-by-element.
++    """
++    diffs = [
++        idx
++        for idx in range(len(a))
++        if not _values_equal(a[idx], b[idx], rtol=rtol, atol=atol)
++    ]
++    return diffs,
++
++
+ class _BaseDiff:
+     """
+     Base class for all FITS diff objects.
+@@ -1445,20 +1478,14 @@ class TableDataDiff(_BaseDiff):
+             arra = self.a[col.name]
+             arrb = self.b[col.name]
+ 
+-            if np.issubdtype(arra.dtype, np.floating) and np.issubdtype(
++            if getattr(col.format, "p_format", None) is not None:
++                diffs = _diff_vla_column(
++                    arra, arrb, rtol=self.rtol, atol=self.atol
++                )
++            elif np.issubdtype(arra.dtype, np.floating) and np.issubdtype(
+                 arrb.dtype, np.floating
+             ):
+                 diffs = where_not_allclose(arra, arrb, rtol=self.rtol, atol=self.atol)
+-            elif "P" in col.format:
+-                diffs = (
+-                    [
+-                        idx
+-                        for idx in range(len(arra))
+-                        if not np.allclose(
+-                            arra[idx], arrb[idx], rtol=self.rtol, atol=self.atol
+-                        )
+-                    ],
+-                )
+             else:
+                 diffs = np.where(arra != arrb)
+ 

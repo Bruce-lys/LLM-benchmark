@@ -1,0 +1,31 @@
+diff --git a/lib/matplotlib/legend.py b/lib/matplotlib/legend.py
+index ff6abdb958..7cf53c1122 100644
+--- a/lib/matplotlib/legend.py
++++ b/lib/matplotlib/legend.py
+@@ -1164,6 +1164,12 @@ class Legend(Artist):
+ 
+         return l, b
+ 
++    def __getstate__(self):
++        state = super().__getstate__()
++        # remove the draggable helper, which keeps a reference to the canvas
++        state["_draggable"] = None
++        return state
++
+     def contains(self, event):
+         inside, info = self._default_contains(event)
+         if inside is not None:
+diff --git a/lib/matplotlib/text.py b/lib/matplotlib/text.py
+index 0f874ba33d..91fc0d38ed 100644
+--- a/lib/matplotlib/text.py
++++ b/lib/matplotlib/text.py
+@@ -236,6 +236,9 @@ class Text(Artist):
+         d = super().__getstate__()
+         # remove the cached _renderer (if it exists)
+         d['_renderer'] = None
++        # remove the draggable helper, which keeps a reference to the canvas
++        if hasattr(self, "_draggable"):
++            d["_draggable"] = None
+         return d
+ 
+     def contains(self, mouseevent):

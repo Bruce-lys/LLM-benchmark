@@ -1,0 +1,14 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index a791908caf..783c1841ba 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -432,6 +432,9 @@ class SQLCompiler:
+                         *self.query.values_select,
+                         *self.query.annotation_select,
+                     ))
++                    if compiler.query.combinator:
++                        compiler.query.order_by = ()
++                        compiler.query.extra_order_by = ()
+                 part_sql, part_args = compiler.as_sql()
+                 if compiler.query.combinator:
+                     # Wrap in a subquery if wrapping in parentheses isn't

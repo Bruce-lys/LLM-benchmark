@@ -1,0 +1,33 @@
+No patch.txt found, creating from git diff...
+diff --git a/django/core/serializers/base.py b/django/core/serializers/base.py
+index da85cb4b92..a7a1f8595c 100644
+--- a/django/core/serializers/base.py
++++ b/django/core/serializers/base.py
+@@ -336,13 +336,22 @@ def build_instance(Model, data, db):
+         and hasattr(default_manager, "get_by_natural_key")
+         and hasattr(Model, "natural_key")
+     ):
+-        natural_key = Model(**data).natural_key()
+         try:
+-            data[Model._meta.pk.attname] = Model._meta.pk.to_python(
+-                default_manager.db_manager(db).get_by_natural_key(*natural_key).pk
+-            )
+-        except Model.DoesNotExist:
++            natural_key = Model(**data).natural_key()
++        except Exception:
++            # If the natural_key() method fails (e.g., because it tries to
++            # access a FK relationship that hasn't been loaded yet), skip
++            # the natural key lookup and create the instance with the data
++            # we have. The FK values have already been resolved by
++            # deserialize_fk_value().
+             pass
++        else:
++            try:
++                data[Model._meta.pk.attname] = Model._meta.pk.to_python(
++                    default_manager.db_manager(db).get_by_natural_key(*natural_key).pk
++                )
++            except Model.DoesNotExist:
++                pass
+     return Model(**data)
+ 
+ 

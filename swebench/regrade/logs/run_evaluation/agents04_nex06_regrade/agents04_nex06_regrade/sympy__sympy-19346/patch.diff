@@ -1,0 +1,56 @@
+diff --git a/sympy/printing/repr.py b/sympy/printing/repr.py
+index c936a692c0..0c193eea0e 100644
+--- a/sympy/printing/repr.py
++++ b/sympy/printing/repr.py
+@@ -7,6 +7,7 @@
+ 
+ from __future__ import print_function, division
+ 
++from collections import Counter, defaultdict
+ from typing import Any, Dict
+ 
+ from sympy.core.function import AppliedUndef
+@@ -144,6 +145,43 @@ def _print_EmptySequence(self, expr):
+     def _print_list(self, expr):
+         return "[%s]" % self.reprify(expr, ", ")
+ 
++    def _print_set(self, expr):
++        if type(expr) is not set:
++            return self.emptyPrinter(expr)
++        if not expr:
++            return "set()"
++        return "{%s}" % self.reprify(expr, ", ")
++
++    def _print_dict(self, expr):
++        if type(expr) is dict:
++            if not expr:
++                return "{}"
++            items = [
++                self.doprint(k) + ": " + self.doprint(v)
++                for k, v in expr.items()
++            ]
++            return "{%s}" % ", ".join(items)
++        if type(expr) is Counter:
++            if not expr:
++                return "Counter()"
++            items = [
++                self.doprint(k) + ": " + self.doprint(v)
++                for k, v in expr.items()
++            ]
++            return "Counter({%s})" % ", ".join(items)
++        if type(expr) is defaultdict:
++            default_factory = expr.default_factory
++            if default_factory is None:
++                default_factory = "None"
++            elif hasattr(default_factory, '__name__'):
++                default_factory = default_factory.__name__
++            if not expr:
++                return "defaultdict(%s)" % default_factory
++            items = self.reprify(list(expr.items()), ", ")
++            return ("defaultdict(%s, [%s])" %
++                    (default_factory, items))
++        return self.emptyPrinter(expr)
++
+     def _print_MatrixBase(self, expr):
+         # special case for some empty matrices
+         if (expr.rows == 0) ^ (expr.cols == 0):

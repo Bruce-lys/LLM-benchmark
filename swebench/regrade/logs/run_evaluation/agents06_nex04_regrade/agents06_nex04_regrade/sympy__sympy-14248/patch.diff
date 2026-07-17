@@ -1,0 +1,235 @@
+diff --git a/sympy/printing/latex.py b/sympy/printing/latex.py
+index 8253b2f68..f962b0ae3 100644
+--- a/sympy/printing/latex.py
++++ b/sympy/printing/latex.py
+@@ -1439,7 +1439,16 @@ def _print_MatrixBase(self, expr):
+                            = _print_Matrix \
+                            = _print_MatrixBase
+ 
++    def _print_MatAdd_raw(self, expr):
++        return ' + '.join(map(self._print, expr.args))
++
+     def _print_MatrixElement(self, expr):
++        from sympy.matrices.expressions.matadd import MatAdd
++        if isinstance(expr.parent, MatAdd):
++            parent = self._print_MatAdd_raw(expr.parent)
++            if precedence(expr.parent) < PRECEDENCE["Atom"]:
++                parent = r"\left(%s\right)" % parent
++            return parent + '_{%s, %s}' % (expr.i, expr.j)
+         return self.parenthesize(expr.parent, PRECEDENCE["Atom"], strict=True) \
+             + '_{%s, %s}' % (expr.i, expr.j)
+ 
+@@ -1477,10 +1486,57 @@ def _print_Adjoint(self, expr):
+             return r"%s^\dagger" % self._print(mat)
+ 
+     def _print_MatAdd(self, expr):
+-        terms = list(expr.args)
+-        tex = " + ".join(map(self._print, terms))
++        from sympy.core.add import Add
++        from sympy.matrices.expressions.matadd import MatAdd
++
++        def is_add_like(x):
++            return isinstance(x, (Add, MatAdd))
++
++        terms = []
++        for term in expr.args:
++            sign, body = self._matadd_term_sign(term, is_add_like)
++            terms.append((sign, body))
++        terms.sort(key=lambda item: item[0] != '-', reverse=True)
++
++        tex = ""
++        for i, (sign, body) in enumerate(terms):
++            if i == 0:
++                prefix = sign if sign == '-' else ''
++            elif sign == '-':
++                prefix = " -" if body and body[0].isdigit() else " - "
++            else:
++                prefix = " + "
++            tex += prefix + body
++
+         return tex
+ 
++    def _matadd_term_sign(self, term, is_add_like):
++        from sympy.matrices.expressions.matmul import MatMul
++
++        if isinstance(term, MatMul):
++            coeff, matrices = term.as_coeff_matrices()
++            if coeff.is_negative:
++                sign = '-'
++                coeff = -coeff
++            else:
++                sign = '+'
++
++            if len(matrices) == 1:
++                rest = matrices[0]
++            else:
++                rest = MatMul(*matrices)
++
++            if coeff == 1:
++                if is_add_like(rest):
++                    return sign, r"\left(%s\right)" % self._print(rest)
++                return sign, self._print(rest)
++
++            if is_add_like(rest):
++                return sign, "%s\left(%s\right)" % (self._print(coeff), self._print(rest))
++            return sign, "%s %s" % (self._print(coeff), self._print(rest))
++
++        return '+', self._print(term)
++
+     def _print_MatMul(self, expr):
+         from sympy import Add, MatAdd, HadamardProduct
+ 
+diff --git a/sympy/printing/pretty/pretty.py b/sympy/printing/pretty/pretty.py
+index db24f4c61..24181b6a8 100644
+--- a/sympy/printing/pretty/pretty.py
++++ b/sympy/printing/pretty/pretty.py
+@@ -819,7 +819,71 @@ def _print_BlockMatrix(self, B):
+         return self._print(B.blocks)
+ 
+     def _print_MatAdd(self, expr):
+-        return self._print_seq(expr.args, None, None, ' + ')
++        from sympy.core.add import Add
++        from sympy.matrices.expressions.matadd import MatAdd
++        from sympy.matrices.expressions.matmul import MatMul
++
++        def is_add_like(x):
++            return isinstance(x, (Add, MatAdd))
++
++        def pretty_negative(pform, index):
++            """Prepend a minus sign to a pretty form."""
++            if index == 0:
++                if pform.height() > 1:
++                    pform_neg = '- '
++                else:
++                    pform_neg = '-'
++            else:
++                pform_neg = ' - '
++
++            if (pform.binding > prettyForm.NEG
++                or pform.binding == prettyForm.ADD):
++                p = stringPict(*pform.parens())
++            else:
++                p = pform
++            p = stringPict.next(pform_neg, p)
++            return prettyForm(binding=prettyForm.NEG, *p)
++
++        terms = []
++        for term in expr.args:
++            if isinstance(term, MatMul):
++                coeff, matrices = term.as_coeff_matrices()
++                if coeff.is_negative:
++                    coeff = -coeff
++                    sign = True
++                else:
++                    sign = False
++
++                if len(matrices) == 1:
++                    rest = matrices[0]
++                else:
++                    rest = MatMul(*matrices)
++
++                if coeff == 1:
++                    if is_add_like(rest):
++                        pform = self._print(rest)
++                        body = prettyForm(*pform.parens())
++                    else:
++                        body = self._print(rest)
++                else:
++                    body = self._print(coeff*rest)
++            else:
++                sign = False
++                body = self._print(term)
++
++            terms.append((sign, body))
++
++        terms.sort(key=lambda item: item[0])
++
++        pforms = []
++        for i, (sign, body) in enumerate(terms):
++            if sign:
++                pform = pretty_negative(body, i)
++            else:
++                pform = body
++            pforms.append(pform)
++
++        return prettyForm.__add__(*pforms)
+ 
+     def _print_MatMul(self, expr):
+         args = list(expr.args)
+diff --git a/sympy/printing/str.py b/sympy/printing/str.py
+index 0baefe0f7..c284324a7 100644
+--- a/sympy/printing/str.py
++++ b/sympy/printing/str.py
+@@ -235,7 +235,16 @@ def _print_MatrixBase(self, expr):
+         _print_ImmutableDenseMatrix = \
+         _print_MatrixBase
+ 
++    def _print_MatAdd_raw(self, expr):
++        return ' + '.join(self._print(arg) for arg in expr.args)
++
+     def _print_MatrixElement(self, expr):
++        from sympy.matrices.expressions.matadd import MatAdd
++        if isinstance(expr.parent, MatAdd):
++            parent = self._print_MatAdd_raw(expr.parent)
++            if precedence(expr.parent) < PRECEDENCE["Atom"]:
++                parent = '(%s)' % parent
++            return parent + '[%s, %s]' % (expr.i, expr.j)
+         return self.parenthesize(expr.parent, PRECEDENCE["Atom"], strict=True) \
+             + '[%s, %s]' % (expr.i, expr.j)
+ 
+@@ -312,8 +321,53 @@ def _print_HadamardProduct(self, expr):
+             for arg in expr.args])
+ 
+     def _print_MatAdd(self, expr):
+-        return ' + '.join([self.parenthesize(arg, precedence(expr))
+-            for arg in expr.args])
++        from sympy.core.add import Add
++        from sympy.matrices.expressions.matadd import MatAdd
++
++        def is_add_like(x):
++            return isinstance(x, (Add, MatAdd))
++
++        terms = []
++        for term in expr.args:
++            sign, t = self._matadd_term_sign(term, is_add_like)
++            terms.append((sign, t))
++        terms.sort(key=lambda item: item[0] != '-', reverse=True)
++
++        l = []
++        for i, (sign, t) in enumerate(terms):
++            if i == 0:
++                prefix = sign if sign == '-' else ''
++            elif sign == '-':
++                prefix = ' - '
++            else:
++                prefix = ' + '
++            l.append(prefix + t)
++        return ''.join(l)
++
++    def _matadd_term_sign(self, term, is_add_like):
++        from sympy.matrices.expressions.matmul import MatMul
++
++        if isinstance(term, MatMul):
++            coeff, matrices = term.as_coeff_matrices()
++            if coeff.is_negative:
++                sign = '-'
++                coeff = -coeff
++            else:
++                sign = '+'
++
++            if len(matrices) == 1:
++                rest = matrices[0]
++            else:
++                rest = MatMul(*matrices)
++
++            if coeff == 1:
++                if is_add_like(rest):
++                    return sign, '(%s)' % self._print(rest)
++                return sign, self._print(rest)
++
++            return sign, self._print(coeff*rest)
++
++        return '+', self._print(term)
+ 
+     def _print_NaN(self, expr):
+         return 'nan'

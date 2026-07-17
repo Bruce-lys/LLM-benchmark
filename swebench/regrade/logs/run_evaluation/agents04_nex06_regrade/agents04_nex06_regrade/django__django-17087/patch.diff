@@ -1,0 +1,65 @@
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index d88cda6e20..3dccaf186e 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -168,9 +168,14 @@ class FunctionTypeSerializer(BaseSerializer):
+         ):
+             klass = self.value.__self__
+             module = klass.__module__
+-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {
+-                "import %s" % module
+-            }
++            if "<" not in klass.__qualname__:
++                return "%s.%s.%s" % (module, klass.__qualname__, self.value.__name__), {
++                    "import %s" % module
++                }
++            raise ValueError(
++                "Could not find object %s in %s."
++                % (self.value.__name__, module)
++            )
+         # Further error checking
+         if self.value.__name__ == "<lambda>":
+             raise ValueError("Cannot serialize function: lambda")
+diff --git a/tests/migrations/test_writer.py b/tests/migrations/test_writer.py
+index bef8f64061..9e2697b641 100644
+--- a/tests/migrations/test_writer.py
++++ b/tests/migrations/test_writer.py
+@@ -211,6 +211,13 @@ class WriterTests(SimpleTestCase):
+         X = "X", "X value"
+         Y = "Y", "Y value"
+ 
++    class NestedClassWithDefault:
++        BASIC = "BASIC"
++
++        @classmethod
++        def class_default(cls):
++            return [cls.BASIC]
++
+     def safe_exec(self, string, value=None):
+         d = {}
+         try:
+@@ -468,6 +475,24 @@ class WriterTests(SimpleTestCase):
+                     ),
+                 )
+ 
++    def test_serialize_nested_class_method_default(self):
++        method = self.NestedClassWithDefault.class_default
++        self.assertSerializedResultEqual(
++            method,
++            (
++                "migrations.test_writer.WriterTests.NestedClassWithDefault.class_default",
++                {"import migrations.test_writer"},
++            ),
++        )
++        self.assertEqual(self.serialize_round_trip(method), method)
++
++        field = models.CharField(default=method)
++        string = MigrationWriter.serialize(field)[0]
++        self.assertEqual(
++            string,
++            "models.CharField(default=migrations.test_writer.WriterTests.NestedClassWithDefault.class_default)",
++        )
++
+     def test_serialize_uuid(self):
+         self.assertSerializedEqual(uuid.uuid1())
+         self.assertSerializedEqual(uuid.uuid4())

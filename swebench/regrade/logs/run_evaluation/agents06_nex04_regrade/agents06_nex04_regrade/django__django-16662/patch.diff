@@ -1,0 +1,47 @@
+diff --git a/django/db/migrations/writer.py b/django/db/migrations/writer.py
+index a59f0c8dcb..47c94b723b 100644
+--- a/django/db/migrations/writer.py
++++ b/django/db/migrations/writer.py
+@@ -1,5 +1,6 @@
+ import os
+ import re
++import sys
+ from importlib import import_module
+ 
+ from django import get_version
+@@ -15,6 +16,24 @@ from django.utils.module_loading import module_dir
+ from django.utils.timezone import now
+ 
+ 
++# Sort imports to match Django's coding style and isort defaults:
++# stdlib imports before third-party imports, and import statements before
++# from statements within each section.
++def _import_sort_key(import_line):
++    if import_line.startswith("import "):
++        import_type = 0
++        module = import_line.split()[1]
++    elif import_line.startswith("from "):
++        import_type = 1
++        module = import_line.split()[1]
++    else:
++        import_type = 2
++        module = import_line
++    first = module.split(".")[0]
++    section = 0 if first in sys.stdlib_module_names else 1
++    return section, import_type, module
++
++
+ class OperationWriter:
+     def __init__(self, operation, indentation=2):
+         self.operation = operation
+@@ -173,9 +192,7 @@ class MigrationWriter:
+         else:
+             imports.add("from django.db import migrations")
+ 
+-        # Sort imports by the package / module to be imported (the part after
+-        # "from" in "from ... import ..." or after "import" in "import ...").
+-        sorted_imports = sorted(imports, key=lambda i: i.split()[1])
++        sorted_imports = sorted(imports, key=_import_sort_key)
+         items["imports"] = "\n".join(sorted_imports) + "\n" if imports else ""
+         if migration_imports:
+             items["imports"] += (

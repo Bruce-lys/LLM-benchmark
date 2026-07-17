@@ -1,0 +1,76 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 880a2cc17b..86381147fb 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -2013,6 +2013,19 @@ class InlineModelAdmin(BaseModelAdmin):
+         """Hook for customizing the max number of extra inline forms."""
+         return self.max_num
+ 
++    def _get_auto_created_related_opts(self):
++        """Return the related model options for an auto-created intermediate model."""
++        for field in self.opts.fields:
++            if field.remote_field and field.remote_field.model != self.parent_model:
++                return field.remote_field.model._meta
++        return None
++
++    def _has_change_permission_on_auto_created_model(self, request):
++        opts = self._get_auto_created_related_opts()
++        if opts is None:
++            return False
++        return request.user.has_perm('%s.%s' % (opts.app_label, get_permission_codename('change', opts)))
++
+     def get_formset(self, request, obj=None, **kwargs):
+         """Return a BaseInlineFormSet class for use in admin add/change views."""
+         if 'fields' in kwargs:
+@@ -2115,38 +2128,36 @@ class InlineModelAdmin(BaseModelAdmin):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the change permission for the related model in order to add
++            # to the intermediate model.
++            return self._has_change_permission_on_auto_created_model(request)
+         return super().has_add_permission(request)
+ 
+     def has_change_permission(self, request, obj=None):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the change permission for the related model in order to
++            # change the intermediate model.
++            return self._has_change_permission_on_auto_created_model(request)
+         return super().has_change_permission(request)
+ 
+     def has_delete_permission(self, request, obj=None):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the change permission for the related model in order to
++            # delete from the intermediate model.
++            return self._has_change_permission_on_auto_created_model(request)
+         return super().has_delete_permission(request, obj)
+ 
+     def has_view_permission(self, request, obj=None):
+         if self.opts.auto_created:
+-            opts = self.opts
++            opts = self._get_auto_created_related_opts()
++            if opts is None:
++                return False
+             # The model was auto-created as intermediary for a many-to-many
+-            # Many-relationship; find the target model.
+-            for field in opts.fields:
+-                if field.remote_field and field.remote_field.model != self.parent_model:
+-                    opts = field.remote_field.model._meta
+-                    break
++            # relationship; find the target model.
+             return (
+                 request.user.has_perm('%s.%s' % (opts.app_label, get_permission_codename('view', opts))) or
+                 request.user.has_perm('%s.%s' % (opts.app_label, get_permission_codename('change', opts)))

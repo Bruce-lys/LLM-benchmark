@@ -1,0 +1,96 @@
+diff --git a/django/db/models/fields/related_descriptors.py b/django/db/models/fields/related_descriptors.py
+index d5aa968400..778a5bea52 100644
+--- a/django/db/models/fields/related_descriptors.py
++++ b/django/db/models/fields/related_descriptors.py
+@@ -373,12 +373,16 @@ class ReverseOneToOneDescriptor:
+         query = {'%s__in' % self.related.field.name: instances}
+         queryset = queryset.filter(**query)
+ 
+-        # Since we're going to assign directly in the cache,
+-        # we must manage the reverse relation cache manually.
+-        for rel_obj in queryset:
+-            instance = instances_dict[rel_obj_attr(rel_obj)]
+-            self.related.field.set_cached_value(rel_obj, instance)
+-        return queryset, rel_obj_attr, instance_attr, True, self.related.get_cache_name(), False
++        def set_forward_cache(rel_objs):
++            for rel_obj in rel_objs:
++                if not self.related.field.is_cached(rel_obj):
++                    instance = instances_dict[rel_obj_attr(rel_obj)]
++                    self.related.field.set_cached_value(rel_obj, instance)
++
++        return (
++            queryset, rel_obj_attr, instance_attr, True,
++            self.related.get_cache_name(), False, set_forward_cache
++        )
+ 
+     def __get__(self, instance, cls=None):
+         """
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index fb6639793a..1cabb4e305 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -1692,6 +1692,7 @@ def prefetch_related_objects(model_instances, *related_lookups):
+ 
+     auto_lookups = set()  # we add to this as we go through.
+     followed_descriptors = set()  # recursion protection
++    forward_cache_setters = []
+ 
+     all_lookups = normalize_prefetch_lookups(reversed(related_lookups))
+     while all_lookups:
+@@ -1765,12 +1766,14 @@ def prefetch_related_objects(model_instances, *related_lookups):
+                 obj_to_fetch = [obj for obj in obj_list if not is_fetched(obj)]
+ 
+             if obj_to_fetch:
+-                obj_list, additional_lookups = prefetch_one_level(
++                obj_list, additional_lookups, set_forward_cache = prefetch_one_level(
+                     obj_to_fetch,
+                     prefetcher,
+                     lookup,
+                     level,
+                 )
++                if set_forward_cache is not None:
++                    forward_cache_setters.append((set_forward_cache, obj_list))
+                 # We need to ensure we don't keep adding lookups from the
+                 # same relationships to stop infinite recursion. So, if we
+                 # are already on an automatically added lookup, don't add
+@@ -1811,6 +1814,9 @@ def prefetch_related_objects(model_instances, *related_lookups):
+                         new_obj_list.append(new_obj)
+                 obj_list = new_obj_list
+ 
++    for set_forward_cache, objects in forward_cache_setters:
++        set_forward_cache(objects)
++
+ 
+ def get_prefetcher(instance, through_attr, to_attr):
+     """
+@@ -1889,8 +1895,19 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+     # The 'values to be matched' must be hashable as they will be used
+     # in a dictionary.
+ 
+-    rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor = (
+-        prefetcher.get_prefetch_queryset(instances, lookup.get_current_queryset(level)))
++    get_result = prefetcher.get_prefetch_queryset(
++        instances, lookup.get_current_queryset(level))
++    if len(get_result) == 7:
++        (
++            rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor,
++            set_forward_cache
++        ) = get_result
++    else:
++        (
++            rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor
++        ) = get_result
++        set_forward_cache = None
++
+     # We have to handle the possibility that the QuerySet we just got back
+     # contains some prefetch_related lookups. We don't want to trigger the
+     # prefetch_related functionality by evaluating the query. Rather, we need
+@@ -1963,7 +1980,7 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+                 # since we have merged this into the current work.
+                 qs._prefetch_done = True
+                 obj._prefetched_objects_cache[cache_name] = qs
+-    return all_related_objects, additional_lookups
++    return all_related_objects, additional_lookups, set_forward_cache
+ 
+ 
+ class RelatedPopulator:

@@ -1,0 +1,32 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 5203e3232c..4d287f7737 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -2458,8 +2458,6 @@ class _AxesBase(martist.Artist):
+         visible_only : bool, default: False
+             Whether to exclude invisible artists.
+         """
+-        # Collections are deliberately not supported (yet); see
+-        # the TODO note in artists.py.
+         self.dataLim.ignore(True)
+         self.dataLim.set_points(mtransforms.Bbox.null().get_points())
+         self.ignore_existing_data_limits = True
+@@ -2470,6 +2468,18 @@ class _AxesBase(martist.Artist):
+                     self._update_line_limits(artist)
+                 elif isinstance(artist, mpatches.Patch):
+                     self._update_patch_limits(artist)
++                elif isinstance(artist, mcoll.Collection):
++                    datalim = artist.get_datalim(self.transData)
++                    points = datalim.get_points()
++                    if not np.isinf(datalim.minpos).all():
++                        # By definition, if minpos (minimum positive value) is
++                        # set (i.e., non-inf), then min(points) <= minpos <=
++                        # max(points), and minpos would be superfluous. However,
++                        # we add minpos to the call so that self.dataLim will
++                        # update its own minpos. This ensures that log scales see
++                        # the correct minimum.
++                        points = np.concatenate([points, [datalim.minpos]])
++                    self.update_datalim(points)
+                 elif isinstance(artist, mimage.AxesImage):
+                     self._update_image_limits(artist)
+ 

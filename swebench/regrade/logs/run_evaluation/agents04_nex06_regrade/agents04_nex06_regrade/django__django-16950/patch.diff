@@ -1,0 +1,37 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 3fa04b821f..d038331dd5 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1170,15 +1170,15 @@ class BaseInlineFormSet(BaseModelFormSet):
+         if self.fk.remote_field.field_name != self.fk.remote_field.model._meta.pk.name:
+             kwargs["to_field"] = self.fk.remote_field.field_name
+ 
+-        # If we're adding a new object, ignore a parent's auto-generated key
+-        # as it will be regenerated on the save request.
++        # If we're adding a new object, ignore a parent's auto-generated key in
++        # the inline form, since the parent object will be saved separately.
+         if self.instance._state.adding:
+             if kwargs.get("to_field") is not None:
+                 to_field = self.instance._meta.get_field(kwargs["to_field"])
+             else:
+                 to_field = self.instance._meta.pk
+             if to_field.has_default():
+-                setattr(self.instance, to_field.attname, None)
++                kwargs["initial"] = None
+ 
+         form.fields[name] = InlineForeignKeyField(self.instance, **kwargs)
+ 
+@@ -1352,9 +1352,11 @@ class InlineForeignKeyField(Field):
+         self.to_field = to_field
+         if self.parent_instance is not None:
+             if self.to_field:
+-                kwargs["initial"] = getattr(self.parent_instance, self.to_field)
++                kwargs.setdefault(
++                    "initial", getattr(self.parent_instance, self.to_field)
++                )
+             else:
+-                kwargs["initial"] = self.parent_instance.pk
++                kwargs.setdefault("initial", self.parent_instance.pk)
+         kwargs["required"] = False
+         super().__init__(*args, **kwargs)
+ 

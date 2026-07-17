@@ -1,0 +1,107 @@
+diff --git a/lib/matplotlib/artist.py b/lib/matplotlib/artist.py
+index 99577ece53..79fb0adedf 100644
+--- a/lib/matplotlib/artist.py
++++ b/lib/matplotlib/artist.py
+@@ -190,6 +190,24 @@ class Artist:
+         d['stale_callback'] = None
+         return d
+ 
++    def _unset_axes_and_figure(self):
++        """
++        Detach this artist from its axes and figure.
++        """
++        if hasattr(self, 'axes'):
++            axes = self.axes
++            if axes is not None:
++                if hasattr(axes, '_mouseover_set'):
++                    axes._mouseover_set.discard(self)
++                if axes is not self:
++                    axes.stale = True
++                self.axes = None
++
++        if self.figure is not None:
++            self.figure = None
++
++        self.stale_callback = None
++
+     def remove(self):
+         """
+         Remove the artist from the figure if possible.
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 90b0bf117e..098504263a 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -1308,13 +1308,28 @@ class _AxesBase(martist.Artist):
+         self._get_patches_for_fill = _process_plot_var_args(self, 'fill')
+ 
+         self._gridOn = mpl.rcParams['axes.grid']
++        for child in list(self._children):
++            self._children.remove(child)
++            child._unset_axes_and_figure()
++            child._remove_method = None
++        for child_ax in list(getattr(self, "child_axes", ())):
++            self.child_axes.remove(child_ax)
++            child_ax._unset_axes_and_figure()
++            child_ax._remove_method = None
++        old_legend = getattr(self, "legend_", None)
++        self.legend_ = None
++        if old_legend is not None:
++            if (self.figure is not None and
++                    old_legend in self.figure.legends):
++                self.figure.legends.remove(old_legend)
++            old_legend._unset_axes_and_figure()
++            old_legend._remove_method = None
+         self._children = []
+         self._mouseover_set = _OrderedSet()
+         self.child_axes = []
++        self.containers = []
+         self._current_image = None  # strictly for pyplot via _sci, _gci
+         self._projection_init = None  # strictly for pyplot.subplot
+-        self.legend_ = None
+-        self.containers = []
+ 
+         self.grid(False)  # Disable grid on init to use rcParameter
+         self.grid(self._gridOn, which=mpl.rcParams['axes.grid.which'],
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index 6c18ba1a64..328a03b335 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -928,6 +928,15 @@ default: %(va)s
+         # Break link between any twinned axes
+         _break_share_link(ax, ax._twinned_axes)
+ 
++    def _clear_artist_list(self, artists):
++        for artist in list(artists):
++            try:
++                artists.remove(artist)
++            except ValueError:
++                pass
++            artist._unset_axes_and_figure()
++            artist._remove_method = None
++
+     def clear(self, keep_observers=False):
+         """
+         Clear the figure.
+@@ -948,13 +957,15 @@ default: %(va)s
+         for ax in tuple(self.axes):  # Iterate over the copy.
+             ax.clear()
+             self.delaxes(ax)  # Remove ax from self._axstack.
+-
+-        self.artists = []
+-        self.lines = []
+-        self.patches = []
+-        self.texts = []
+-        self.images = []
+-        self.legends = []
++            ax._unset_axes_and_figure()
++            ax._remove_method = None
++
++        self._clear_artist_list(self.artists)
++        self._clear_artist_list(self.lines)
++        self._clear_artist_list(self.patches)
++        self._clear_artist_list(self.texts)
++        self._clear_artist_list(self.images)
++        self._clear_artist_list(self.legends)
+         if not keep_observers:
+             self._axobservers = cbook.CallbackRegistry()
+         self._suptitle = None

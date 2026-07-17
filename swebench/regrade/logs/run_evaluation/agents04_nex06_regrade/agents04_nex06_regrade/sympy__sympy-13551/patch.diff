@@ -1,0 +1,27 @@
+diff --git a/sympy/concrete/products.py b/sympy/concrete/products.py
+index 66aafde2d..d836721f9 100644
+--- a/sympy/concrete/products.py
++++ b/sympy/concrete/products.py
+@@ -276,17 +276,11 @@ def _eval_product(self, term, limits):
+ 
+         elif term.is_Add:
+             p, q = term.as_numer_denom()
+-            q = self._eval_product(q, (k, a, n))
+-            if q.is_Number:
+-
+-                # There is expression, which couldn't change by
+-                # as_numer_denom(). E.g. n**(2/3) + 1 --> (n**(2/3) + 1, 1).
+-                # We have to catch this case.
+-
+-                p = sum([self._eval_product(i, (k, a, n)) for i in p.as_coeff_Add()])
+-            else:
+-                p = self._eval_product(p, (k, a, n))
+-            return p / q
++            if p.is_polynomial(k) and q.is_polynomial(k):
++                return self._eval_product(p, (k, a, n)) / self._eval_product(q, (k, a, n))
++            # A product of sums is not generally the sum of products, so leave
++            # such products unevaluated.
++            return None
+ 
+         elif term.is_Mul:
+             exclude, include = [], []

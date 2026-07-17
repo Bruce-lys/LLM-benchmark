@@ -1,0 +1,34 @@
+diff --git a/django/forms/forms.py b/django/forms/forms.py
+index 0ab25643da..8b35074ab5 100644
+--- a/django/forms/forms.py
++++ b/django/forms/forms.py
+@@ -374,6 +374,7 @@ class BaseForm:
+             return
+ 
+         self._clean_fields()
++        self._cleaned_data_before_clean = self.cleaned_data.copy()
+         self._clean_form()
+         self._post_clean()
+ 
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 5edbbd376f..e29574da4a 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -48,9 +48,14 @@ def construct_instance(form, instance, fields=None, exclude=None):
+             continue
+         # Leave defaults for fields that aren't in POST data, except for
+         # checkbox inputs because they don't appear in POST data if not checked.
+-        if (f.has_default() and
+-                form[f.name].field.widget.value_omitted_from_data(form.data, form.files, form.add_prefix(f.name))):
+-            continue
++        # Allow cleaned_data to overwrite the default value.
++        if f.has_default():
++            if f.name not in form.fields:
++                # Field was added to cleaned_data in clean(), use it.
++                pass
++            elif (form[f.name].field.widget.value_omitted_from_data(form.data, form.files, form.add_prefix(f.name)) and
++                    cleaned_data.get(f.name) == getattr(form, '_cleaned_data_before_clean', {}).get(f.name)):
++                continue
+         # Defer saving file-type fields until after the other fields, so a
+         # callable upload_to can use the values from other fields.
+         if isinstance(f, models.FileField):

@@ -1,0 +1,39 @@
+diff --git a/sphinx/ext/napoleon/docstring.py b/sphinx/ext/napoleon/docstring.py
+index d8cb75a5f..bcbe528c8 100644
+--- a/sphinx/ext/napoleon/docstring.py
++++ b/sphinx/ext/napoleon/docstring.py
+@@ -44,7 +44,7 @@ _enumerated_list_regex = re.compile(
+     r'(?(paren)\)|\.)(\s+\S|\s*$)')
+ _token_regex = re.compile(
+     r"(,\sor\s|\sor\s|\sof\s|:\s|\sto\s|,\sand\s|\sand\s|,\s"
+-    r"|[{]|[}]"
++    r"|\s*\|\s*|[{}]|[}]"
+     r'|"(?:\\"|[^"])*"'
+     r"|'(?:\\'|[^'])*')"
+ )
+@@ -56,15 +56,8 @@ _SINGLETONS = ("None", "True", "False", "Ellipsis")
+ 
+ def _convert_type_spec(_type: str, translations: Dict[str, str] = {}) -> str:
+     """Convert type specification to reference in reST."""
+-    if _type in translations:
+-        return translations[_type]
+-    else:
+-        if _type == 'None':
+-            return ':obj:`None`'
+-        else:
+-            return ':class:`%s`' % _type
++    return _convert_numpy_type_spec(_type)
+ 
+-    return _type
+ 
+ 
+ class GoogleDocstring:
+@@ -968,6 +961,8 @@ def _token_type(token: str, location: str = None) -> str:
+             (token.startswith("'") and token.endswith("'"))
+     ):
+         type_ = "literal"
++    elif token == "|":
++        type_ = "delimiter"
+     elif token.startswith("{"):
+         logger.warning(
+             __("invalid value set (missing closing brace): %s"),

@@ -1,0 +1,72 @@
+diff --git a/sphinx/ext/autodoc/mock.py b/sphinx/ext/autodoc/mock.py
+index 98a3a3a96..b001a3c3e 100644
+--- a/sphinx/ext/autodoc/mock.py
++++ b/sphinx/ext/autodoc/mock.py
+@@ -52,6 +52,10 @@ class _MockObject:
+     def __mro_entries__(self, bases: Tuple) -> Tuple:
+         return (self.__class__,)
+ 
++    @classmethod
++    def __class_getitem__(cls, item: Any) -> Any:
++        return _make_subclass(item, cls.__display_name__, cls)()
++
+     def __getitem__(self, key: str) -> "_MockObject":
+         return _make_subclass(key, self.__display_name__, self.__class__)()
+ 
+@@ -70,6 +74,10 @@ class _MockObject:
+ 
+ def _make_subclass(name: str, module: str, superclass: Any = _MockObject,
+                    attributes: Any = None) -> Any:
++    name = getattr(name, '__name__', name)
++    module = getattr(module, '__name__', module)
++    name = str(name)
++    module = str(module)
+     attrs = {'__module__': module, '__display_name__': module + '.' + name}
+     attrs.update(attributes or {})
+ 
+diff --git a/tests/test_ext_autodoc_mock.py b/tests/test_ext_autodoc_mock.py
+index 4760493cf..551ddcd89 100644
+--- a/tests/test_ext_autodoc_mock.py
++++ b/tests/test_ext_autodoc_mock.py
+@@ -11,6 +11,7 @@
+ import abc
+ import sys
+ from importlib import import_module
++from typing import TypeVar
+ 
+ import pytest
+ 
+@@ -52,6 +53,33 @@ def test_MockObject():
+     assert isinstance(obj.other_method(), SubClass)
+ 
+ 
++def test_MockObject_subscript():
++    mock = _MockObject()
++    T = TypeVar('T')
++
++    generic = mock.Generic[T]
++    assert isinstance(generic, _MockObject)
++    assert generic.__display_name__ == '_MockObject.Generic.T'
++    assert repr(generic) == '_MockObject.Generic.T'
++
++    indexed = mock.SomeClass[int]
++    assert isinstance(indexed, _MockObject)
++    assert indexed.__display_name__ == '_MockObject.SomeClass.int'
++    assert repr(indexed) == '_MockObject.SomeClass.int'
++
++
++def test_MockObject_subscripted_class():
++    mock = _MockObject()
++    T = TypeVar('T')
++
++    class SubClass(mock.Generic[T]):
++        pass
++
++    obj = SubClass()
++    assert isinstance(obj, SubClass)
++    assert isinstance(obj, _MockObject)
++
++
+ def test_mock():
+     modname = 'sphinx.unknown'
+     submodule = modname + '.submodule'

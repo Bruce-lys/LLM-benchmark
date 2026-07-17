@@ -1,0 +1,65 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index be0deb90b0..527c43d570 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -2448,6 +2448,27 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+     # The 'values to be matched' must be hashable as they will be used
+     # in a dictionary.
+ 
++    lookup_queryset = lookup.get_current_queryset(level)
++    # If the queryset has been sliced, clear the limits before passing it to
++    # the prefetcher so it can apply the filter for the parent instances.
++    # The limits will be reapplied to each parent's results below.
++    if lookup_queryset is not None:
++        queryset_query = getattr(lookup_queryset, "query", None)
++        if queryset_query is not None and queryset_query.is_sliced:
++            rel_qs = lookup_queryset._chain()
++            rel_qs.query.clear_limits()
++            sliced = True
++            low_mark = queryset_query.low_mark
++            high_mark = queryset_query.high_mark
++        else:
++            rel_qs = lookup_queryset
++            sliced = False
++            low_mark = high_mark = None
++    else:
++        rel_qs = lookup_queryset
++        sliced = False
++        low_mark = high_mark = None
++
+     (
+         rel_qs,
+         rel_obj_attr,
+@@ -2455,7 +2476,7 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+         single,
+         cache_name,
+         is_descriptor,
+-    ) = prefetcher.get_prefetch_queryset(instances, lookup.get_current_queryset(level))
++    ) = prefetcher.get_prefetch_queryset(instances, rel_qs)
+     # We have to handle the possibility that the QuerySet we just got back
+     # contains some prefetch_related lookups. We don't want to trigger the
+     # prefetch_related functionality by evaluating the query. Rather, we need
+@@ -2499,6 +2520,8 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+     for obj in instances:
+         instance_attr_val = instance_attr(obj)
+         vals = rel_obj_cache.get(instance_attr_val, [])
++        if sliced:
++            vals = vals[low_mark:high_mark]
+ 
+         if single:
+             val = vals[0] if vals else None
+@@ -2520,7 +2543,13 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
+             else:
+                 manager = getattr(obj, to_attr)
+                 if leaf and lookup.queryset is not None:
+-                    qs = manager._apply_rel_filters(lookup.queryset)
++                    if sliced:
++                        qs_qs = lookup_queryset._chain()
++                        qs_qs.query.clear_limits()
++                        qs = manager._apply_rel_filters(qs_qs)
++                        qs.query.set_limits(low_mark, high_mark)
++                    else:
++                        qs = manager._apply_rel_filters(lookup.queryset)
+                 else:
+                     qs = manager.get_queryset()
+                 qs._result_cache = vals

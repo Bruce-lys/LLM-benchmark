@@ -1,0 +1,30 @@
+diff --git a/sympy/printing/str.py b/sympy/printing/str.py
+index c3fdcdd435..e806edb0b6 100644
+--- a/sympy/printing/str.py
++++ b/sympy/printing/str.py
+@@ -305,7 +305,8 @@ def _print_Mul(self, expr):
+         a = []  # items in the numerator
+         b = []  # items that are in the denominator (if any)
+ 
+-        pow_paren = []  # Will collect all pow with more than one base element and exp = -1
++        pow_paren = []  # Will collect all pow with negative exponent that
++                        # need parentheses in the denominator
+ 
+         if self.order not in ('old', 'none'):
+             args = expr.as_ordered_factors()
+@@ -332,9 +333,14 @@ def apow(i):
+                 if item.exp is not S.NegativeOne:
+                     b.append(apow(item))
+                 else:
++                    # To avoid situations like #14160 and cases like
++                    # 1/(1/x), where the denominator would otherwise be
++                    # ambiguous.
++                    needs_paren = '/' in self._print(item.base)
+                     if (len(item.args[0].args) != 1 and
+                             isinstance(item.base, Mul)):
+-                        # To avoid situations like #14160
++                        needs_paren = True
++                    if needs_paren and precedence(item.base) > prec:
+                         pow_paren.append(item)
+                     b.append(item.base)
+             elif item.is_Rational and item is not S.Infinity:

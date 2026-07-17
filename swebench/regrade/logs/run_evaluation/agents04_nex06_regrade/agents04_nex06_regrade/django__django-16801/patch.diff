@@ -1,0 +1,24 @@
+diff --git a/django/db/models/fields/files.py b/django/db/models/fields/files.py
+index 7f8eb128e1..365c22ee14 100644
+--- a/django/db/models/fields/files.py
++++ b/django/db/models/fields/files.py
+@@ -372,7 +372,8 @@ class ImageFileDescriptor(FileDescriptor):
+         # value for FileField subclasses is an instance of field.attr_class,
+         # previous_file will only be None when we are called from
+         # Model.__init__().  The ImageField.update_dimension_fields method
+-        # hooked up to the post_init signal handles the Model.__init__() cases.
++        # hooked up to the post_init signal handles the Model.__init__() cases
++        # when dimension fields are defined.
+         # Assignment happening outside of Model.__init__() will trigger the
+         # update right here.
+         if previous_file is not None:
+@@ -441,7 +442,8 @@ class ImageField(FileField):
+         # after their corresponding image field don't stay cleared by
+         # Model.__init__, see bug #11196.
+         # Only run post-initialization dimension update on non-abstract models
+-        if not cls._meta.abstract:
++        # with dimension fields.
++        if not cls._meta.abstract and (self.width_field or self.height_field):
+             signals.post_init.connect(self.update_dimension_fields, sender=cls)
+ 
+     def update_dimension_fields(self, instance, force=False, *args, **kwargs):

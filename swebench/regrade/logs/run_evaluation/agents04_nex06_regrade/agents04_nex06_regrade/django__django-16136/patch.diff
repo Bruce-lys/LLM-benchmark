@@ -1,0 +1,34 @@
+diff --git a/django/views/generic/base.py b/django/views/generic/base.py
+index db1842e3e5..531ab7e3b5 100644
+--- a/django/views/generic/base.py
++++ b/django/views/generic/base.py
+@@ -1,6 +1,7 @@
+ import asyncio
+ import logging
+ 
++from asgiref.sync import sync_to_async
+ from django.core.exceptions import ImproperlyConfigured
+ from django.http import (
+     HttpResponse,
+@@ -133,12 +134,17 @@ class View:
+         # Try to dispatch to the right method; if a method doesn't exist,
+         # defer to the error handler. Also defer to the error handler if the
+         # request method isn't on the approved list.
+-        if request.method.lower() in self.http_method_names:
+-            handler = getattr(
+-                self, request.method.lower(), self.http_method_not_allowed
+-            )
++        method = request.method.lower()
++        if method in self.http_method_names:
++            handler = getattr(self, method, self.http_method_not_allowed)
+         else:
+             handler = self.http_method_not_allowed
++        if self.view_is_async:
++            if method == "options" or asyncio.iscoroutinefunction(handler):
++                # OPTIONS returns a coroutine when the view is async.
++                return handler(request, *args, **kwargs)
++            # Other handlers are sync and must run in a thread.
++            return sync_to_async(handler, thread_sensitive=True)(request, *args, **kwargs)
+         return handler(request, *args, **kwargs)
+ 
+     def http_method_not_allowed(self, request, *args, **kwargs):

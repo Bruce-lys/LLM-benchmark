@@ -1,0 +1,55 @@
+diff --git a/sympy/printing/python.py b/sympy/printing/python.py
+index dc6d8ffe5..c18ef17e7 100644
+--- a/sympy/printing/python.py
++++ b/sympy/printing/python.py
+@@ -15,6 +15,9 @@
+ class PythonPrinter(ReprPrinter, StrPrinter):
+     """A printer which converts an expression into its Python interpretation."""
+ 
++    _default_settings = dict(
++        ReprPrinter._default_settings, **StrPrinter._default_settings)
++
+     def __init__(self, settings=None):
+         ReprPrinter.__init__(self)
+         StrPrinter.__init__(self, settings)
+diff --git a/sympy/printing/str.py b/sympy/printing/str.py
+index cc1d19fcc..f9703a455 100644
+--- a/sympy/printing/str.py
++++ b/sympy/printing/str.py
+@@ -204,10 +204,10 @@ def _print_Inverse(self, I):
+     def _print_Lambda(self, obj):
+         args, expr = obj.args
+         if len(args) == 1:
+-            return "Lambda(%s, %s)" % (args.args[0], expr)
++            return "Lambda(%s, %s)" % (self._print(args.args[0]), self._print(expr))
+         else:
+             arg_string = ", ".join(self._print(arg) for arg in args)
+-            return "Lambda((%s), %s)" % (arg_string, expr)
++            return "Lambda((%s), %s)" % (arg_string, self._print(expr))
+ 
+     def _print_LatticeOp(self, expr):
+         args = sorted(expr.args, key=default_sort_key)
+@@ -216,9 +216,11 @@ def _print_LatticeOp(self, expr):
+     def _print_Limit(self, expr):
+         e, z, z0, dir = expr.args
+         if str(dir) == "+":
+-            return "Limit(%s, %s, %s)" % (e, z, z0)
++            return "Limit(%s, %s, %s)" % (
++                self._print(e), self._print(z), self._print(z0))
+         else:
+-            return "Limit(%s, %s, %s, dir='%s')" % (e, z, z0, dir)
++            return "Limit(%s, %s, %s, dir='%s')" % (
++                self._print(e), self._print(z), self._print(z0), dir)
+ 
+     def _print_list(self, expr):
+         return "[%s]" % self.stringify(expr, ", ")
+@@ -630,7 +632,8 @@ def _print_Relational(self, expr):
+         }
+ 
+         if expr.rel_op in charmap:
+-            return '%s(%s, %s)' % (charmap[expr.rel_op], expr.lhs, expr.rhs)
++            return '%s(%s, %s)' % (
++                charmap[expr.rel_op], self._print(expr.lhs), self._print(expr.rhs))
+ 
+         return '%s %s %s' % (self.parenthesize(expr.lhs, precedence(expr)),
+                            self._relationals.get(expr.rel_op) or expr.rel_op,

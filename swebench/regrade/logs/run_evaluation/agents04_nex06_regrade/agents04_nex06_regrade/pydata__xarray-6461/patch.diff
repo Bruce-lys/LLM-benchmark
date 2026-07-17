@@ -1,0 +1,41 @@
+diff --git a/xarray/core/computation.py b/xarray/core/computation.py
+index 7676d8e5..d4e65a3e 100644
+--- a/xarray/core/computation.py
++++ b/xarray/core/computation.py
+@@ -1740,6 +1740,25 @@ def dot(*arrays, dims=None, **kwargs):
+     return result.transpose(*all_dims, missing_dims="ignore")
+ 
+ 
++def _keep_attrs_where(attrs, context, cond, x, y):
++    from .dataarray import DataArray
++    from .dataset import Dataset
++
++    if isinstance(x, Dataset):
++        xarray_types = (Dataset,)
++    elif any(isinstance(arg, Dataset) for arg in (cond, x, y)):
++        return {}
++    else:
++        xarray_types = (Variable, DataArray)
++
++    if isinstance(x, xarray_types):
++        index = sum(isinstance(arg, xarray_types) for arg in (cond, x)) - 1
++        if 0 <= index < len(attrs):
++            return attrs[index]
++        return {}
++    return {}
++
++
+ def where(cond, x, y, keep_attrs=None):
+     """Return elements from `x` or `y` depending on `cond`.
+ 
+@@ -1829,7 +1848,9 @@ def where(cond, x, y, keep_attrs=None):
+     if keep_attrs is True:
+         # keep the attributes of x, the second parameter, by default to
+         # be consistent with the `where` method of `DataArray` and `Dataset`
+-        keep_attrs = lambda attrs, context: attrs[1]
++        keep_attrs = lambda attrs, context: _keep_attrs_where(
++            attrs, context, cond, x, y
++        )
+ 
+     # alignment for three arguments is complicated, so don't support it yet
+     return apply_ufunc(

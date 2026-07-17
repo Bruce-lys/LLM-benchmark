@@ -1,0 +1,43 @@
+diff --git a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+index d7605b078..eaed37b8a 100644
+--- a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
++++ b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+@@ -244,14 +244,37 @@ class SlicedLowLevelWCS(BaseWCSWrapper):
+ 
+     def world_to_pixel_values(self, *world_arrays):
+         world_arrays = tuple(map(np.asanyarray, world_arrays))
++
+         world_arrays_new = []
+         iworld_curr = -1
++
++        # Determine the world values for dropped world dimensions. These should
++        # correspond to the pixel positions that are sliced out.
++        dropped_world_values = {}
++        if len(self._world_keep) < self._wcs.world_n_dim:
++            pixel_arrays_ref = []
++            for ipix in range(self._wcs.pixel_n_dim):
++                if isinstance(self._slices_pixel[ipix], numbers.Integral):
++                    pixel_arrays_ref.append(self._slices_pixel[ipix])
++                elif self._slices_pixel[ipix].start is not None:
++                    pixel_arrays_ref.append(self._slices_pixel[ipix].start)
++                else:
++                    pixel_arrays_ref.append(0)
++
++            world_arrays_ref = self._wcs.pixel_to_world_values(*pixel_arrays_ref)
++            if not isinstance(world_arrays_ref, tuple):
++                world_arrays_ref = (world_arrays_ref,)
++
++            for iworld in range(self._wcs.world_n_dim):
++                if iworld not in self._world_keep:
++                    dropped_world_values[iworld] = world_arrays_ref[iworld]
++
+         for iworld in range(self._wcs.world_n_dim):
+             if iworld in self._world_keep:
+                 iworld_curr += 1
+                 world_arrays_new.append(world_arrays[iworld_curr])
+             else:
+-                world_arrays_new.append(1.)
++                world_arrays_new.append(dropped_world_values[iworld])
+ 
+         world_arrays_new = np.broadcast_arrays(*world_arrays_new)
+         pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))

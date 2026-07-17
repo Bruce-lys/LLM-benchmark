@@ -1,0 +1,26 @@
+diff --git a/django/db/models/fields/related_lookups.py b/django/db/models/fields/related_lookups.py
+index d745ecd5f9..5076e27b98 100644
+--- a/django/db/models/fields/related_lookups.py
++++ b/django/db/models/fields/related_lookups.py
+@@ -86,7 +86,7 @@ class RelatedIn(In):
+                     AND)
+             return root_constraint.as_sql(compiler, connection)
+         else:
+-            if (not getattr(self.rhs, 'has_select_fields', True) and
++            if ((not getattr(self.rhs, 'has_select_fields', True) or getattr(self.rhs, 'default_cols', False)) and
+                     not getattr(self.lhs.field.target_field, 'primary_key', False)):
+                 self.rhs.clear_select_clause()
+                 if (getattr(self.lhs.output_field, 'primary_key', False) and
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 5089737034..9af47b1b59 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -401,7 +401,7 @@ class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup):
+             placeholder = '(' + ', '.join(sqls) + ')'
+             return (placeholder, sqls_params)
+         else:
+-            if not getattr(self.rhs, 'has_select_fields', True):
++            if not getattr(self.rhs, 'has_select_fields', True) or getattr(self.rhs, 'default_cols', False):
+                 self.rhs.clear_select_clause()
+                 self.rhs.add_fields(['pk'])
+             return super().process_rhs(compiler, connection)

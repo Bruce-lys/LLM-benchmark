@@ -1,0 +1,43 @@
+diff --git a/lib/matplotlib/cbook.py b/lib/matplotlib/cbook.py
+index c9699b2e21..64792f40d5 100644
+--- a/lib/matplotlib/cbook.py
++++ b/lib/matplotlib/cbook.py
+@@ -847,6 +847,38 @@ class Grouper:
+         return [x() for x in siblings]
+ 
+ 
++    def __getstate__(self):
++        """
++        Return a picklable state.
++
++        The internal mapping uses weakref objects, which are not pickleable.
++        Convert them to their referents (dropping any dead references) for
++        pickling.
++        """
++        state = vars(self).copy()
++        mapping = {}
++        for ref, group in state["_mapping"].items():
++            obj = ref()
++            if obj is not None:
++                mapping[obj] = [x() for x in group if x() is not None]
++        state["_mapping"] = mapping
++        return state
++
++    def __setstate__(self, state):
++        """
++        Restore the internal mapping from a pickled state.
++        """
++        mapping = {}
++        for obj, group in state["_mapping"].items():
++            obj_ref = weakref.ref(obj)
++            group_refs = [weakref.ref(obj)] + [weakref.ref(x) for x in group if x is not obj]
++            mapping[obj_ref] = group_refs
++            for elem_ref in group_refs:
++                mapping[elem_ref] = group_refs
++        state["_mapping"] = mapping
++        vars(self).update(state)
++
++
+ class GrouperView:
+     """Immutable view over a `.Grouper`."""
+ 

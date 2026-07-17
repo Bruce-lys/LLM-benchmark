@@ -1,0 +1,25 @@
+# CPU 评测机模式：模型服务在别的 GPU 机器上，本机只跑 gen+grade
+run:
+  tag: <用户名>_<模型>_lite75_t085        # 用户名开头、全局唯一、绝不复用
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 32                              # 按本机核数调；只影响速度不影响分数
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null                          # manage:false 时不加载权重，占位即可
+  served_name: <GPU机器上served的模型名>    # 必须与远端一致，kit 会校验
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"                            # 不起本地服务
+  endpoint: http://<GPU机器IP>:8302/v1     # 远端 vLLM；跨网段可用 ssh -L 隧道
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16                          # 按本机核数调
+  namespace: swebench

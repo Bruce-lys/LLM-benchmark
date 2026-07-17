@@ -1,0 +1,62 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index be8580f2c4..5023236016 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -698,7 +698,7 @@ class QuerySet(AltersData):
+                 raise NotSupportedError(
+                     "This database backend does not support ignoring conflicts."
+                 )
+-            return OnConflict.IGNORE
++            return OnConflict.IGNORE, update_fields, unique_fields
+         elif update_conflicts:
+             if not db_features.supports_update_conflicts:
+                 raise NotSupportedError(
+@@ -720,28 +720,32 @@ class QuerySet(AltersData):
+                     "Unique fields that can trigger the upsert must be provided."
+                 )
+             # Updating primary keys and non-concrete fields is forbidden.
+-            update_fields = [self.model._meta.get_field(name) for name in update_fields]
+-            if any(not f.concrete or f.many_to_many for f in update_fields):
++            update_field_objs = [
++                self.model._meta.get_field(name) for name in update_fields
++            ]
++            if any(not f.concrete or f.many_to_many for f in update_field_objs):
+                 raise ValueError(
+                     "bulk_create() can only be used with concrete fields in "
+                     "update_fields."
+                 )
+-            if any(f.primary_key for f in update_fields):
++            if any(f.primary_key for f in update_field_objs):
+                 raise ValueError(
+                     "bulk_create() cannot be used with primary keys in "
+                     "update_fields."
+                 )
++            update_fields = [f.column for f in update_field_objs]
+             if unique_fields:
+-                unique_fields = [
++                unique_field_objs = [
+                     self.model._meta.get_field(name) for name in unique_fields
+                 ]
+-                if any(not f.concrete or f.many_to_many for f in unique_fields):
++                if any(not f.concrete or f.many_to_many for f in unique_field_objs):
+                     raise ValueError(
+                         "bulk_create() can only be used with concrete fields "
+                         "in unique_fields."
+                     )
+-            return OnConflict.UPDATE
+-        return None
++                unique_fields = [f.column for f in unique_field_objs]
++            return OnConflict.UPDATE, update_fields, unique_fields
++        return None, update_fields, unique_fields
+ 
+     def bulk_create(
+         self,
+@@ -788,7 +792,7 @@ class QuerySet(AltersData):
+             unique_fields = [
+                 opts.pk.name if name == "pk" else name for name in unique_fields
+             ]
+-        on_conflict = self._check_bulk_create_options(
++        on_conflict, update_fields, unique_fields = self._check_bulk_create_options(
+             ignore_conflicts,
+             update_conflicts,
+             update_fields,

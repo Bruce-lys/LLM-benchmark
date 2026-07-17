@@ -1,0 +1,15 @@
+diff --git a/sklearn/metrics/_ranking.py b/sklearn/metrics/_ranking.py
+index 0cdead923..f44248448 100644
+--- a/sklearn/metrics/_ranking.py
++++ b/sklearn/metrics/_ranking.py
+@@ -1084,6 +1084,10 @@ def roc_curve(
+     tps = np.r_[0, tps]
+     fps = np.r_[0, fps]
+     thresholds = np.r_[thresholds[0] + 1, thresholds]
++    # If the maximum score is below 1, treat scores as probabilities and clip
++    # the first threshold at 1 instead of max(y_score) + 1.
++    if thresholds[1] < 1:
++        thresholds[0] = 1.0
+ 
+     if fps[-1] <= 0:
+         warnings.warn(

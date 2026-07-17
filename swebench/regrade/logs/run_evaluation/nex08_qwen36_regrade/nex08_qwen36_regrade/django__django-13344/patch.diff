@@ -1,0 +1,40 @@
+diff --git a/django/core/handlers/exception.py b/django/core/handlers/exception.py
+index 98fb46083a..35412606ff 100644
+--- a/django/core/handlers/exception.py
++++ b/django/core/handlers/exception.py
+@@ -14,10 +14,26 @@ from django.core.exceptions import (
+ from django.http import Http404
+ from django.http.multipartparser import MultiPartParserError
+ from django.urls import get_resolver, get_urlconf
++from django.utils.deprecation import MiddlewareMixin
+ from django.utils.log import log_response
+ from django.views import debug
+ 
+ 
++def _is_coroutine_function(get_response):
++    if asyncio.iscoroutinefunction(get_response):
++        return True
++    # Middleware classes may override __init__ and set get_response without
++    # calling super().__init__(), so they won't be marked as coroutine
++    # functions by MiddlewareMixin._async_check().
++    return (
++        getattr(get_response, 'async_capable', False) and
++        type(get_response).__call__ is MiddlewareMixin.__call__ and
++        asyncio.iscoroutinefunction(
++            getattr(get_response, "get_response", None)
++        )
++    )
++
++
+ def convert_exception_to_response(get_response):
+     """
+     Wrap the given get_response callable in exception-to-response conversion.
+@@ -31,7 +47,7 @@ def convert_exception_to_response(get_response):
+     no middleware leaks an exception and that the next middleware in the stack
+     can rely on getting a response instead of an exception.
+     """
+-    if asyncio.iscoroutinefunction(get_response):
++    if _is_coroutine_function(get_response):
+         @wraps(get_response)
+         async def inner(request):
+             try:

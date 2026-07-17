@@ -1,0 +1,29 @@
+diff --git a/sklearn/metrics/_ranking.py b/sklearn/metrics/_ranking.py
+index 0cdead923..1f2ec4c94 100644
+--- a/sklearn/metrics/_ranking.py
++++ b/sklearn/metrics/_ranking.py
+@@ -1019,7 +1019,7 @@ def roc_curve(
+     thresholds : ndarray of shape = (n_thresholds,)
+         Decreasing thresholds on the decision function used to compute
+         fpr and tpr. `thresholds[0]` represents no instances being predicted
+-        and is arbitrarily set to `max(y_score) + 1`.
++        and is arbitrarily set to the next representable value above `max(y_score)`.
+ 
+     See Also
+     --------
+@@ -1083,7 +1083,14 @@ def roc_curve(
+     # to make sure that the curve starts at (0, 0)
+     tps = np.r_[0, tps]
+     fps = np.r_[0, fps]
+-    thresholds = np.r_[thresholds[0] + 1, thresholds]
++    # Use the next representable value to ensure no instances are predicted.
++    # This avoids imposing an arbitrary offset that can fall outside [0, 1]
++    # for probability estimates. For float16, the next representable value can
++    # round back to the original value when stored in float16, so cast to
++    # float64 before prepending.
++    if thresholds.dtype == np.float16:
++        thresholds = thresholds.astype(np.float64)
++    thresholds = np.r_[np.nextafter(thresholds[0], np.inf), thresholds]
+ 
+     if fps[-1] <= 0:
+         warnings.warn(

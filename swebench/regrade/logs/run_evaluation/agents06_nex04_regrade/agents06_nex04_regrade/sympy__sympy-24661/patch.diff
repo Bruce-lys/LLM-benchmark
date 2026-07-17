@@ -1,0 +1,84 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..da971d025f 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,15 +1110,30 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++    }
+     functions = (
+-        'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+-        'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
++        'Abs', 'im', 're', 'sign', 'arg', 'conjugate', 'Eq', 'Ne',
++        'Lt', 'Le', 'Gt', 'Ge', 'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+         'acosh', 'acoth', 'acsch', 'asech', 'asinh', 'atanh',
+         'cos', 'cot', 'csc', 'sec', 'sin', 'tan',
+         'cosh', 'coth', 'csch', 'sech', 'sinh', 'tanh',
+         'exp', 'ln', 'log', 'sqrt', 'cbrt',
+     )
+ 
++    def _add_evaluate_false_keyword(self, node):
++        node.keywords.append(ast.keyword(
++            arg='evaluate',
++            value=ast.NameConstant(value=False, ctx=ast.Load())
++        ))
++        return node
++
+     def flatten(self, args, func):
+         result = []
+         for arg in args:
+@@ -1134,6 +1149,37 @@ def flatten(self, args, func):
+                 result.append(arg)
+         return result
+ 
++    def visit_Compare(self, node):
++        node = self.generic_visit(node)
++        relationals = []
++        left = node.left
++        for op, comparator in zip(node.ops, node.comparators):
++            sympy_class = self.relational_operators.get(op.__class__)
++            if sympy_class is None:
++                return node
++            right = comparator
++            new_node = ast.Call(
++                func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                args=[left, right],
++                keywords=[],
++                starargs=None,
++                kwargs=None
++            )
++            self._add_evaluate_false_keyword(new_node)
++            relationals.append(new_node)
++            left = right
++        if len(relationals) == 1:
++            return relationals[0]
++        return_and = ast.Call(
++            func=ast.Name(id='And', ctx=ast.Load()),
++            args=relationals,
++            keywords=[],
++            starargs=None,
++            kwargs=None
++        )
++        self._add_evaluate_false_keyword(return_and)
++        return return_and
++
+     def visit_BinOp(self, node):
+         if node.op.__class__ in self.operators:
+             sympy_class = self.operators[node.op.__class__]
+@@ -1189,7 +1235,7 @@ def visit_BinOp(self, node):
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:
+-            new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
++            self._add_evaluate_false_keyword(new_node)
+         return new_node
+ 
+ 

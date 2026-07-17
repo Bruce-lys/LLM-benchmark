@@ -1,0 +1,45 @@
+diff --git a/sympy/printing/pretty/pretty_symbology.py b/sympy/printing/pretty/pretty_symbology.py
+index 3f7c4a2dc7..9a30dd3f88 100644
+--- a/sympy/printing/pretty/pretty_symbology.py
++++ b/sympy/printing/pretty/pretty_symbology.py
+@@ -506,6 +506,25 @@ def pretty_atom(atom_name, default=None, printer=None):
+         raise KeyError('only unicode')  # send it default printer
+ 
+ 
++_unicode_greek_to_ascii = {
++    value: key for key, value in greek_unicode.items() if value is not None
++}
++
++
++def _is_greek_subscript_superscript_tail(tail):
++    if not tail:
++        return True
++    if tail[0] in '_^':
++        return True
++    if tail[0].isdigit():
++        for c in tail[1:]:
++            if c.isalpha():
++                return False
++            if c in '_^':
++                break
++        return True
++    return False
++
+ def pretty_symbol(symb_name, bold_name=False):
+     """return pretty representation of a symbol"""
+     # let's split symb_name into symbol + index
+@@ -515,6 +534,14 @@ def pretty_symbol(symb_name, bold_name=False):
+     if not _use_unicode:
+         return symb_name
+ 
++    # Convert a leading Unicode Greek letter to its ASCII name when it is
++    # followed by subscript/superscript syntax or trailing digits, so that
++    # the subsequent split_super_sub call can format the indices correctly.
++    if symb_name and symb_name[0] in _unicode_greek_to_ascii:
++        tail = symb_name[1:]
++        if _is_greek_subscript_superscript_tail(tail):
++            symb_name = _unicode_greek_to_ascii[symb_name[0]] + tail
++
+     name, sups, subs = split_super_sub(symb_name)
+ 
+     def translate(s, bold_name) :

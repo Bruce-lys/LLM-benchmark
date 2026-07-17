@@ -1,0 +1,67 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 3f84250b64..7d29993081 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -977,6 +977,51 @@ class ContourSet(ContourLabeler, mcoll.Collection):
+                 self.axes.add_collection(col)
+         return self._old_style_split_collections
+ 
++    def set_paths(self, paths):
++        """
++        Set the paths of the contour set.
++
++        Parameters
++        ----------
++        paths : list of `.Path`
++            The paths to draw for each contour level.
++        """
++        self._paths = paths
++        self.stale = True
++        if hasattr(self, "_old_style_split_collections"):
++            old_paths = self._old_style_split_collections
++            for col, path in zip(old_paths, paths):
++                col.set_paths([path])
++            n_paths = len(paths)
++            if n_paths > len(old_paths):
++                fcs = self.get_facecolor()
++                ecs = self.get_edgecolor()
++                lws = self.get_linewidth()
++                lss = self.get_linestyle()
++                antialiaseds = self._antialiaseds
++                for idx, path in enumerate(
++                        paths[len(old_paths):], len(old_paths)):
++                    pc = mcoll.PathCollection(
++                        [path],
++                        alpha=self.get_alpha(),
++                        antialiaseds=antialiaseds[idx % len(antialiaseds)],
++                        transform=self.get_transform(),
++                        zorder=self.get_zorder(),
++                        label="_nolegend_",
++                        facecolor=fcs[idx % len(fcs)] if len(fcs) else "none",
++                        edgecolor=ecs[idx % len(ecs)] if len(ecs) else "none",
++                        linewidths=[lws[idx % len(lws)]],
++                        linestyles=[lss[idx % len(lss)]],
++                    )
++                    if self.filled:
++                        pc.set(hatch=self.hatches[idx % len(self.hatches)])
++                    old_paths.append(pc)
++                    self.axes.add_collection(pc)
++            elif n_paths < len(old_paths):
++                for col in old_paths[n_paths:]:
++                    col.remove()
++                del old_paths[n_paths:]
++
+     def get_transform(self):
+         """Return the `.Transform` instance used by this ContourSet."""
+         if self._transform is None:
+diff --git a/lib/matplotlib/contour.pyi b/lib/matplotlib/contour.pyi
+index c7179637a1..985d001c55 100644
+--- a/lib/matplotlib/contour.pyi
++++ b/lib/matplotlib/contour.pyi
+@@ -157,5 +157,6 @@ class ContourSet(ContourLabeler, Collection):
+     def find_nearest_contour(
+         self, x: float, y: float, indices: Iterable[int] | None = ..., pixel: bool = ...
+     ) -> tuple[Collection, int, int, float, float, float]: ...
++    def set_paths(self, paths: list[Path]) -> None: ...
+ 
+ class QuadContourSet(ContourSet): ...

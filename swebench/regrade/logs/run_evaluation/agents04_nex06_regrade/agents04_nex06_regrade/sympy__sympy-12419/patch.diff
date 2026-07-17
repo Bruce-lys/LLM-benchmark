@@ -1,0 +1,69 @@
+diff --git a/sympy/concrete/summations.py b/sympy/concrete/summations.py
+index 372487664..0bc4f2ec2 100644
+--- a/sympy/concrete/summations.py
++++ b/sympy/concrete/summations.py
+@@ -177,6 +177,10 @@ def doit(self, **hints):
+         if self.function.is_Matrix:
+             return self.expand().doit()
+ 
++        kr = _eval_kronecker_delta_sum(f, self.limits)
++        if kr is not None:
++            return kr
++
+         for n, limit in enumerate(self.limits):
+             i, a, b = limit
+             dif = b - a
+@@ -843,6 +847,28 @@ def telescopic(L, R, limits):
+         return telescopic_direct(L, R, s, (i, a, b))
+ 
+ 
++def _eval_kronecker_delta_sum(f, limits):
++    """Evaluate a KroneckerDelta over two identical summation ranges."""
++    from sympy.functions import KroneckerDelta
++
++    if not isinstance(f, KroneckerDelta):
++        return None
++
++    if len(limits) != 2:
++        return None
++
++    i, a, b = limits[0]
++    j, c, d = limits[1]
++
++    if (i, j) != f.args and (j, i) != f.args:
++        return None
++
++    if a != c or b != d:
++        return None
++
++    return b - a + 1
++
++
+ def eval_sum(f, limits):
+     from sympy.concrete.delta import deltasummation, _has_simple_delta
+     from sympy.functions import KroneckerDelta
+diff --git a/sympy/matrices/expressions/matexpr.py b/sympy/matrices/expressions/matexpr.py
+index b4d759836..374f75597 100644
+--- a/sympy/matrices/expressions/matexpr.py
++++ b/sympy/matrices/expressions/matexpr.py
+@@ -6,7 +6,7 @@
+ from sympy.core.decorators import call_highest_priority
+ from sympy.core.compatibility import range
+ from sympy.core.sympify import SympifyError, sympify
+-from sympy.functions import conjugate, adjoint
++from sympy.functions import conjugate, adjoint, KroneckerDelta
+ from sympy.matrices import ShapeError
+ from sympy.simplify import simplify
+ 
+@@ -476,10 +476,7 @@ def conjugate(self):
+         return self
+ 
+     def _entry(self, i, j):
+-        if i == j:
+-            return S.One
+-        else:
+-            return S.Zero
++        return KroneckerDelta(i, j)
+ 
+     def _eval_determinant(self):
+         return S.One

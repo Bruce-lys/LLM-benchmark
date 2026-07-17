@@ -1,0 +1,23 @@
+diff --git a/lib/matplotlib/widgets.py b/lib/matplotlib/widgets.py
+index a199e45d4..88e8ed599 100644
+--- a/lib/matplotlib/widgets.py
++++ b/lib/matplotlib/widgets.py
+@@ -2156,10 +2156,18 @@ class SpanSelector(_SelectorWidget):
+             self.artists.append(self._rect)
+ 
+     def _setup_edge_handle(self, props):
++        if self.direction == 'horizontal':
++            xlim = self.ax.get_xlim()
++        else:
++            ylim = self.ax.get_ylim()
+         self._edge_handles = ToolLineHandles(self.ax, self.extents,
+                                              direction=self.direction,
+                                              line_props=props,
+                                              useblit=self.useblit)
++        if self.direction == 'horizontal':
++            self.ax.set_xlim(xlim)
++        else:
++            self.ax.set_ylim(ylim)
+         self.artists.extend([line for line in self._edge_handles.artists])
+ 
+     def _press(self, event):

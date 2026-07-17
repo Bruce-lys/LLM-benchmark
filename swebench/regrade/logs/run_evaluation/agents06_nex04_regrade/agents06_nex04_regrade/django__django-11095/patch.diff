@@ -1,0 +1,90 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 5e7b23f9a0..dd6b96a2e7 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -580,9 +580,12 @@ class ModelAdmin(BaseModelAdmin):
+     def __str__(self):
+         return "%s.%s" % (self.model._meta.app_label, self.__class__.__name__)
+ 
++    def get_inlines(self, request, obj=None):
++        return tuple(self.inlines)
++
+     def get_inline_instances(self, request, obj=None):
+         inline_instances = []
+-        for inline_class in self.inlines:
++        for inline_class in self.get_inlines(request, obj):
+             inline = inline_class(self.model, self.admin_site)
+             if request:
+                 if not (inline.has_view_or_change_permission(request, obj) or
+diff --git a/docs/ref/contrib/admin/index.txt b/docs/ref/contrib/admin/index.txt
+index 93679c46fd..b0ce635272 100644
+--- a/docs/ref/contrib/admin/index.txt
++++ b/docs/ref/contrib/admin/index.txt
+@@ -1608,20 +1608,50 @@ templates used by the :class:`ModelAdmin` views:
+             def get_sortable_by(self, request):
+                 return {*self.get_list_display(request)} - {'rank'}
+ 
++.. method:: ModelAdmin.get_inlines(request, obj=None)
++
++    The ``get_inlines`` method is given the ``HttpRequest`` and
++    the ``obj`` being edited (or ``None`` on an add form) and is expected
++    to return a tuple or list of
++    :class:`~django.contrib.admin.InlineModelAdmin` classes, as described
++    below in the :class:`~django.contrib.admin.InlineModelAdmin` section.
++
++    This method allows you to dynamically select the inlines displayed for a
++    model based on the request or the model instance being edited. For example,
++    the following would conditionally display an inline in the change view
++    only::
++
++        class MyModelAdmin(admin.ModelAdmin):
++            inlines = [MyInline, OtherInline]
++
++            def get_inlines(self, request, obj=None):
++                if obj is None:
++                    return [OtherInline]
++                return [MyInline, OtherInline]
++
++    The default implementation returns a tuple containing all of the classes
++    defined in :attr:`inlines`.
++
+ .. method:: ModelAdmin.get_inline_instances(request, obj=None)
+ 
+     The ``get_inline_instances`` method is given the ``HttpRequest`` and the
+     ``obj`` being edited (or ``None`` on an add form) and is expected to return
+     a ``list`` or ``tuple`` of :class:`~django.contrib.admin.InlineModelAdmin`
+-    objects, as described below in the :class:`~django.contrib.admin.InlineModelAdmin`
+-    section. For example, the following would return inlines without the default
++    objects, as described below in the
++    :class:`~django.contrib.admin.InlineModelAdmin` section. It calls
++    :meth:`get_inlines` and is responsible for
++    instantiating the inline classes returned by ``get_inlines`` and filtering
++    them based on the user's permissions.
++
++    For example, the following would return inlines without the default
+     filtering based on add, change, delete, and view permissions::
+ 
+         class MyModelAdmin(admin.ModelAdmin):
+             inlines = (MyInline,)
+ 
+             def get_inline_instances(self, request, obj=None):
+-                return [inline(self.model, self.admin_site) for inline in self.inlines]
++                return [inline(self.model, self.admin_site)
++                        for inline in self.get_inlines(request, obj)]
+ 
+     If you override this method, make sure that the returned inlines are
+     instances of the classes defined in :attr:`inlines` or you might encounter
+diff --git a/docs/releases/3.0.txt b/docs/releases/3.0.txt
+index d7ad7a8cf7..be5ca40456 100644
+--- a/docs/releases/3.0.txt
++++ b/docs/releases/3.0.txt
+@@ -47,6 +47,9 @@ Minor features
+ * Added support for the ``admin_order_field`` attribute on properties in
+   :attr:`.ModelAdmin.list_display`.
+ 
++* Added the ``ModelAdmin.get_inlines()`` hook to allow dynamic selection of
++  inline classes based on the request or the model instance being edited.
++
+ :mod:`django.contrib.admindocs`
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 

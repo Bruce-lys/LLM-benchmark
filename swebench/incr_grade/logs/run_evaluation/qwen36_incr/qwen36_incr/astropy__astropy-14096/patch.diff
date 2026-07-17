@@ -1,0 +1,61 @@
+Patch file not found, creating it...
+diff --git a/astropy/coordinates/sky_coordinate.py b/astropy/coordinates/sky_coordinate.py
+index ab475f7d0..1c3f1d228 100644
+--- a/astropy/coordinates/sky_coordinate.py
++++ b/astropy/coordinates/sky_coordinate.py
+@@ -1,3 +1,4 @@
++import contextvars
+ import copy
+ import operator
+ import re
+@@ -33,6 +34,9 @@ from .sky_coordinate_parsers import (
+ 
+ __all__ = ["SkyCoord", "SkyCoordInfo"]
+ 
++# Context variable to track original AttributeError for better error messages
++_sky_coord_getattr_exc = contextvars.ContextVar("_sky_coord_getattr_exc", default=None)
++
+ 
+ class SkyCoordInfo(MixinInfo):
+     """
+@@ -871,6 +875,24 @@ class SkyCoord(ShapedLikeNDArray):
+         Overrides getattr to return coordinates that this can be transformed
+         to, based on the alias attr in the primary transform graph.
+         """
++        # Check if there's a stored exception from a property getter.
++        # This happens when a property raises AttributeError and Python
++        # calls __getattr__ as a fallback. We re-raise it to provide a
++        # clearer error message.
++        exc = _sky_coord_getattr_exc.get()
++        if exc is not None:
++            # Check if this is a property - if so, re-raise the stored exception
++            for cls in type(self).__mro__:
++                if attr in cls.__dict__:
++                    obj = cls.__dict__[attr]
++                    if isinstance(obj, property) or (
++                        hasattr(obj, "__get__") and hasattr(obj, "__set__")
++                    ):
++                        raise exc
++                    break
++            # Not a property - clear the stored exception and go through normal logic
++            _sky_coord_getattr_exc.set(None)
++
+         if "_sky_coord_frame" in self.__dict__:
+             if self._is_name(attr):
+                 return self  # Should this be a deepcopy of self?
+@@ -895,9 +917,14 @@ class SkyCoord(ShapedLikeNDArray):
+                 return self.transform_to(attr)
+ 
+         # Fail
+-        raise AttributeError(
++        # Store the exception in a context variable so that if this call
++        # is triggered by a property getter, we can re-raise it instead of
++        # creating a confusing new error message.
++        exc = AttributeError(
+             f"'{self.__class__.__name__}' object has no attribute '{attr}'"
+         )
++        _sky_coord_getattr_exc.set(exc)
++        raise exc
+ 
+     def __setattr__(self, attr, val):
+         # This is to make anything available through __getattr__ immutable

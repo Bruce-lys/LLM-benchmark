@@ -1,0 +1,60 @@
+diff --git a/lib/matplotlib/offsetbox.py b/lib/matplotlib/offsetbox.py
+index 3a506543ac..20983ee67b 100644
+--- a/lib/matplotlib/offsetbox.py
++++ b/lib/matplotlib/offsetbox.py
+@@ -475,9 +475,12 @@ class HPacker(PackerBase):
+             return 2 * pad, 2 * pad, pad, pad, []
+ 
+         hd_list = [(h, yd) for w, h, xd, yd in whd_list]
++        # HPacker aligns vertically, so the generic alignment function
++        # interprets "top" and "bottom" in the opposite sense.
++        align = {"top": "bottom", "bottom": "top"}.get(self.align, self.align)
+         height, ydescent, yoffsets = _get_aligned_offsets(hd_list,
+                                                           self.height,
+-                                                          self.align)
++                                                          align)
+ 
+         pack_list = [w for w, h, xd, yd in whd_list]
+         width, xoffsets_ = _get_packed_offsets(pack_list, self.width,
+diff --git a/lib/matplotlib/tests/test_offsetbox.py b/lib/matplotlib/tests/test_offsetbox.py
+index 02756ff559..0cd19997a5 100644
+--- a/lib/matplotlib/tests/test_offsetbox.py
++++ b/lib/matplotlib/tests/test_offsetbox.py
+@@ -12,8 +12,8 @@ import matplotlib.lines as mlines
+ from matplotlib.backend_bases import MouseButton, MouseEvent
+ 
+ from matplotlib.offsetbox import (
+-    AnchoredOffsetbox, AnnotationBbox, AnchoredText, DrawingArea, OffsetBox,
+-    OffsetImage, TextArea, _get_packed_offsets)
++    AnchoredOffsetbox, AnnotationBbox, AnchoredText, DrawingArea, HPacker,
++    OffsetBox, OffsetImage, TextArea, _get_packed_offsets)
+ 
+ 
+ @image_comparison(['offsetbox_clipping'], remove_text=True)
+@@ -182,6 +182,26 @@ def test_get_packed_offsets_equal(widths, total, sep, expected):
+     assert_allclose(result[1], expected[1])
+ 
+ 
++def test_hpacker_align():
++    class Renderer:
++        def points_to_pixels(self, points):
++            return points
++
++    renderer = Renderer()
++    expected = {
++        "top": [(0.0, 10.0), (10.0, 0.0)],
++        "bottom": [(0.0, 0.0), (10.0, 0.0)],
++        "center": [(0.0, 5.0), (10.0, 0.0)],
++    }
++    for align, expected_offsets in expected.items():
++        child1 = DrawingArea(10, 20)
++        child2 = DrawingArea(10, 30)
++        pack = HPacker(children=[child1, child2], pad=0, sep=0,
++                       align=align)
++        _, _, _, _, offsets = pack.get_extent_offsets(renderer)
++        assert_allclose(offsets, expected_offsets)
++
++
+ def test_get_packed_offsets_equal_total_none_sep_none():
+     with pytest.raises(ValueError):
+         _get_packed_offsets([1, 1, 1], total=None, sep=None, mode='equal')

@@ -1,0 +1,42 @@
+diff --git a/lib/matplotlib/offsetbox.py b/lib/matplotlib/offsetbox.py
+index bb117c38ce..f550fefbaa 100644
+--- a/lib/matplotlib/offsetbox.py
++++ b/lib/matplotlib/offsetbox.py
+@@ -23,6 +23,7 @@ Container classes for `.Artist`\s.
+ """
+ 
+ import functools
++import copy
+ 
+ import numpy as np
+ 
+@@ -1306,7 +1307,7 @@ or callable, default: value of *xycoords*
+         self.offsetbox = offsetbox
+         self.arrowprops = arrowprops.copy() if arrowprops is not None else None
+         self.set_fontsize(fontsize)
+-        self.xybox = xybox if xybox is not None else xy
++        self.xybox = copy.copy(xybox) if xybox is not None else self.xy
+         self.boxcoords = boxcoords if boxcoords is not None else xycoords
+         self._box_alignment = box_alignment
+ 
+diff --git a/lib/matplotlib/text.py b/lib/matplotlib/text.py
+index d4922fc517..e8791d50d1 100644
+--- a/lib/matplotlib/text.py
++++ b/lib/matplotlib/text.py
+@@ -3,6 +3,7 @@ Classes for including text in a figure.
+ """
+ 
+ import functools
++import copy
+ import logging
+ import math
+ from numbers import Real
+@@ -1456,7 +1457,7 @@ class _AnnotationBase:
+                  xycoords='data',
+                  annotation_clip=None):
+ 
+-        self.xy = xy
++        self.xy = copy.copy(xy)
+         self.xycoords = xycoords
+         self.set_annotation_clip(annotation_clip)
+ 

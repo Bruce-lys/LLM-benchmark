@@ -1,0 +1,66 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index 90d90119d0..7a872d3a75 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -23,7 +23,10 @@ class SQLiteNumericMixin:
+     def as_sqlite(self, compiler, connection, **extra_context):
+         sql, params = self.as_sql(compiler, connection, **extra_context)
+         try:
+-            if self.output_field.get_internal_type() == 'DecimalField':
++            if (
++                not getattr(self, '_skip_sqlite_numeric_cast', False) and
++                self.output_field.get_internal_type() == 'DecimalField'
++            ):
+                 sql = 'CAST(%s AS NUMERIC)' % sql
+         except FieldError:
+             pass
+@@ -1253,6 +1256,15 @@ class OrderBy(BaseExpression):
+         self.descending = True
+ 
+ 
++def _skip_sqlite_numeric_cast(expr):
++    if isinstance(expr, SQLiteNumericMixin):
++        expr._skip_sqlite_numeric_cast = True
++    for source in expr.get_source_expressions():
++        if isinstance(source, BaseExpression):
++            _skip_sqlite_numeric_cast(source)
++    return expr
++
++
+ class Window(Expression):
+     template = '%(expression)s OVER (%(window)s)'
+     # Although the main expression may either be an aggregate or an
+@@ -1302,7 +1314,10 @@ class Window(Expression):
+         connection.ops.check_expression_support(self)
+         if not connection.features.supports_over_clause:
+             raise NotSupportedError('This backend does not support window expressions.')
+-        expr_sql, params = compiler.compile(self.source_expression)
++        # SQLite doesn't allow casting the result of a window function
++        # before OVER.
++        expr = _skip_sqlite_numeric_cast(self.source_expression.copy())
++        expr_sql, params = compiler.compile(expr)
+         window_sql, window_params = [], []
+ 
+         if self.partition_by is not None:
+@@ -1327,10 +1342,19 @@ class Window(Expression):
+         params.extend(window_params)
+         template = template or self.template
+ 
+-        return template % {
++        output_sql = template % {
+             'expression': expr_sql,
+             'window': ''.join(window_sql).strip()
+-        }, params
++        }
++        try:
++            is_decimal_field = (
++                self.output_field.get_internal_type() == 'DecimalField'
++            )
++        except (FieldError, AttributeError):
++            is_decimal_field = False
++        if connection.vendor == 'sqlite' and is_decimal_field:
++            output_sql = 'CAST(%s AS NUMERIC)' % output_sql
++        return output_sql, params
+ 
+     def __str__(self):
+         return '{} OVER ({}{}{})'.format(

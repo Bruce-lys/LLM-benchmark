@@ -1,0 +1,29 @@
+# 统一采样口径 (2026-07-08 定): t0.85/topp0.95/topk20/minp0/presence1.1/rep1.0
+run:
+  tag: aiden_nex04ornith06_lite75_unified
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 64
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Nex-0.4_Ornith-0.6
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+  top_k: 20
+  min_p: 0
+  repetition_penalty: 1.0
+  extra: {presence_penalty: 1.1}
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.52:8302/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 24
+  namespace: swebench

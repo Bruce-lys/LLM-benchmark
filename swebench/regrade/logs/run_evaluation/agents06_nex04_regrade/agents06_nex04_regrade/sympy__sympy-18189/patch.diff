@@ -1,0 +1,26 @@
+diff --git a/sympy/solvers/diophantine.py b/sympy/solvers/diophantine.py
+index 6092e35dab..b43f5c1dcf 100644
+--- a/sympy/solvers/diophantine.py
++++ b/sympy/solvers/diophantine.py
+@@ -182,7 +182,7 @@ def diophantine(eq, param=symbols("t", integer=True), syms=None,
+             if syms != var:
+                 dict_sym_index = dict(zip(syms, range(len(syms))))
+                 return {tuple([t[dict_sym_index[i]] for i in var])
+-                            for t in diophantine(eq, param)}
++                            for t in diophantine(eq, param, permute=permute)}
+         n, d = eq.as_numer_denom()
+         if n.is_number:
+             return set()
+diff --git a/sympy/solvers/tests/test_diophantine.py b/sympy/solvers/tests/test_diophantine.py
+index e4e8972ae0..dd628df2e4 100644
+--- a/sympy/solvers/tests/test_diophantine.py
++++ b/sympy/solvers/tests/test_diophantine.py
+@@ -902,6 +902,8 @@ def test_diophantine_permute_sign():
+     assert diophantine(eq) == base_sol
+     complete_soln = set(signed_permutations(base_sol.pop()))
+     assert diophantine(eq, permute=True) == complete_soln
++    assert diophantine(eq, syms=(b, a), permute=True) == complete_soln
++    assert diophantine(eq, syms=(a, b), permute=True) == complete_soln
+ 
+     eq = a**2 + b**2 + c**2 + d**2 + e**2 - 234
+     assert len(diophantine(eq)) == 35

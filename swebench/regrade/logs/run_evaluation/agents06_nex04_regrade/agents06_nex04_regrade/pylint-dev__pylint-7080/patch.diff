@@ -1,0 +1,53 @@
+diff --git a/pylint/lint/expand_modules.py b/pylint/lint/expand_modules.py
+index 5cacc037..b14729c7 100644
+--- a/pylint/lint/expand_modules.py
++++ b/pylint/lint/expand_modules.py
+@@ -41,8 +41,25 @@ def get_python_path(filepath: str) -> str:
+             return os.getcwd()
+ 
+ 
+-def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> bool:
++def _normalize_path_for_regex(element: str) -> str:
++    """Normalize path separators for regex matching.
++
++    ``ignore-paths`` patterns are often written with forward slashes, but
++    ``os.path`` can return paths with backslashes on Windows. Treating both
++    as slashes allows one pattern to match on all platforms.
++    """
++    return element.replace("\\", "/")
++
++
++def _is_in_ignore_list_re(
++    element: str,
++    ignore_list_re: list[Pattern[str]],
++    *,
++    normalize: bool = False,
++) -> bool:
+     """Determines if the element is matched in a regex ignore-list."""
++    if normalize:
++        element = _normalize_path_for_regex(element)
+     return any(file_pattern.match(element) for file_pattern in ignore_list_re)
+ 
+ 
+@@ -56,7 +73,9 @@ def _is_ignored_file(
+     return (
+         basename in ignore_list
+         or _is_in_ignore_list_re(basename, ignore_list_re)
+-        or _is_in_ignore_list_re(element, ignore_list_paths_re)
++        or _is_in_ignore_list_re(
++            element, ignore_list_paths_re, normalize=True
++        )
+     )
+ 
+ 
+@@ -142,7 +161,9 @@ def expand_modules(
+                     continue
+                 if _is_in_ignore_list_re(
+                     os.path.basename(subfilepath), ignore_list_re
+-                ) or _is_in_ignore_list_re(subfilepath, ignore_list_paths_re):
++                ) or _is_in_ignore_list_re(
++                    subfilepath, ignore_list_paths_re, normalize=True
++                ):
+                     continue
+ 
+                 modpath = _modpath_from_file(

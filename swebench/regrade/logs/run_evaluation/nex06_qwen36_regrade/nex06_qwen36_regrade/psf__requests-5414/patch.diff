@@ -1,0 +1,59 @@
+diff --git a/requests/models.py b/requests/models.py
+index e7d292d5..9c29bce5 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -353,10 +353,27 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+         try:
+             host = idna.encode(host, uts46=True).decode('utf-8')
+-        except idna.IDNAError:
++        except (idna.IDNAError, UnicodeError):
+             raise UnicodeError
+         return host
+ 
++    @staticmethod
++    def _is_ascii_host_valid(host):
++        if host.startswith('.'):
++            return False
++
++        # Allow a trailing dot (FQDN notation).
++        if host.endswith('.'):
++            host = host[:-1]
++
++        for label in host.split('.'):
++            if not label:
++                return False
++            if len(label) > 63:
++                return False
++
++        return True
++
+     def prepare_url(self, url, params):
+         """Prepares the given HTTP URL."""
+         #: Accept objects that have string representations.
+@@ -394,16 +411,22 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         if not host:
+             raise InvalidURL("Invalid URL %r: No host supplied" % url)
+ 
++        if host.startswith(u'*'):
++            raise InvalidURL('URL has an invalid label.')
++
+         # In general, we want to try IDNA encoding the hostname if the string contains
+         # non-ASCII characters. This allows users to automatically get the correct IDNA
+         # behaviour. For strings containing only ASCII characters, we need to also verify
+-        # it doesn't start with a wildcard (*), before allowing the unencoded hostname.
+-        if not unicode_is_ascii(host):
++        # it doesn't start with a wildcard (*) or contain invalid labels, before allowing
++        # the unencoded hostname.
++        if host.startswith('['):
++            pass
++        elif not unicode_is_ascii(host):
+             try:
+                 host = self._get_idna_encoded_host(host)
+             except UnicodeError:
+                 raise InvalidURL('URL has an invalid label.')
+-        elif host.startswith(u'*'):
++        elif '%' not in host and not self._is_ascii_host_valid(host):
+             raise InvalidURL('URL has an invalid label.')
+ 
+         # Carefully reconstruct the network location

@@ -1,0 +1,94 @@
+diff --git a/sklearn/grid_search.py b/sklearn/grid_search.py
+index 6ba673d2f..91b3101d1 100644
+--- a/sklearn/grid_search.py
++++ b/sklearn/grid_search.py
+@@ -15,6 +15,7 @@ from collections import Mapping, namedtuple, Sized
+ from functools import partial, reduce
+ from itertools import product
+ import operator
++import time
+ import warnings
+ 
+ import numpy as np
+@@ -616,10 +617,12 @@ class BaseSearchCV(six.with_metaclass(ABCMeta, BaseEstimator,
+             # clone first to work around broken estimators
+             best_estimator = clone(base_estimator).set_params(
+                 **best.parameters)
++            t0 = time.time()
+             if y is not None:
+                 best_estimator.fit(X, y, **self.fit_params)
+             else:
+                 best_estimator.fit(X, **self.fit_params)
++            self.refit_time_ = time.time() - t0
+             self.best_estimator_ = best_estimator
+         return self
+ 
+@@ -772,6 +775,10 @@ class GridSearchCV(BaseSearchCV):
+         which gave highest score (or smallest loss if specified)
+         on the left out data. Not available if refit=False.
+ 
++    refit_time_ : float
++        Time to refit the best estimator with the best parameters on the
++        whole data. Only present when ``refit=True``.
++
+     best_score_ : float
+         Score of best_estimator on the left out data.
+ 
+@@ -983,6 +990,10 @@ class RandomizedSearchCV(BaseSearchCV):
+         which gave highest score (or smallest loss if specified)
+         on the left out data. Not available if refit=False.
+ 
++    refit_time_ : float
++        Time to refit the best estimator with the best parameters on the
++        whole data. Only present when ``refit=True``.
++
+     best_score_ : float
+         Score of best_estimator on the left out data.
+ 
+diff --git a/sklearn/model_selection/_search.py b/sklearn/model_selection/_search.py
+index 99d6096af..ea13e4a96 100644
+--- a/sklearn/model_selection/_search.py
++++ b/sklearn/model_selection/_search.py
+@@ -17,6 +17,7 @@ from collections import Mapping, namedtuple, defaultdict, Sequence, Iterable
+ from functools import partial, reduce
+ from itertools import product
+ import operator
++import time
+ import warnings
+ 
+ import numpy as np
+@@ -766,10 +767,12 @@ class BaseSearchCV(six.with_metaclass(ABCMeta, BaseEstimator,
+         if self.refit:
+             self.best_estimator_ = clone(base_estimator).set_params(
+                 **self.best_params_)
++            t0 = time.time()
+             if y is not None:
+                 self.best_estimator_.fit(X, y, **fit_params)
+             else:
+                 self.best_estimator_.fit(X, **fit_params)
++            self.refit_time_ = time.time() - t0
+ 
+         # Store the only scorer not as a dict for single metric evaluation
+         self.scorer_ = scorers if self.multimetric_ else scorers['score']
+@@ -1043,6 +1046,10 @@ class GridSearchCV(BaseSearchCV):
+ 
+         See ``refit`` parameter for more information on allowed values.
+ 
++    refit_time_ : float
++        Time to refit the best estimator with the best parameters on the
++        whole data. Only present when ``refit=True``.
++
+     best_score_ : float
+         Mean cross-validated score of the best_estimator
+ 
+@@ -1354,6 +1361,10 @@ class RandomizedSearchCV(BaseSearchCV):
+ 
+         See ``refit`` parameter for more information on allowed values.
+ 
++    refit_time_ : float
++        Time to refit the best estimator with the best parameters on the
++        whole data. Only present when ``refit=True``.
++
+     best_score_ : float
+         Mean cross-validated score of the best_estimator.
+ 

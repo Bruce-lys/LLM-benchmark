@@ -1,0 +1,39 @@
+diff --git a/src/_pytest/skipping.py b/src/_pytest/skipping.py
+index 335e10996..7ebd6a6ed 100644
+--- a/src/_pytest/skipping.py
++++ b/src/_pytest/skipping.py
+@@ -254,7 +254,20 @@ def pytest_runtest_call(item: Item) -> Generator[None, None, None]:
+         if xfailed and not xfailed.run:
+             xfail("[NOTRUN] " + xfailed.reason)
+ 
+-    yield
++    xfail_marks_count_before = sum(1 for _ in item.iter_markers(name="xfail"))
++
++    outcome = yield
++
++    if not item.config.option.runxfail:
++        xfail_marks_count_after = sum(1 for _ in item.iter_markers(name="xfail"))
++        if xfail_marks_count_after > xfail_marks_count_before:
++            try:
++                item._store[xfailed_key] = evaluate_xfail_marks(item)
++            except BaseException:
++                if outcome.excinfo is not None:
++                    pass
++                else:
++                    raise
+ 
+ 
+ @hookimpl(hookwrapper=True)
+@@ -262,6 +275,12 @@ def pytest_runtest_makereport(item: Item, call: CallInfo[None]):
+     outcome = yield
+     rep = outcome.get_result()
+     xfailed = item._store.get(xfailed_key, None)
++    if not item.config.option.runxfail and xfailed is None and rep.when == "call":
++        try:
++            item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
++        except BaseException:
++            if call.excinfo is None:
++                raise
+     # unittest special case, see setting of unexpectedsuccess_key
+     if unexpectedsuccess_key in item._store and rep.when == "call":
+         reason = item._store[unexpectedsuccess_key]

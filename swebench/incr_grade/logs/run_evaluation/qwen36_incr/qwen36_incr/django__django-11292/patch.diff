@@ -1,0 +1,20 @@
+diff --git a/django/core/management/base.py b/django/core/management/base.py
+index 0c3a981290..c94880c198 100644
+--- a/django/core/management/base.py
++++ b/django/core/management/base.py
+@@ -94,6 +94,7 @@ class DjangoHelpFormatter(HelpFormatter):
+     --help output before arguments common to all commands.
+     """
+     show_last = {
++        '--skip-checks',
+         '--version', '--verbosity', '--traceback', '--settings', '--pythonpath',
+         '--no-color', '--force-color',
+     }
+@@ -286,6 +287,7 @@ class BaseCommand:
+             '--force-color', action='store_true',
+             help='Force colorization of the command output.',
+         )
++        parser.add_argument('--skip-checks', action='store_true', help="Don't run system checks.")
+         self.add_arguments(parser)
+         return parser
+ 

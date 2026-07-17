@@ -1,0 +1,53 @@
+diff --git a/examples/ensemble/plot_isolation_forest.py b/examples/ensemble/plot_isolation_forest.py
+index 1b79072df..fe05ce252 100644
+--- a/examples/ensemble/plot_isolation_forest.py
++++ b/examples/ensemble/plot_isolation_forest.py
+@@ -21,6 +21,9 @@ Random partitioning produces noticeable shorter paths for anomalies.
+ Hence, when a forest of random trees collectively produce shorter path lengths
+ for particular samples, they are highly likely to be anomalies.
+ 
++By setting ``warm_start`` to ``True``, the ensemble can be grown
++incrementally by refitting with a larger ``n_estimators``.
++
+ """
+ print(__doc__)
+ 
+diff --git a/sklearn/ensemble/iforest.py b/sklearn/ensemble/iforest.py
+index 8a1bd3625..496e017a6 100644
+--- a/sklearn/ensemble/iforest.py
++++ b/sklearn/ensemble/iforest.py
+@@ -120,6 +120,14 @@ class IsolationForest(BaseBagging, OutlierMixin):
+     verbose : int, optional (default=0)
+         Controls the verbosity of the tree building process.
+ 
++    warm_start : bool, optional (default=False)
++        When set to ``True``, reuse the solution of the previous call to fit
++        and add more estimators to the ensemble, otherwise, just fit a whole
++        new forest. See :term:`the Glossary <warm_start>`.
++
++        .. versionadded:: 0.23
++           ``warm_start`` constructor parameter.
++
+ 
+     Attributes
+     ----------
+@@ -173,7 +181,8 @@ class IsolationForest(BaseBagging, OutlierMixin):
+                  n_jobs=None,
+                  behaviour='old',
+                  random_state=None,
+-                 verbose=0):
++                 verbose=0,
++                 warm_start=False):
+         super().__init__(
+             base_estimator=ExtraTreeRegressor(
+                 max_features=1,
+@@ -187,7 +196,8 @@ class IsolationForest(BaseBagging, OutlierMixin):
+             max_features=max_features,
+             n_jobs=n_jobs,
+             random_state=random_state,
+-            verbose=verbose)
++            verbose=verbose,
++            warm_start=warm_start)
+ 
+         self.behaviour = behaviour
+         self.contamination = contamination

@@ -1,0 +1,31 @@
+diff --git a/src/_pytest/setuponly.py b/src/_pytest/setuponly.py
+index c9cc589ff..3adde7386 100644
+--- a/src/_pytest/setuponly.py
++++ b/src/_pytest/setuponly.py
+@@ -66,7 +66,7 @@ def _show_fixture_action(fixturedef, msg):
+             tw.write(" (fixtures used: {})".format(", ".join(deps)))
+ 
+     if hasattr(fixturedef, "cached_param"):
+-        tw.write("[{}]".format(fixturedef.cached_param))
++        tw.write("[{}]".format(_saferepr(fixturedef.cached_param)))
+ 
+     tw.flush()
+ 
+@@ -74,6 +74,17 @@ def _show_fixture_action(fixturedef, msg):
+         capman.resume_global_capture()
+ 
+ 
++def _saferepr(obj):
++    """Return a string representation of obj that is safe to use with -bb.
++    
++    Uses repr() for bytes objects to avoid BytesWarning, and str() for
++    everything else to preserve the original display format.
++    """
++    if isinstance(obj, bytes):
++        return repr(obj)
++    return str(obj)
++
++
+ @pytest.hookimpl(tryfirst=True)
+ def pytest_cmdline_main(config):
+     if config.option.setuponly:

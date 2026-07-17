@@ -1,0 +1,64 @@
+diff --git a/django/core/serializers/base.py b/django/core/serializers/base.py
+index 20dffac05f..f79aeb4511 100644
+--- a/django/core/serializers/base.py
++++ b/django/core/serializers/base.py
+@@ -44,6 +44,19 @@ class M2MDeserializationError(Exception):
+         self.pk = pk
+ 
+ 
++class _M2MValue:
++    """
++    Lightweight object used by serializers when only the primary key is
++    available for a many-to-many relation.
++    """
++
++    def __init__(self, pk, attname=None):
++        self.pk = pk
++        if attname is not None:
++            self.attname = attname
++            self.__dict__[attname] = pk
++
++
+ class ProgressBar:
+     progress_width = 75
+ 
+diff --git a/django/core/serializers/python.py b/django/core/serializers/python.py
+index 36048601af..61f6b8c978 100644
+--- a/django/core/serializers/python.py
++++ b/django/core/serializers/python.py
+@@ -76,10 +76,15 @@ class Serializer(base.Serializer):
+             else:
+ 
+                 def m2m_value(value):
+-                    return self._value_from_field(value, value._meta.pk)
++                    pk = value["pk"] if isinstance(value, dict) else value.pk
++                    pk_field = field.remote_field.model._meta.pk
++                    return self._value_from_field(
++                        base._M2MValue(pk, pk_field.attname),
++                        pk_field,
++                    )
+ 
+                 def queryset_iterator(obj, field):
+-                    return getattr(obj, field.name).only("pk").iterator()
++                    return getattr(obj, field.name).values("pk").iterator()
+ 
+             m2m_iter = getattr(obj, "_prefetched_objects_cache", {}).get(
+                 field.name,
+diff --git a/django/core/serializers/xml_serializer.py b/django/core/serializers/xml_serializer.py
+index 1d3269c41a..2a325cbb67 100644
+--- a/django/core/serializers/xml_serializer.py
++++ b/django/core/serializers/xml_serializer.py
+@@ -152,10 +152,11 @@ class Serializer(base.Serializer):
+             else:
+ 
+                 def handle_m2m(value):
+-                    self.xml.addQuickElement("object", attrs={"pk": str(value.pk)})
++                    pk = value["pk"] if isinstance(value, dict) else value.pk
++                    self.xml.addQuickElement("object", attrs={"pk": str(pk)})
+ 
+                 def queryset_iterator(obj, field):
+-                    return getattr(obj, field.name).only("pk").iterator()
++                    return getattr(obj, field.name).values("pk").iterator()
+ 
+             m2m_iter = getattr(obj, "_prefetched_objects_cache", {}).get(
+                 field.name,

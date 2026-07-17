@@ -1,0 +1,64 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 0dc1c77c53..7d1f65e594 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -963,6 +963,9 @@ class MigrationAutodetector:
+                             preserve_default = False
+                     else:
+                         field = new_field
++                    dependencies = []
++                    if new_field.remote_field and new_field.remote_field.model:
++                        dependencies.extend(self._get_dependencies_for_foreign_key(new_field))
+                     self.add_operation(
+                         app_label,
+                         operations.AlterField(
+@@ -970,7 +973,8 @@ class MigrationAutodetector:
+                             name=field_name,
+                             field=field,
+                             preserve_default=preserve_default,
+-                        )
++                        ),
++                        dependencies=dependencies,
+                     )
+                 else:
+                     # We cannot alter between m2m and concrete fields
+diff --git a/tests/migrations/test_autodetector.py b/tests/migrations/test_autodetector.py
+index e9926ba3bf..db77170e35 100644
+--- a/tests/migrations/test_autodetector.py
++++ b/tests/migrations/test_autodetector.py
+@@ -1869,6 +1869,35 @@ class AutodetectorTests(TestCase):
+         self.assertOperationAttributes(changes, 'testapp', 0, 1, name="publisher_name")
+         self.assertOperationAttributes(changes, 'testapp', 0, 2, name="publisher")
+ 
++    def test_alter_uuid_field_to_foreign_key(self):
++        """
++        Changing a non-relation field to a ForeignKey adds a dependency on the
++        related model.
++        """
++        author_with_uuid_publisher = ModelState('testapp', 'Author', [
++            ('id', models.AutoField(primary_key=True)),
++            ('publisher', models.UUIDField(null=True, blank=True)),
++        ])
++        book = ModelState('otherapp', 'Book', [
++            ('id', models.UUIDField(primary_key=True)),
++            ('title', models.CharField(max_length=100)),
++        ])
++        author_with_book = ModelState('testapp', 'Author', [
++            ('id', models.AutoField(primary_key=True)),
++            ('publisher', models.ForeignKey('otherapp.Book', models.SET_NULL, null=True, blank=True)),
++        ])
++        changes = self.get_changes([author_with_uuid_publisher], [author_with_book, book])
++        # Right number/type of migrations?
++        self.assertNumberMigrations(changes, 'testapp', 1)
++        self.assertOperationTypes(changes, 'testapp', 0, ["AlterField"])
++        self.assertOperationAttributes(changes, 'testapp', 0, 0, name="publisher")
++        self.assertMigrationDependencies(changes, 'testapp', 0, [("otherapp", "auto_1")])
++        # Right number/type of migrations?
++        self.assertNumberMigrations(changes, 'otherapp', 1)
++        self.assertOperationTypes(changes, 'otherapp', 0, ["CreateModel"])
++        self.assertOperationAttributes(changes, 'otherapp', 0, 0, name="Book")
++        self.assertMigrationDependencies(changes, 'otherapp', 0, [])
++
+     def test_foreign_key_removed_before_target_model(self):
+         """
+         Removing an FK and the model it targets in the same change must remove

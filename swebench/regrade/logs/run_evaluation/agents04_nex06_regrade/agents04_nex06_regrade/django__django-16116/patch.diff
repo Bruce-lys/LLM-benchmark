@@ -1,0 +1,51 @@
+diff --git a/django/core/management/commands/makemigrations.py b/django/core/management/commands/makemigrations.py
+index 2e97d9064b..4303d614c8 100644
+--- a/django/core/management/commands/makemigrations.py
++++ b/django/core/management/commands/makemigrations.py
+@@ -70,7 +70,10 @@ class Command(BaseCommand):
+             "--check",
+             action="store_true",
+             dest="check_changes",
+-            help="Exit with a non-zero status if model changes are missing migrations.",
++            help=(
++                "Exit with a non-zero status if model changes are missing "
++                "migrations without writing any migration files."
++            ),
+         )
+         parser.add_argument(
+             "--scriptable",
+@@ -111,6 +114,8 @@ class Command(BaseCommand):
+             raise CommandError("The migration name must be a valid Python identifier.")
+         self.include_header = options["include_header"]
+         check_changes = options["check_changes"]
++        if check_changes:
++            self.dry_run = True
+         self.scriptable = options["scriptable"]
+         self.update = options["update"]
+         # If logs and prompts are diverted to stderr, remove the ERROR style.
+diff --git a/docs/man/django-admin.1 b/docs/man/django-admin.1
+index c608d8dcf8..8ebf90ea8f 100644
+--- a/docs/man/django-admin.1
++++ b/docs/man/django-admin.1
+@@ -1156,7 +1156,7 @@ Generate migration files without Django version and timestamp header.
+ .UNINDENT
+ .sp
+ Makes \fBmakemigrations\fP exit with a non\-zero status when model changes without
+-migrations are detected.
++migrations are detected, without actually writing any migration files.
+ .INDENT 0.0
+ .TP
+ .B \-\-scriptable
+diff --git a/docs/ref/django-admin.txt b/docs/ref/django-admin.txt
+index af27e0afb5..4c53df1d30 100644
+--- a/docs/ref/django-admin.txt
++++ b/docs/ref/django-admin.txt
+@@ -823,7 +823,7 @@ Generate migration files without Django version and timestamp header.
+ .. django-admin-option:: --check
+ 
+ Makes ``makemigrations`` exit with a non-zero status when model changes without
+-migrations are detected.
++migrations are detected, without actually writing any migration files.
+ 
+ .. django-admin-option:: --scriptable
+ 

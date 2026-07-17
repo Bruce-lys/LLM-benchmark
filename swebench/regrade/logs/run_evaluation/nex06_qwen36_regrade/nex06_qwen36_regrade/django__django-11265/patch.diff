@@ -1,0 +1,59 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index d69c24419b..d991848958 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1666,6 +1666,8 @@ class Query(BaseExpression):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
+         # Generate the inner query.
+         query = Query(self.model)
++        # Copy filtered relations so that annotations can be resolved in the subquery.
++        query._filtered_relations = self._filtered_relations.copy()
+         query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+@@ -2127,6 +2129,8 @@ class Query(BaseExpression):
+             alias = lookup_tables[trimmed_paths]
+             self.unref_alias(alias)
+         # The path.join_field is a Rel, lets get the other side's field
++        # Keep a reference to the m2m path before 'names_with_path' iteration overwrites 'path'.
++        m2m_path = path
+         join_field = path.join_field.field
+         # Build the filter prefix.
+         paths_in_prefix = trimmed_paths
+@@ -2145,11 +2149,14 @@ class Query(BaseExpression):
+         if self.alias_map[lookup_tables[trimmed_paths + 1]].join_type != LOUTER:
+             select_fields = [r[0] for r in join_field.related_fields]
+             select_alias = lookup_tables[trimmed_paths + 1]
+-            self.unref_alias(lookup_tables[trimmed_paths])
+-            extra_restriction = join_field.get_extra_restriction(
+-                self.where_class, None, lookup_tables[trimmed_paths + 1])
+-            if extra_restriction:
+-                self.where.add(extra_restriction, AND)
++            # Don't trim filtered relation joins: demoting them to BaseTable
++            # would lose the join condition and break the subquery.
++            if not m2m_path.filtered_relation:
++                self.unref_alias(lookup_tables[trimmed_paths])
++                extra_restriction = join_field.get_extra_restriction(
++                    self.where_class, None, lookup_tables[trimmed_paths + 1])
++                if extra_restriction:
++                    self.where.add(extra_restriction, AND)
+         else:
+             # TODO: It might be possible to trim more joins from the start of the
+             # inner query if it happens to have a longer join chain containing the
+@@ -2160,6 +2167,16 @@ class Query(BaseExpression):
+         # But the first entry in the query's FROM clause must not be a JOIN.
+         for table in self.alias_map:
+             if self.alias_refcount[table] > 0:
++                # If the subquery contains a filtered relation, keep its joins
++                # instead of demoting them. This preserves the filtered condition
++                # in the ON clause.
++                if any(
++                    isinstance(self.alias_map[alias], Join) and
++                    self.alias_map[alias].filtered_relation
++                    for alias in self.alias_map
++                    if self.alias_refcount[alias] > 0
++                ):
++                    break
+                 self.alias_map[table] = BaseTable(self.alias_map[table].table_name, table)
+                 break
+         self.set_select([f.get_col(select_alias) for f in select_fields])

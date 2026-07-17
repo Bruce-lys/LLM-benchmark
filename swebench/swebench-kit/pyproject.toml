@@ -1,0 +1,13 @@
+[project]
+name = "swebench-kit"
+version = "0.1.0"
+description = "Config-driven SWE-bench pipeline: vLLM serve -> mini-swe-agent -> official swebench grading"
+requires-python = ">=3.11"
+dependencies = [
+    "mini-swe-agent==2.4.2",   # rollout harness (pins litellm itself)
+    "swebench==4.0.4",         # official grader (same version as the OpenHands/.venv one)
+    "pyyaml>=6",
+]
+
+[tool.uv]
+package = false

@@ -1,0 +1,129 @@
+diff --git a/lib/matplotlib/offsetbox.py b/lib/matplotlib/offsetbox.py
+index 3a506543ac..d429aed6b7 100644
+--- a/lib/matplotlib/offsetbox.py
++++ b/lib/matplotlib/offsetbox.py
+@@ -179,6 +179,56 @@ def _get_aligned_offsets(hd_list, height, align="baseline"):
+     return height, descent, offsets
+ 
+ 
++def _get_aligned_yspans(yspans, height, align="baseline"):
++    """
++    Align boxes each specified by their ``(y0, y1)`` spans.
++
++    Parameters
++    ----------
++    yspans
++        List of ``(y0, y1)`` spans of boxes to be aligned.
++    height : float or None
++        Intended total height. If None, the maximum of the heights
++        (``y1 - y0``) in *yspans* is used.
++    align : {'baseline', 'left', 'top', 'right', 'bottom', 'center'}
++        The alignment anchor of the boxes.
++
++    Returns
++    -------
++    y0
++        The lower y coordinate of the packing.
++    y1
++        The upper y coordinate of the packing.
++    offsets
++        The offsets of the boxes from the lower y coordinate.
++    """
++
++    _api.check_in_list(
++        ["baseline", "left", "top", "right", "bottom", "center"], align=align)
++    if height is None:
++        height = max(y1 - y0 for y0, y1 in yspans)
++
++    if align == "baseline":
++        y0 = min(y0 for y0, y1 in yspans)
++        y1 = max(y1 for y0, y1 in yspans)
++        offsets = [0. for y0, y1 in yspans]
++    elif align in ["left", "bottom"]:
++        y0 = 0.
++        y1 = height
++        offsets = [-y0 for y0, y1 in yspans]
++    elif align in ["right", "top"]:
++        y0 = 0.
++        y1 = height
++        offsets = [height - y1 for y0, y1 in yspans]
++    elif align == "center":
++        y0 = 0.
++        y1 = height
++        offsets = [(height - (y1 - y0)) * .5 - y0
++                   for y0, y1 in yspans]
++
++    return y0, y1, offsets
++
++
+ class OffsetBox(martist.Artist):
+     """
+     The OffsetBox is a simple container artist.
+@@ -474,10 +524,11 @@ class HPacker(PackerBase):
+         if not whd_list:
+             return 2 * pad, 2 * pad, pad, pad, []
+ 
+-        hd_list = [(h, yd) for w, h, xd, yd in whd_list]
+-        height, ydescent, yoffsets = _get_aligned_offsets(hd_list,
+-                                                          self.height,
+-                                                          self.align)
++        yspans = [(-yd, h - yd) for w, h, xd, yd in whd_list]
++        y0, y1, yoffsets = _get_aligned_yspans(yspans, self.height,
++                                               self.align)
++        height = y1 - y0
++        ydescent = -y0
+ 
+         pack_list = [w for w, h, xd, yd in whd_list]
+         width, xoffsets_ = _get_packed_offsets(pack_list, self.width,
+diff --git a/lib/matplotlib/tests/test_offsetbox.py b/lib/matplotlib/tests/test_offsetbox.py
+index 02756ff559..9c2de4a752 100644
+--- a/lib/matplotlib/tests/test_offsetbox.py
++++ b/lib/matplotlib/tests/test_offsetbox.py
+@@ -13,7 +13,7 @@ from matplotlib.backend_bases import MouseButton, MouseEvent
+ 
+ from matplotlib.offsetbox import (
+     AnchoredOffsetbox, AnnotationBbox, AnchoredText, DrawingArea, OffsetBox,
+-    OffsetImage, TextArea, _get_packed_offsets)
++    OffsetImage, HPacker, TextArea, _get_packed_offsets)
+ 
+ 
+ @image_comparison(['offsetbox_clipping'], remove_text=True)
+@@ -182,6 +182,38 @@ def test_get_packed_offsets_equal(widths, total, sep, expected):
+     assert_allclose(result[1], expected[1])
+ 
+ 
++@pytest.mark.parametrize(
++    "align, expect_top",
++    [("top", True), ("bottom", False), ("right", True), ("left", False)],
++)
++def test_hpacker_align_vertical(align, expect_top):
++    fig, ax = plt.subplots()
++    da1 = DrawingArea(10, 20)
++    da2 = DrawingArea(10, 30)
++
++    def tops(hp):
++        renderer = fig.canvas.get_renderer()
++        _, _, _, _, offsets = hp.get_extent_offsets(renderer)
++        extents = [c.get_extent(renderer) for c in hp.get_visible_children()]
++        return [oy + h for (ox, oy), (w, h, xd, yd) in
++                zip(offsets, extents)]
++
++    def bottoms(hp):
++        renderer = fig.canvas.get_renderer()
++        _, _, _, _, offsets = hp.get_extent_offsets(renderer)
++        return [oy for ox, oy in offsets]
++
++    hp = HPacker(children=[da1, da2], pad=10, sep=10, align=align)
++    top_tops = tops(hp)
++    top_bottoms = bottoms(hp)
++    if expect_top:
++        assert_allclose(top_tops[0], top_tops[1])
++        assert top_bottoms[0] > top_bottoms[1]
++    else:
++        assert_allclose(top_bottoms[0], top_bottoms[1])
++        assert top_tops[0] < top_tops[1]
++
++
+ def test_get_packed_offsets_equal_total_none_sep_none():
+     with pytest.raises(ValueError):
+         _get_packed_offsets([1, 1, 1], total=None, sep=None, mode='equal')

@@ -1,0 +1,19 @@
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index d88cda6e20..5bb89fcc0f 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -168,7 +168,13 @@ class FunctionTypeSerializer(BaseSerializer):
+         ):
+             klass = self.value.__self__
+             module = klass.__module__
+-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {
++            klass_qualname = klass.__qualname__
++            if "<" in klass_qualname:
++                raise ValueError(
++                    "Could not find function %s in %s.\n"
++                    % (self.value.__name__, module)
++                )
++            return "%s.%s.%s" % (module, klass_qualname, self.value.__name__), {
+                 "import %s" % module
+             }
+         # Further error checking

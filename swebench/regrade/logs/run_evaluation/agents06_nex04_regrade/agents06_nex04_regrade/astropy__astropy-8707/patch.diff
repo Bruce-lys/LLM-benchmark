@@ -1,0 +1,94 @@
+diff --git a/astropy/io/fits/card.py b/astropy/io/fits/card.py
+index 8c1ac5d73..afaed7cfc 100644
+--- a/astropy/io/fits/card.py
++++ b/astropy/io/fits/card.py
+@@ -5,7 +5,7 @@ import warnings
+ 
+ import numpy as np
+ 
+-from .util import _str_to_num, _is_int, translate, _words_group
++from .util import _str_to_num, _is_int, translate, _words_group, decode_ascii
+ from .verify import _Verify, _ErrList, VerifyError, VerifyWarning
+ 
+ from . import conf
+@@ -547,12 +547,21 @@ class Card(_Verify):
+     @classmethod
+     def fromstring(cls, image):
+         """
+-        Construct a `Card` object from a (raw) string. It will pad the string
+-        if it is not the length of a card image (80 columns).  If the card
+-        image is longer than 80 columns, assume it contains ``CONTINUE``
+-        card(s).
++        Construct a `Card` object from a (raw) string or byte string. It
++        will pad the string if it is not the length of a card image (80
++        columns).  If the card image is longer than 80 columns, assume it
++        contains ``CONTINUE`` card(s).
++
++        Parameters
++        ----------
++        image : str or bytes
++            The card image.  If ``image`` is bytes, it is assumed to be
++            ASCII-encoded.
+         """
+ 
++        if isinstance(image, bytes):
++            image = decode_ascii(image)
++
+         card = cls()
+         card._image = _pad(image)
+         card._verified = False
+diff --git a/astropy/io/fits/header.py b/astropy/io/fits/header.py
+index ad07e6d52..24a5bcd86 100644
+--- a/astropy/io/fits/header.py
++++ b/astropy/io/fits/header.py
+@@ -329,18 +329,19 @@ class Header:
+     @classmethod
+     def fromstring(cls, data, sep=''):
+         """
+-        Creates an HDU header from a byte string containing the entire header
+-        data.
++        Creates an HDU header from a string or byte string containing the
++        entire header data.
+ 
+         Parameters
+         ----------
+-        data : str
+-           String containing the entire header.
++        data : str or bytes
++           String or byte string containing the entire header.  If ``data``
++           is bytes, it is assumed to be ASCII-encoded.
+ 
+-        sep : str, optional
++        sep : str or bytes, optional
+             The string separating cards from each other, such as a newline.  By
+             default there is no card separator (as is the case in a raw FITS
+-            file).
++            file).  If ``sep`` is bytes, it is assumed to be ASCII-encoded.
+ 
+         Returns
+         -------
+@@ -348,6 +349,11 @@ class Header:
+             A new `Header` instance.
+         """
+ 
++        if isinstance(data, bytes):
++            data = decode_ascii(data)
++        if isinstance(sep, bytes):
++            sep = decode_ascii(sep)
++
+         cards = []
+ 
+         # If the card separator contains characters that may validly appear in
+@@ -409,10 +415,10 @@ class Header:
+             to be read.  For open file handles the file pointer must be at the
+             beginning of the header.
+ 
+-        sep : str, optional
++        sep : str or bytes, optional
+             The string separating cards from each other, such as a newline.  By
+             default there is no card separator (as is the case in a raw FITS
+-            file).
++            file).  If ``sep`` is bytes, it is assumed to be ASCII-encoded.
+ 
+         endcard : bool, optional
+             If True (the default) the header must end with an END card in order

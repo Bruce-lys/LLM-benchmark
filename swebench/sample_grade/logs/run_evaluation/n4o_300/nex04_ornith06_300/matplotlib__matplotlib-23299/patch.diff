@@ -1,0 +1,22 @@
+diff --git a/lib/matplotlib/__init__.py b/lib/matplotlib/__init__.py
+index c268a56724..9e105e2920 100644
+--- a/lib/matplotlib/__init__.py
++++ b/lib/matplotlib/__init__.py
+@@ -643,7 +643,7 @@ class RcParams(MutableMapping, dict):
+                 return
+             elif key == 'backend':
+                 if val is rcsetup._auto_backend_sentinel:
+-                    if 'backend' in self:
++                    if dict.__contains__(self, 'backend'):
+                         return
+             try:
+                 cval = self.validate[key](val)
+@@ -1095,7 +1095,7 @@ def rc_context(rc=None, fname=None):
+             rcParams.update(rc)
+         yield
+     finally:
+-        dict.update(rcParams, orig)  # Revert to the original rcs.
++        rcParams.update(orig)  # Revert to the original rcs.
+ 
+ 
+ def use(backend, *, force=True):

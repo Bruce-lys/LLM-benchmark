@@ -1,0 +1,27 @@
+diff --git a/sklearn/compose/_column_transformer.py b/sklearn/compose/_column_transformer.py
+index 4eddd12b1..1fbc3c664 100644
+--- a/sklearn/compose/_column_transformer.py
++++ b/sklearn/compose/_column_transformer.py
+@@ -276,7 +276,7 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+         """Set the output container when `"transform"` and `"fit_transform"` are called.
+ 
+         Calling `set_output` will set the output of all estimators in `transformers`
+-        and `transformers_`.
++        and `transformers_`, and the `remainder`.
+ 
+         Parameters
+         ----------
+@@ -303,6 +303,13 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+         for trans in transformers:
+             _safe_set_output(trans, transform=transform)
+ 
++        if hasattr(self, "_remainder"):
++            _, remainder, _ = self._remainder
++            if remainder not in {"passthrough", "drop"}:
++                _safe_set_output(remainder, transform=transform)
++        elif self.remainder not in {"passthrough", "drop"}:
++            _safe_set_output(self.remainder, transform=transform)
++
+         return self
+ 
+     def get_params(self, deep=True):

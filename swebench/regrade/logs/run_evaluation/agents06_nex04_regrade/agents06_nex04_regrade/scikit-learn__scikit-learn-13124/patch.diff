@@ -1,0 +1,45 @@
+diff --git a/sklearn/model_selection/_split.py b/sklearn/model_selection/_split.py
+index 24394f869..b73940d32 100644
+--- a/sklearn/model_selection/_split.py
++++ b/sklearn/model_selection/_split.py
+@@ -620,7 +620,10 @@ class StratifiedKFold(_BaseKFold):
+         super().__init__(n_splits, shuffle, random_state)
+ 
+     def _make_test_folds(self, X, y=None):
+-        rng = self.random_state
++        if self.shuffle:
++            rng = check_random_state(self.random_state)
++        else:
++            rng = self.random_state
+         y = np.asarray(y)
+         type_of_target_y = type_of_target(y)
+         allowed_target_types = ('binary', 'multiclass')
+diff --git a/sklearn/model_selection/tests/test_split.py b/sklearn/model_selection/tests/test_split.py
+index 5981df285..21f8cd819 100644
+--- a/sklearn/model_selection/tests/test_split.py
++++ b/sklearn/model_selection/tests/test_split.py
+@@ -494,6 +494,24 @@ def test_shuffle_stratifiedkfold():
+     check_cv_coverage(kf0, X_40, y, groups=None, expected_n_splits=5)
+ 
+ 
++def test_stratified_kfold_shuffle_pairs():
++    # Shuffle should change the test pairs within each fold, not just reorder
++    # the same pairs.
++    X = np.arange(20)
++    y = np.concatenate((np.ones(10), np.zeros(10)))
++    skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=1)
++
++    test_offsets = []
++    for fold, (_, test) in enumerate(skf.split(X, y)):
++        test = np.sort(test)
++        test_class_one = test[test < 10]
++        test_class_zero = test[test >= 10] - 10
++        test_offsets.append((test_class_one, test_class_zero))
++
++    assert any(not np.array_equal(one, zero)
++               for one, zero in test_offsets)
++
++
+ def test_kfold_can_detect_dependent_samples_on_digits():  # see #2372
+     # The digits samples are dependent: they are apparently grouped by authors
+     # although we don't have any information on the groups segment locations

@@ -1,0 +1,27 @@
+diff --git a/sympy/printing/str.py b/sympy/printing/str.py
+index c3fdcdd435..3a5c6a65a2 100644
+--- a/sympy/printing/str.py
++++ b/sympy/printing/str.py
+@@ -287,6 +287,12 @@ def _print_Mul(self, expr):
+             dfactors = pre + [self.parenthesize(a, prec, strict=False)
+                 for a in d]
+ 
++            # parenthesize denominator factors that are fractions (Pow with -1)
++            # to avoid ambiguous output like 1/1/x
++            dfactors = pre + ['(%s)' % f if isinstance(a, Pow) and
++                              a.exp is S.NegativeOne else f
++                              for a, f in zip(d, dfactors[len(pre):])]
++
+             n = '*'.join(nfactors)
+             d = '*'.join(dfactors)
+             if len(dfactors) > 1:
+@@ -336,6 +342,9 @@ def apow(i):
+                             isinstance(item.base, Mul)):
+                         # To avoid situations like #14160
+                         pow_paren.append(item)
++                    elif isinstance(item.base, Pow) and item.base.exp is S.NegativeOne:
++                        # To avoid ambiguous output like a/(1/x) printing as a/1/x
++                        pow_paren.append(item)
+                     b.append(item.base)
+             elif item.is_Rational and item is not S.Infinity:
+                 if item.p != 1:

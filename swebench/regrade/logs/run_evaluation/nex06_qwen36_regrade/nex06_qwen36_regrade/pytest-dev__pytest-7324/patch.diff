@@ -1,0 +1,25 @@
+diff --git a/src/_pytest/mark/expression.py b/src/_pytest/mark/expression.py
+index 04c73411a..9fb780aef 100644
+--- a/src/_pytest/mark/expression.py
++++ b/src/_pytest/mark/expression.py
+@@ -161,7 +161,11 @@ def not_expr(s: Scanner) -> ast.expr:
+         return ret
+     ident = s.accept(TokenType.IDENT)
+     if ident:
+-        return ast.Name(ident.value, ast.Load())
++        return ast.Call(
++            ast.Name("_pytest_matcher", ast.Load()),
++            [ast.Str(ident.value)],
++            [],
++        )
+     s.reject((TokenType.NOT, TokenType.LPAREN, TokenType.IDENT))
+ 
+ 
+@@ -213,6 +217,6 @@ class Expression:
+         Returns whether the expression matches or not.
+         """
+         ret = eval(
+-            self.code, {"__builtins__": {}}, MatcherAdapter(matcher)
++            self.code, {"__builtins__": {}}, {"_pytest_matcher": matcher}
+         )  # type: bool
+         return ret

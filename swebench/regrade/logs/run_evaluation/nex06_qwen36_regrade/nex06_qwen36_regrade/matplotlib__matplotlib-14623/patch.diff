@@ -1,0 +1,41 @@
+diff --git a/lib/matplotlib/ticker.py b/lib/matplotlib/ticker.py
+index 209a3f92c..027625e57 100644
+--- a/lib/matplotlib/ticker.py
++++ b/lib/matplotlib/ticker.py
+@@ -2373,14 +2373,15 @@ class LogLocator(Locator):
+             vmin = _decade_less_equal(vmin, self._base)
+             vmax = _decade_greater_equal(vmax, self._base)
+ 
++        if self.axis.axes.name != 'polar' and vmin > vmax:
++            vmin, vmax = vmax, vmin
++
+         return vmin, vmax
+ 
+     def nonsingular(self, vmin, vmax):
+         if not np.isfinite(vmin) or not np.isfinite(vmax):
+             return 1, 10  # initial range, no data plotted yet
+ 
+-        if vmin > vmax:
+-            vmin, vmax = vmax, vmin
+         if vmax <= 0:
+             cbook._warn_external(
+                 "Data has no positive values, and therefore cannot be "
+@@ -2624,16 +2625,11 @@ class LogitLocator(Locator):
+         if not np.isfinite(vmin) or not np.isfinite(vmax):
+             return initial_range  # no data plotted yet
+ 
+-        if vmin > vmax:
+-            vmin, vmax = vmax, vmin
+-
+         # what to do if a window beyond ]0, 1[ is chosen
+         if self.axis is not None:
+             minpos = self.axis.get_minpos()
+-            if not np.isfinite(minpos):
+-                return initial_range  # again, no data plotted
+-        else:
+-            minpos = 1e-7  # should not occur in normal use
++        if not np.isfinite(minpos):
++            minpos = 1e-7  # no data plotted, should not occur in normal use
+ 
+         # NOTE: for vmax, we should query a property similar to get_minpos, but
+         # related to the maximal, less-than-one data point. Unfortunately,

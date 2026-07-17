@@ -1,0 +1,39 @@
+diff --git a/sympy/utilities/codegen.py b/sympy/utilities/codegen.py
+index f0befb2bd..ae987d98b 100644
+--- a/sympy/utilities/codegen.py
++++ b/sympy/utilities/codegen.py
+@@ -638,9 +638,20 @@ def routine(self, name, expr, argument_sequence=None, global_vars=None):
+ 
+         # global variables
+         global_vars = set() if global_vars is None else set(global_vars)
++        if argument_sequence is not None:
++            argument_sequence = list(argument_sequence)
+ 
+         # symbols that should be arguments
+-        symbols = (expressions.free_symbols | local_expressions.free_symbols) - local_symbols - global_vars
++        if argument_sequence is not None:
++            symbols = expressions.free_symbols | local_expressions.free_symbols
++            for arg in argument_sequence:
++                if isinstance(arg, IndexedBase):
++                    symbols.add(arg.label)
++                else:
++                    symbols.add(arg)
++        else:
++            symbols = expressions.free_symbols | local_expressions.free_symbols
++        symbols = symbols - local_symbols - global_vars
+         new_symbols = set([])
+         new_symbols.update(symbols)
+ 
+@@ -700,6 +711,12 @@ def routine(self, name, expr, argument_sequence=None, global_vars=None):
+             array_symbols[array.base.label] = array
+         for array in expressions.atoms(MatrixSymbol) | local_expressions.atoms(MatrixSymbol):
+             array_symbols[array] = array
++        if argument_sequence is not None:
++            for arg in argument_sequence:
++                if isinstance(arg, IndexedBase) and arg.shape is not None:
++                    array_symbols[arg.label] = arg
++                elif isinstance(arg, MatrixSymbol):
++                    array_symbols[arg] = arg
+ 
+         for symbol in sorted(symbols, key=str):
+             if symbol in array_symbols:

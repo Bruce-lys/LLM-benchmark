@@ -1,0 +1,70 @@
+diff --git a/sympy/geometry/point.py b/sympy/geometry/point.py
+index 7c978c47be..b1c23510bd 100644
+--- a/sympy/geometry/point.py
++++ b/sympy/geometry/point.py
+@@ -177,6 +177,24 @@ def __new__(cls, *args, **kwargs):
+         # the general Point
+         return GeometryEntity.__new__(cls, *coords)
+ 
++    @staticmethod
++    def _eval_mul_point(other):
++        """Extract a Point and scalar factor from a Mul expression."""
++        if not getattr(other, 'is_Mul', False):
++            return None, None
++        point = None
++        factor = S.One
++        for arg in other.args:
++            if isinstance(arg, Point):
++                if point is not None:
++                    return None, None
++                point = arg
++            else:
++                factor *= arg
++        if point is None:
++            return None, None
++        return point, factor
++
+     def __abs__(self):
+         """Returns the distance between this point and the origin."""
+         origin = Point([0]*len(self))
+@@ -216,6 +234,14 @@ def __add__(self, other):
+         try:
+             s, o = Point._normalize_dimension(self, Point(other, evaluate=False))
+         except TypeError:
++            point, factor = Point._eval_mul_point(other)
++            if point is not None:
++                try:
++                    s, o = Point._normalize_dimension(self, point*factor)
++                    coords = [simplify(a + b) for a, b in zip(s, o)]
++                    return Point(coords, evaluate=False)
++                except (TypeError, GeometryError):
++                    pass
+             raise GeometryError("Don't know how to add {} and a Point object".format(other))
+ 
+         coords = [simplify(a + b) for a, b in zip(s, o)]
+@@ -278,6 +304,10 @@ def __mul__(self, factor):
+         coords = [simplify(x*factor) for x in self.args]
+         return Point(coords, evaluate=False)
+ 
++    def __rmul__(self, factor):
++        """Multiply point's coordinates by a factor from the left."""
++        return self.__mul__(factor)
++
+     def __neg__(self):
+         """Negate the point."""
+         coords = [-x for x in self.args]
+@@ -286,7 +316,13 @@ def __neg__(self):
+     def __sub__(self, other):
+         """Subtract two points, or subtract a factor from this point's
+         coordinates."""
+-        return self + [-x for x in other]
++        try:
++            return self + [-x for x in other]
++        except TypeError:
++            point, factor = Point._eval_mul_point(other)
++            if point is not None:
++                return self + [-x*factor for x in point.args]
++            raise
+ 
+     @classmethod
+     def _normalize_dimension(cls, *points, **kwargs):

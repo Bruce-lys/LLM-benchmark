@@ -1,0 +1,23 @@
+diff --git a/sympy/simplify/simplify.py b/sympy/simplify/simplify.py
+index c6b511f20..548520ac2 100644
+--- a/sympy/simplify/simplify.py
++++ b/sympy/simplify/simplify.py
+@@ -205,7 +205,8 @@ def posify(eq):
+     symbols.
+ 
+     Any symbol that has positive=None will be replaced with a positive dummy
+-    symbol having the same name. This replacement will allow more symbolic
++    symbol having the same name and the same assumptions (where compatible).
++    This replacement will allow more symbolic
+     processing of expressions, especially those involving powers and
+     logarithms.
+ 
+@@ -251,7 +252,7 @@ def posify(eq):
+             eq[i] = e.subs(reps)
+         return f(eq), {r: s for s, r in reps.items()}
+ 
+-    reps = {s: Dummy(s.name, positive=True)
++    reps = {s: Dummy(s.name, positive=True, **s.assumptions0)
+                  for s in eq.free_symbols if s.is_positive is None}
+     eq = eq.subs(reps)
+     return eq, {r: s for s, r in reps.items()}

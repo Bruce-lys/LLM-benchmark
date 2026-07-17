@@ -1,0 +1,29 @@
+run:
+  tag: chwang_20260713_ornith397b_verified
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: Ornith-1.0-397B
+
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.62:8017/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

@@ -1,0 +1,54 @@
+diff --git a/django/core/mail/message.py b/django/core/mail/message.py
+index e393b4cf5c..7d497fb785 100644
+--- a/django/core/mail/message.py
++++ b/django/core/mail/message.py
+@@ -15,7 +15,7 @@ from io import BytesIO, StringIO
+ from pathlib import Path
+ 
+ from django.conf import settings
+-from django.core.mail.utils import DNS_NAME
++from django.core.mail.utils import DNS_NAME, idna_encode
+ from django.utils.encoding import force_str
+ 
+ # Don't BASE64-encode UTF-8 messages so that we avoid unwanted attention from
+@@ -257,7 +257,7 @@ class EmailMessage:
+             msg['Date'] = formatdate(localtime=settings.EMAIL_USE_LOCALTIME)
+         if 'message-id' not in header_names:
+             # Use cached DNS_NAME for performance
+-            msg['Message-ID'] = make_msgid(domain=DNS_NAME)
++            msg['Message-ID'] = make_msgid(domain=idna_encode(DNS_NAME))
+         for name, value in self.extra_headers.items():
+             if name.lower() != 'from':  # From is already handled
+                 msg[name] = value
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..cd22416b61 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -5,6 +5,18 @@ Email message and email sending related helper functions.
+ import socket
+ 
+ 
++def idna_encode(value):
++    """
++    Encode a Unicode hostname to its ASCII IDNA representation when needed.
++    """
++    value = str(value)
++    try:
++        value.encode('ascii')
++    except UnicodeEncodeError:
++        value = value.encode('idna').decode('ascii')
++    return value
++
++
+ # Cache the hostname, but do it lazily: socket.getfqdn() can take a couple of
+ # seconds, which slows down the restart of the server.
+ class CachedDnsName:
+@@ -13,7 +25,7 @@ class CachedDnsName:
+ 
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+-            self._fqdn = socket.getfqdn()
++            self._fqdn = idna_encode(socket.getfqdn())
+         return self._fqdn
+ 
+ 

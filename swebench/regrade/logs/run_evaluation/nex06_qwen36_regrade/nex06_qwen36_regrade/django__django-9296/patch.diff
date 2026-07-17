@@ -1,0 +1,18 @@
+diff --git a/django/core/paginator.py b/django/core/paginator.py
+index 1f92da5d4f..7e5119e941 100644
+--- a/django/core/paginator.py
++++ b/django/core/paginator.py
+@@ -98,6 +98,13 @@ class Paginator:
+         hits = max(1, self.count - self.orphans)
+         return ceil(hits / self.per_page)
+ 
++    def __iter__(self):
++        """
++        Iterate over all the pages in the paginator.
++        """
++        for page_num in self.page_range:
++            yield self.page(page_num)
++
+     @property
+     def page_range(self):
+         """

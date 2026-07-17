@@ -1,0 +1,108 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index e3b14a41a0..3bff99af0f 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -398,6 +398,8 @@ class ModelState:
+     # explicit (non-auto) PKs. This impacts validation only; it has no effect
+     # on the actual save.
+     adding = True
++    # Whether the primary key was explicitly set on the instance.
++    pk_explicitly_set = False
+     fields_cache = ModelStateFieldsCacheDescriptor()
+ 
+ 
+@@ -414,6 +416,7 @@ class Model(metaclass=ModelBase):
+ 
+         # Set up the storage for instance state
+         self._state = ModelState()
++        self._state.pk_explicitly_set = False
+ 
+         # There is a rather weird disparity here; if kwargs, it's set, then args
+         # overrides it. It should be one or the other; don't duplicate the work
+@@ -432,6 +435,8 @@ class Model(metaclass=ModelBase):
+             for val, field in zip(args, fields_iter):
+                 if val is _DEFERRED:
+                     continue
++                if field.primary_key and val is not None:
++                    self._state.pk_explicitly_set = True
+                 _setattr(self, field.attname, val)
+         else:
+             # Slower, kwargs-ready version.
+@@ -439,6 +444,8 @@ class Model(metaclass=ModelBase):
+             for val, field in zip(args, fields_iter):
+                 if val is _DEFERRED:
+                     continue
++                if field.primary_key and val is not None:
++                    self._state.pk_explicitly_set = True
+                 _setattr(self, field.attname, val)
+                 kwargs.pop(field.name, None)
+ 
+@@ -447,6 +454,7 @@ class Model(metaclass=ModelBase):
+ 
+         for field in fields_iter:
+             is_related_object = False
++            explicit_value = False
+             # Virtual field
+             if field.attname not in kwargs and field.column is None:
+                 continue
+@@ -460,11 +468,13 @@ class Model(metaclass=ModelBase):
+                         try:
+                             # Object instance wasn't passed in -- must be an ID.
+                             val = kwargs.pop(field.attname)
++                            explicit_value = True
+                         except KeyError:
+                             val = field.get_default()
+                 else:
+                     try:
+                         val = kwargs.pop(field.attname)
++                        explicit_value = True
+                     except KeyError:
+                         # This is done with an exception rather than the
+                         # default argument on pop because we don't want
+@@ -482,8 +492,9 @@ class Model(metaclass=ModelBase):
+                 if rel_obj is not _DEFERRED:
+                     _setattr(self, field.name, rel_obj)
+             else:
+-                if val is not _DEFERRED:
+-                    _setattr(self, field.attname, val)
++                if val is not _DEFERRED and explicit_value and field.primary_key and val is not None:
++                    self._state.pk_explicitly_set = True
++                _setattr(self, field.attname, val)
+ 
+         if kwargs:
+             property_names = opts._property_names
+@@ -493,6 +504,8 @@ class Model(metaclass=ModelBase):
+                     # virtual fields.
+                     if prop in property_names or opts.get_field(prop):
+                         if kwargs[prop] is not _DEFERRED:
++                            if prop == 'pk':
++                                self._state.pk_explicitly_set = kwargs[prop] is not None
+                             _setattr(self, prop, kwargs[prop])
+                         del kwargs[prop]
+                 except (AttributeError, FieldDoesNotExist):
+@@ -569,6 +582,7 @@ class Model(metaclass=ModelBase):
+         return getattr(self, meta.pk.attname)
+ 
+     def _set_pk_val(self, value):
++        self._state.pk_explicitly_set = value is not None
+         return setattr(self, self._meta.pk.attname, value)
+ 
+     pk = property(_get_pk_val, _set_pk_val)
+@@ -839,6 +853,9 @@ class Model(metaclass=ModelBase):
+             non_pks = [f for f in non_pks
+                        if f.name in update_fields or f.attname in update_fields]
+ 
++        # Primary key defaults are populated during Model.__init__(), so check
++        # whether the pk was explicitly set on the instance instead.
++        pk_explicitly_set = self._state.pk_explicitly_set
+         pk_val = self._get_pk_val(meta)
+         if pk_val is None:
+             pk_val = meta.pk.get_pk_value_on_save(self)
+@@ -851,6 +868,7 @@ class Model(metaclass=ModelBase):
+         if (
+             not force_insert and
+             self._state.adding and
++            not pk_explicitly_set and
+             self._meta.pk.default and
+             self._meta.pk.default is not NOT_PROVIDED
+         ):

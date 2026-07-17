@@ -1,0 +1,104 @@
+diff --git a/xarray/core/dataset.py b/xarray/core/dataset.py
+index d6f0da42..fae086e8 100644
+--- a/xarray/core/dataset.py
++++ b/xarray/core/dataset.py
+@@ -4768,7 +4768,10 @@ class Dataset(Mapping, ImplementsDatasetReduce, DataWithCoords):
+                             # the former is often more efficient
+                             reduce_dims = None
+                         variables[name] = var.quantile(
+-                            q, dim=reduce_dims, interpolation=interpolation
++                            q,
++                            dim=reduce_dims,
++                            interpolation=interpolation,
++                            keep_attrs=keep_attrs,
+                         )
+ 
+             else:
+diff --git a/xarray/core/variable.py b/xarray/core/variable.py
+index 2e9906ce..0dbf9143 100644
+--- a/xarray/core/variable.py
++++ b/xarray/core/variable.py
+@@ -1592,7 +1592,7 @@ class Variable(
+         """
+         return self.broadcast_equals(other, equiv=duck_array_ops.array_notnull_equiv)
+ 
+-    def quantile(self, q, dim=None, interpolation="linear"):
++    def quantile(self, q, dim=None, interpolation="linear", keep_attrs=None):
+         """Compute the qth quantile of the data along the specified dimension.
+ 
+         Returns the qth quantiles(s) of the array elements.
+@@ -1615,6 +1615,10 @@ class Variable(
+                 * higher: ``j``.
+                 * nearest: ``i`` or ``j``, whichever is nearest.
+                 * midpoint: ``(i + j) / 2``.
++        keep_attrs : bool, optional
++            If True, the variable's attributes (`attrs`) will be copied from
++            the original object to the new one.  If False (default), the new
++            object will be returned without attributes.
+ 
+         Returns
+         -------
+@@ -1658,7 +1662,10 @@ class Variable(
+         qs = np.nanpercentile(
+             self.data, q * 100.0, axis=axis, interpolation=interpolation
+         )
+-        return Variable(new_dims, qs)
++        if keep_attrs is None:
++            keep_attrs = _get_keep_attrs(default=False)
++        attrs = self._attrs if keep_attrs else None
++        return Variable(new_dims, qs, attrs=attrs)
+ 
+     def rank(self, dim, pct=False):
+         """Ranks the data.
+diff --git a/xarray/tests/test_dataarray.py b/xarray/tests/test_dataarray.py
+index 8c01ef9a..5e310f43 100644
+--- a/xarray/tests/test_dataarray.py
++++ b/xarray/tests/test_dataarray.py
+@@ -2310,6 +2310,17 @@ class TestDataArray:
+                 )
+                 np.testing.assert_allclose(actual.values, expected)
+ 
++    def test_quantile_keep_attrs(self):
++        # Test dropped attrs
++        vm = self.va.quantile(0.5)
++        assert len(vm.attrs) == 0
++        assert vm.attrs == OrderedDict()
++
++        # Test kept attrs
++        vm = self.va.quantile(0.5, keep_attrs=True)
++        assert len(vm.attrs) == len(self.attrs)
++        assert vm.attrs == self.attrs
++
+     def test_reduce_keep_attrs(self):
+         # Test dropped attrs
+         vm = self.va.mean()
+diff --git a/xarray/tests/test_dataset.py b/xarray/tests/test_dataset.py
+index 814fc31d..fda2ac1e 100644
+--- a/xarray/tests/test_dataset.py
++++ b/xarray/tests/test_dataset.py
+@@ -4456,6 +4456,25 @@ class TestDataset:
+             assert "dim3" in ds_quantile.dims
+             assert all(d not in ds_quantile.dims for d in dim)
+ 
++    def test_quantile_keep_attrs(self):
++        data = create_test_data()
++        _attrs = {"attr1": "value1", "attr2": 2929}
++
++        attrs = OrderedDict(_attrs)
++        data.attrs = attrs
++
++        # Test dropped attrs
++        ds = data.quantile(0.5)
++        assert ds.attrs == {}
++        for v in ds.data_vars.values():
++            assert v.attrs == {}
++
++        # Test kept attrs
++        ds = data.quantile(0.5, keep_attrs=True)
++        assert ds.attrs == attrs
++        for k, v in ds.data_vars.items():
++            assert v.attrs == data[k].attrs
++
+     @requires_bottleneck
+     def test_rank(self):
+         ds = create_test_data(seed=1234)

@@ -1,0 +1,15 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index b99f03cd88..9f838fba5e 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1338,8 +1338,8 @@ class Query(BaseExpression):
+             if isinstance(child, Node):
+                 child_clause, needed_inner = self._add_q(
+                     child, used_aliases, branch_negated,
+-                    current_negated, allow_joins, split_subq)
+-                joinpromoter.add_votes(needed_inner)
++                    current_negated, allow_joins, split_subq,
++                    simple_col=simple_col)
+             else:
+                 child_clause, needed_inner = self.build_filter(
+                     child, can_reuse=used_aliases, branch_negated=branch_negated,

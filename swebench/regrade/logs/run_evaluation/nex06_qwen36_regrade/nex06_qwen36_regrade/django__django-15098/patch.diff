@@ -1,0 +1,118 @@
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 6ea18dd22f..ca766e7416 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -322,9 +322,11 @@ class LocalePrefixPattern:
+ 
+     def match(self, path):
+         language_prefix = self.language_prefix
+-        if path.startswith(language_prefix):
+-            return path[len(language_prefix):], (), {}
+-        return None
++        if language_prefix:
++            if path.lower().startswith(language_prefix.lower()):
++                return path[len(language_prefix):], (), {}
++            return None
++        return path, (), {}
+ 
+     def check(self):
+         return []
+diff --git a/django/utils/translation/trans_real.py b/django/utils/translation/trans_real.py
+index 7dcc77b46c..25d0350609 100644
+--- a/django/utils/translation/trans_real.py
++++ b/django/utils/translation/trans_real.py
+@@ -43,7 +43,83 @@ language_code_re = _lazy_re_compile(
+     re.IGNORECASE
+ )
+ 
+-language_code_prefix_re = _lazy_re_compile(r'^/(\w+([@-]\w+)?)(/|$)')
++language_code_prefix_re = _lazy_re_compile(r'^/([A-Za-z0-9@]+(?:-[A-Za-z0-9@]+)*)(/|$)')
++
++
++def _is_valid_language_code(code):
++    """
++    Return True if code is a valid BCP 47-like language code.
++
++    language_code_re is intentionally permissive, but get_language_from_path()
++    needs a stricter check to avoid false positives such as '/de-simple-page/'.
++    """
++    if not language_code_re.match(code):
++        return False
++    if '@' in code:
++        return True
++    parts = [part.lower() for part in code.split('-')]
++    if not parts[0].isalpha():
++        return False
++    lang_len = len(parts[0])
++    if not (2 <= lang_len <= 3 or lang_len == 4 or 5 <= lang_len <= 8):
++        return False
++
++    state = 'language'
++    for i, part in enumerate(parts[1:], start=1):
++        if part == 'x':
++            return _is_privateuse(parts, i)
++        if len(part) == 1 and part.isalnum():
++            return _is_extension(parts, i)
++        if part.isalpha() and len(part) == 4:
++            if state in ('language', 'extlang'):
++                state = 'script'
++            else:
++                return False
++        elif part.isalpha() and len(part) == 3:
++            if state == 'language':
++                state = 'extlang'
++            elif state == 'extlang':
++                state = 'extlang'
++            elif state == 'script':
++                state = 'region'
++            else:
++                return False
++        elif part.isalpha() and len(part) == 2:
++            if state in ('language', 'extlang', 'script'):
++                state = 'region'
++            else:
++                return False
++        elif part.isdigit() and len(part) == 3:
++            if state in ('language', 'script'):
++                state = 'region'
++            else:
++                return False
++        elif part.isalnum() and 5 <= len(part) <= 8:
++            if state in ('language', 'extlang', 'script', 'region'):
++                state = 'variant'
++            else:
++                return False
++        else:
++            return False
++    return True
++
++
++def _is_privateuse(parts, index):
++    if index + 1 >= len(parts):
++        return False
++    for part in parts[index + 1:]:
++        if not part.isalnum() or len(part) > 8:
++            return False
++    return True
++
++
++def _is_extension(parts, index):
++    if index + 1 >= len(parts):
++        return False
++    for part in parts[index + 1:]:
++        if not part.isalnum() or len(part) < 2 or len(part) > 8:
++            return False
++    return True
+ 
+ 
+ @receiver(setting_changed)
+@@ -509,6 +585,9 @@ def get_language_from_path(path, strict=False):
+     if not regex_match:
+         return None
+     lang_code = regex_match[1]
++    if not _is_valid_language_code(lang_code):
++        return None
++    lang_code = lang_code.lower()
+     try:
+         return get_supported_language_variant(lang_code, strict=strict)
+     except LookupError:

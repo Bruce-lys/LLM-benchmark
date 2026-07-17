@@ -1,0 +1,25 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 3f84250b64..632ee54dbf 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -986,6 +986,20 @@ class ContourSet(ContourLabeler, mcoll.Collection):
+             self._transform = self._transform._as_mpl_transform(self.axes)
+         return self._transform
+ 
++    def set_paths(self, paths):
++        """
++        Set the `.Path` objects for each contour level.
++
++        Parameters
++        ----------
++        paths : list of `.Path`
++            The paths to use for each contour level.
++        """
++        self._paths = paths
++        self.stale = True
++        if hasattr(self, "_old_style_split_collections"):
++            del self._old_style_split_collections
++
+     def __getstate__(self):
+         state = self.__dict__.copy()
+         # the C object _contour_generator cannot currently be pickled. This

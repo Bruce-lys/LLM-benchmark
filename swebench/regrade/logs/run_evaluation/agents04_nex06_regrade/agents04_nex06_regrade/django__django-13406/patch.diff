@@ -1,0 +1,40 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index b48d0df9c0..bb3198b5b2 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -211,6 +211,16 @@ class QuerySet:
+     @query.setter
+     def query(self, value):
+         self._query = value
++        values_select = getattr(value, 'values_select', ())
++        if values_select:
++            # Pickled values() queries must be re-evaluated with the same
++            # iterable class, not ModelIterable.
++            iterable_class = getattr(value, '_iterable_class', None)
++            if iterable_class is not None:
++                self._iterable_class = iterable_class
++            else:
++                self._iterable_class = ValuesIterable
++            self._fields = getattr(value, '_fields', values_select)
+ 
+     def as_manager(cls):
+         # Address the circular dependency between `Queryset` and `Manager`.
+@@ -823,6 +833,9 @@ class QuerySet:
+             clone = clone.annotate(**expressions)
+         clone._fields = fields
+         clone.query.set_values(fields)
++        # Preserve values() metadata for pickled queries.
++        clone.query._fields = fields
++        clone.query._iterable_class = ValuesIterable
+         return clone
+ 
+     def values(self, *fields, **expressions):
+@@ -860,6 +873,8 @@ class QuerySet:
+             else FlatValuesListIterable if flat
+             else ValuesListIterable
+         )
++        # Preserve values_list() metadata for pickled queries.
++        clone.query._iterable_class = clone._iterable_class
+         return clone
+ 
+     def dates(self, field_name, kind, order='ASC'):

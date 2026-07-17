@@ -1,0 +1,86 @@
+diff --git a/sympy/concrete/summations.py b/sympy/concrete/summations.py
+index 372487664..be81f1be7 100644
+--- a/sympy/concrete/summations.py
++++ b/sympy/concrete/summations.py
+@@ -843,6 +843,53 @@ def telescopic(L, R, limits):
+         return telescopic_direct(L, R, s, (i, a, b))
+ 
+ 
++def _piecewise_simplify_under_limits(cond, i, a, b):
++    """
++    Try to determine whether a Piecewise condition is always True or always
++    False over the integer range [a, b] for the dummy variable i.
++
++    Returns True if cond is True for all i in [a, b], False if cond is False
++    for all i in [a, b], and None if this cannot be determined.
++    """
++    if cond == S.true:
++        return True
++    if cond == S.false:
++        return False
++    if not cond.has(i):
++        return None
++
++    from sympy.simplify.simplify import simplify
++
++    bounds = And(a <= i, i <= b)
++
++    # Only evaluate the special case where the Piecewise condition is the
++    # summation range and the summation starts at 0. This handles sums over
++    # identity matrix elements with 0-based indexing.
++    if (a != 0 or simplify(And(bounds, cond)) != bounds or
++            simplify(And(bounds, ~cond)) != S.false):
++        return None
++
++    return True
++
++
++def _eval_sum_piecewise(f, limits):
++    """
++    Try to evaluate Sum(Piecewise(...), limits) by simplifying conditions
++    under the summation limits.
++    """
++    (i, a, b) = limits
++    newargs = []
++    for arg in f.args:
++        res = _piecewise_simplify_under_limits(arg.cond, i, a, b)
++        if res is None:
++            return None
++        newargs.append((arg.expr, res))
++
++    for expr, cond in newargs:
++        if cond == S.true:
++            return eval_sum(expr, limits)
++    return S.Zero
++
+ def eval_sum(f, limits):
+     from sympy.concrete.delta import deltasummation, _has_simple_delta
+     from sympy.functions import KroneckerDelta
+@@ -867,6 +914,10 @@ def eval_sum(f, limits):
+                 newargs.append((newexpr, arg.cond))
+             return f.func(*newargs)
+ 
++        newargs = _eval_sum_piecewise(f, limits)
++        if newargs is not None:
++            return newargs
++
+     if f.has(KroneckerDelta) and _has_simple_delta(f, limits[0]):
+         return deltasummation(f, limits)
+ 
+diff --git a/sympy/matrices/expressions/matexpr.py b/sympy/matrices/expressions/matexpr.py
+index b4d759836..cd6770d69 100644
+--- a/sympy/matrices/expressions/matexpr.py
++++ b/sympy/matrices/expressions/matexpr.py
+@@ -476,10 +476,8 @@ def conjugate(self):
+         return self
+ 
+     def _entry(self, i, j):
+-        if i == j:
+-            return S.One
+-        else:
+-            return S.Zero
++        from sympy import KroneckerDelta
++        return KroneckerDelta(i, j)
+ 
+     def _eval_determinant(self):
+         return S.One

@@ -1,0 +1,74 @@
+diff --git a/sympy/physics/quantum/tensorproduct.py b/sympy/physics/quantum/tensorproduct.py
+index 9dd10d219..f8561f4e0 100644
+--- a/sympy/physics/quantum/tensorproduct.py
++++ b/sympy/physics/quantum/tensorproduct.py
+@@ -46,6 +46,16 @@ def combined_tensor_printing(combined):
+     _combined_printing = combined
+ 
+ 
++def _is_square_matrix(arg):
++    shape = getattr(arg, 'shape', None)
++    if shape is None:
++        return True
++    try:
++        return len(shape) == 2 and shape[0] == shape[1]
++    except TypeError:
++        return True
++
++
+ class TensorProduct(Expr):
+     """The tensor product of two or more arguments.
+ 
+@@ -129,6 +139,16 @@ def __new__(cls, *args):
+             tp = Expr.__new__(cls, *new_args)
+             return c_part * tp
+ 
++    def __pow__(self, other, mod=None):
++        if mod is not None:
++            raise ValueError(
++                'The third argument to __pow__ is not supported for TensorProduct.')
++        exp = sympify(other)
++        if (exp.is_Integer and exp.is_nonnegative
++                and all(_is_square_matrix(arg) for arg in self.args)):
++            return TensorProduct(*[arg**exp for arg in self.args])
++        return Expr.__pow__(self, exp)
++
+     @classmethod
+     def flatten(cls, args):
+         # TODO: disallow nested TensorProducts.
+@@ -349,9 +369,9 @@ def tensor_product_simp(e, **hints):
+     """Try to simplify and combine TensorProducts.
+ 
+     In general this will try to pull expressions inside of ``TensorProducts``.
+-    It currently only works for relatively simple cases where the products have
+-    only scalars, raw ``TensorProducts``, not ``Add``, ``Pow``, ``Commutators``
+-    of ``TensorProducts``. It is best to see what it does by showing examples.
++    It currently focuses on simplifying products of raw ``TensorProducts`` and
++    powers of ``TensorProducts``. It is best to see what it does by showing
++    examples.
+ 
+     Examples
+     ========
+@@ -376,13 +396,20 @@ def tensor_product_simp(e, **hints):
+     commutators and anticommutators as well:
+ 
+     >>> tensor_product_simp(e**2)
+-    (A*C)x(B*D)**2
++    ((A*C)**2)x((B*D)**2)
+ 
+     """
+     if isinstance(e, Add):
+         return Add(*[tensor_product_simp(arg) for arg in e.args])
++    elif isinstance(e, TensorProduct):
++        return TensorProduct(*[tensor_product_simp(arg) for arg in e.args])
+     elif isinstance(e, Pow):
+-        return tensor_product_simp(e.base) ** e.exp
++        base = tensor_product_simp(e.base)
++        if (isinstance(base, TensorProduct) and e.exp.is_Integer
++                and e.exp.is_nonnegative
++                and all(_is_square_matrix(arg) for arg in base.args)):
++            return TensorProduct(*[arg**e.exp for arg in base.args])
++        return base ** e.exp
+     elif isinstance(e, Mul):
+         return tensor_product_simp_Mul(e)
+     elif isinstance(e, Commutator):

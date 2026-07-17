@@ -1,0 +1,141 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index cc65c043ab..a266b49888 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -210,6 +210,13 @@ def sys_path_directories():
+             yield resolved_path
+ 
+ 
++def get_xoptions_arguments():
++    arguments = []
++    for option, value in getattr(sys, '_xoptions', {}).items():
++        arguments.extend(('-X', option if value is True else '%s=%s' % (option, value)))
++    return arguments
++
++
+ def get_child_arguments():
+     """
+     Return the executable. This contains a workaround for Windows if the
+@@ -219,7 +226,9 @@ def get_child_arguments():
+     import __main__
+     py_script = Path(sys.argv[0])
+ 
+-    args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions]
++    warnoptions = ['-W%s' % o for o in sys.warnoptions]
++    xoptions = get_xoptions_arguments()
++    args = [sys.executable] + warnoptions + xoptions
+     # __spec__ is set when the server was started with the `-m` option,
+     # see https://docs.python.org/3/reference/import.html#main-spec
+     # __spec__ may not exist, e.g. when running in a Conda env.
+@@ -237,7 +246,7 @@ def get_child_arguments():
+         exe_entrypoint = py_script.with_suffix('.exe')
+         if exe_entrypoint.exists():
+             # Should be executed directly, ignoring sys.executable.
+-            return [exe_entrypoint, *sys.argv[1:]]
++            return [exe_entrypoint, *xoptions, *sys.argv[1:]]
+         script_entrypoint = py_script.with_name('%s-script.py' % py_script.name)
+         if script_entrypoint.exists():
+             # Should be executed as usual.
+diff --git a/tests/utils_tests/test_autoreload.py b/tests/utils_tests/test_autoreload.py
+index 7c28a9d4d0..48ec518791 100644
+--- a/tests/utils_tests/test_autoreload.py
++++ b/tests/utils_tests/test_autoreload.py
+@@ -167,6 +167,7 @@ class TestIterModulesAndFiles(SimpleTestCase):
+ 
+ 
+ class TestChildArguments(SimpleTestCase):
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch.dict(sys.modules, {'__main__': django.__main__})
+     @mock.patch('sys.argv', [django.__main__.__file__, 'runserver'])
+     @mock.patch('sys.warnoptions', [])
+@@ -176,6 +177,7 @@ class TestChildArguments(SimpleTestCase):
+             [sys.executable, '-m', 'django', 'runserver']
+         )
+ 
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch.dict(sys.modules, {'__main__': test_main})
+     @mock.patch('sys.argv', [test_main.__file__, 'runserver'])
+     @mock.patch('sys.warnoptions', [])
+@@ -185,6 +187,7 @@ class TestChildArguments(SimpleTestCase):
+             [sys.executable, '-m', 'utils_tests.test_module', 'runserver'],
+         )
+ 
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch.dict(sys.modules, {'__main__': test_main_module})
+     @mock.patch('sys.argv', [test_main.__file__, 'runserver'])
+     @mock.patch('sys.warnoptions', [])
+@@ -194,6 +197,7 @@ class TestChildArguments(SimpleTestCase):
+             [sys.executable, '-m', 'utils_tests.test_module.main_module', 'runserver'],
+         )
+ 
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch('__main__.__spec__', None)
+     @mock.patch('sys.argv', [__file__, 'runserver'])
+     @mock.patch('sys.warnoptions', ['error'])
+@@ -203,6 +207,29 @@ class TestChildArguments(SimpleTestCase):
+             [sys.executable, '-Werror', __file__, 'runserver']
+         )
+ 
++    @mock.patch('__main__.__spec__', None)
++    @mock.patch('sys.argv', [__file__, 'runserver'])
++    @mock.patch('sys.warnoptions', [])
++    def test_xoptions(self):
++        if not hasattr(sys, '_xoptions'):
++            self.skipTest('sys._xoptions is CPython-specific')
++        with mock.patch.dict(
++            sys._xoptions,
++            {'utf8': True, 'importtime': True, 'pycache_prefix': '/tmp'},
++            clear=True,
++        ):
++            self.assertEqual(
++                autoreload.get_child_arguments(),
++                [
++                    sys.executable,
++                    '-X', 'utf8',
++                    '-X', 'importtime',
++                    '-X', 'pycache_prefix=/tmp',
++                    __file__, 'runserver',
++                ]
++            )
++
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch('__main__.__spec__', None)
+     @mock.patch('sys.warnoptions', [])
+     def test_exe_fallback(self):
+@@ -215,6 +242,20 @@ class TestChildArguments(SimpleTestCase):
+                     [exe_path, 'runserver']
+                 )
+ 
++    def test_exe_fallback_includes_xoptions(self):
++        if not hasattr(sys, '_xoptions'):
++            self.skipTest('sys._xoptions is CPython-specific')
++        with tempfile.TemporaryDirectory() as tmpdir:
++            exe_path = Path(tmpdir) / 'django-admin.exe'
++            exe_path.touch()
++            with mock.patch('sys.argv', [exe_path.with_suffix(''), 'runserver']):
++                with mock.patch.dict(sys._xoptions, {'utf8': True}, clear=True):
++                    self.assertEqual(
++                        autoreload.get_child_arguments(),
++                        [exe_path, '-X', 'utf8', 'runserver']
++                    )
++
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch('__main__.__spec__', None)
+     @mock.patch('sys.warnoptions', [])
+     def test_entrypoint_fallback(self):
+@@ -227,6 +268,7 @@ class TestChildArguments(SimpleTestCase):
+                     [sys.executable, script_path, 'runserver']
+                 )
+ 
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch('__main__.__spec__', None)
+     @mock.patch('sys.argv', ['does-not-exist', 'runserver'])
+     @mock.patch('sys.warnoptions', [])
+@@ -235,6 +277,7 @@ class TestChildArguments(SimpleTestCase):
+         with self.assertRaisesMessage(RuntimeError, msg):
+             autoreload.get_child_arguments()
+ 
++    @mock.patch('sys._xoptions', {}, create=True)
+     @mock.patch('sys.argv', [__file__, 'runserver'])
+     @mock.patch('sys.warnoptions', [])
+     def test_module_no_spec(self):

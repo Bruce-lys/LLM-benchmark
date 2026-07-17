@@ -1,0 +1,105 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 59a5d6abbb..5c1994e2f3 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1831,6 +1831,7 @@ class SQLUpdateCompiler(SQLCompiler):
+         count = self.query.count_active_tables()
+         if not self.query.related_updates and count == 1:
+             return
++
+         query = self.query.chain(klass=Query)
+         query.select_related = False
+         query.clear_ordering(force=True)
+@@ -1839,6 +1840,39 @@ class SQLUpdateCompiler(SQLCompiler):
+         query.add_fields([query.get_meta().pk.name])
+         super().pre_sql_setup()
+ 
++        related_queries = {}
++        if self.query.related_updates:
++            # Determine which related models' primary keys can be obtained from
++            # the main idents. For multi-table inheritance, the child primary
++            # key is the parent link to the first concrete parent, so primary
++            # keys along that inheritance chain are equivalent to the child pk.
++            equivalent_pks = set()
++            child_pk = query.get_meta().pk
++            if child_pk.remote_field and getattr(
++                child_pk.remote_field, "parent_link", False
++            ):
++                current = child_pk.remote_field.model
++                while current:
++                    equivalent_pks.add(current)
++                    current_pk = current._meta.pk
++                    if current_pk.auto_created and getattr(
++                        current_pk.remote_field, "parent_link", False
++                    ):
++                        current = current_pk.remote_field.model
++                    else:
++                        break
++            for model in self.query.related_updates:
++                if model in equivalent_pks:
++                    continue
++                related_query = self.query.chain(klass=Query)
++                related_query.select_related = False
++                related_query.clear_ordering(force=True)
++                related_query.extra = {}
++                related_query.select = []
++                related_query.add_fields([model._meta.pk.name])
++                super().pre_sql_setup()
++                related_queries[model] = related_query
++
+         must_pre_select = (
+             count > 1 and not self.connection.features.update_can_self_select
+         )
+@@ -1854,7 +1888,21 @@ class SQLUpdateCompiler(SQLCompiler):
+             for rows in query.get_compiler(self.using).execute_sql(MULTI):
+                 idents.extend(r[0] for r in rows)
+             self.query.add_filter("pk__in", idents)
+-            self.query.related_ids = idents
++            if self.query.related_updates:
++                related_ids = {}
++                for model in self.query.related_updates:
++                    if model in related_queries:
++                        ids = []
++                        for rows in related_queries[model].get_compiler(
++                            self.using
++                        ).execute_sql(MULTI):
++                            ids.extend(r[0] for r in rows)
++                        related_ids[model] = ids
++                    else:
++                        related_ids[model] = idents
++                self.query.related_ids = related_ids
++            else:
++                self.query.related_ids = idents
+         else:
+             # The fast path. Filters and updates in one query.
+             self.query.add_filter("pk__in", query)
+diff --git a/django/db/models/sql/subqueries.py b/django/db/models/sql/subqueries.py
+index 04063f73bc..b3359d299e 100644
+--- a/django/db/models/sql/subqueries.py
++++ b/django/db/models/sql/subqueries.py
+@@ -66,6 +66,10 @@ class UpdateQuery(Query):
+     def clone(self):
+         obj = super().clone()
+         obj.related_updates = self.related_updates.copy()
++        if self.related_ids is not None:
++            obj.related_ids = self.related_ids.copy()
++        else:
++            obj.related_ids = None
+         return obj
+ 
+     def update_batch(self, pk_list, values, using):
+@@ -134,7 +138,13 @@ class UpdateQuery(Query):
+             query = UpdateQuery(model)
+             query.values = values
+             if self.related_ids is not None:
+-                query.add_filter("pk__in", self.related_ids)
++                related_ids = (
++                    self.related_ids.get(model)
++                    if isinstance(self.related_ids, dict)
++                    else self.related_ids
++                )
++                if related_ids is not None:
++                    query.add_filter("pk__in", related_ids)
+             result.append(query)
+         return result
+ 

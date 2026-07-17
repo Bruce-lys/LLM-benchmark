@@ -1,0 +1,48 @@
+diff --git a/sympy/simplify/simplify.py b/sympy/simplify/simplify.py
+index c6b511f20..62103afc5 100644
+--- a/sympy/simplify/simplify.py
++++ b/sympy/simplify/simplify.py
+@@ -191,6 +191,21 @@ def _separatevars_dict(expr, symbols):
+     return ret
+ 
+ 
++_POSITIVE_COMPATIBLE_ASSUMPTIONS = (
++    'finite', 'integer', 'rational', 'prime', 'even', 'odd',
++    'irrational', 'composite', 'algebraic', 'transcendental', 'noninteger'
++)
++
++
++def _positive_dummy(s):
++    assumptions = {'positive': True}
++    for assumption in _POSITIVE_COMPATIBLE_ASSUMPTIONS:
++        value = getattr(s, 'is_' + assumption)
++        if value:
++            assumptions[assumption] = value
++    return Dummy(s.name, **assumptions)
++
++
+ def _is_sum_surds(p):
+     args = p.args if p.is_Add else [p]
+     for y in args:
+@@ -205,9 +220,9 @@ def posify(eq):
+     symbols.
+ 
+     Any symbol that has positive=None will be replaced with a positive dummy
+-    symbol having the same name. This replacement will allow more symbolic
+-    processing of expressions, especially those involving powers and
+-    logarithms.
++    symbol having the same name and compatible assumptions. This replacement
++    will allow more symbolic processing of expressions, especially those
++    involving powers and logarithms.
+ 
+     A dictionary that can be sent to subs to restore eq to its original
+     symbols is also returned.
+@@ -251,7 +266,7 @@ def posify(eq):
+             eq[i] = e.subs(reps)
+         return f(eq), {r: s for s, r in reps.items()}
+ 
+-    reps = {s: Dummy(s.name, positive=True)
++    reps = {s: _positive_dummy(s)
+                  for s in eq.free_symbols if s.is_positive is None}
+     eq = eq.subs(reps)
+     return eq, {r: s for s, r in reps.items()}

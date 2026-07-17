@@ -1,0 +1,30 @@
+diff --git a/sphinx/builders/gettext.py b/sphinx/builders/gettext.py
+index e8bc547b7..a791f13c4 100644
+--- a/sphinx/builders/gettext.py
++++ b/sphinx/builders/gettext.py
+@@ -45,6 +45,16 @@ class Catalog:
+         # msgid -> file, line, uid
+         self.metadata: Dict[str, List[Tuple[str, int, str]]] = OrderedDict()
+ 
++    @staticmethod
++    def _unique_locations(locations: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
++        seen: Set[Tuple[str, int]] = set()
++        unique_locations: List[Tuple[str, int]] = []
++        for location in locations:
++            if location not in seen:
++                seen.add(location)
++                unique_locations.append(location)
++        return unique_locations
++
+     def add(self, msg: str, origin: Union[Element, "MsgOrigin"]) -> None:
+         if not hasattr(origin, 'uid'):
+             # Nodes that are replicated like todo don't have a uid,
+@@ -59,7 +69,7 @@ class Catalog:
+         for message in self.messages:
+             positions = [(source, line) for source, line, uuid in self.metadata[message]]
+             uuids = [uuid for source, line, uuid in self.metadata[message]]
+-            yield Message(message, positions, uuids)
++            yield Message(message, self._unique_locations(positions), uuids)
+ 
+ 
+ class MsgOrigin:

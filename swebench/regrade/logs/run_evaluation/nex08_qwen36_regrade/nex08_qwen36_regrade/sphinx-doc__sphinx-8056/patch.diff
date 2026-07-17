@@ -1,0 +1,54 @@
+diff --git a/sphinx/ext/napoleon/docstring.py b/sphinx/ext/napoleon/docstring.py
+index b3daa06f1..c704de70e 100644
+--- a/sphinx/ext/napoleon/docstring.py
++++ b/sphinx/ext/napoleon/docstring.py
+@@ -386,6 +386,27 @@ class GoogleDocstring:
+         else:
+             return [prefix]
+ 
++    def _split_docutils_param_names(self, name: str) -> List[str]:
++        names = []
++        current = []
++        in_backtick = False
++        for char in name:
++            if char == '`':
++                in_backtick = not in_backtick
++                current.append(char)
++            elif char == ',' and not in_backtick:
++                param_name = ''.join(current).strip()
++                if param_name:
++                    names.append(param_name)
++                current = []
++            else:
++                current.append(char)
++
++        param_name = ''.join(current).strip()
++        if param_name:
++            names.append(param_name)
++        return names or ['']
++
+     def _format_docutils_params(self, fields: List[Tuple[str, str, List[str]]],
+                                 field_role: str = 'param', type_role: str = 'type'
+                                 ) -> List[str]:
+@@ -394,13 +415,15 @@ class GoogleDocstring:
+             _desc = self._strip_empty(_desc)
+             if any(_desc):
+                 _desc = self._fix_field_desc(_desc)
+-                field = ':%s %s: ' % (field_role, _name)
+-                lines.extend(self._format_block(field, _desc))
+-            else:
+-                lines.append(':%s %s:' % (field_role, _name))
++            for _param_name in self._split_docutils_param_names(_name):
++                if any(_desc):
++                    field = ':%s %s: ' % (field_role, _param_name)
++                    lines.extend(self._format_block(field, _desc))
++                else:
++                    lines.append(':%s %s:' % (field_role, _param_name))
+ 
+-            if _type:
+-                lines.append(':%s %s: %s' % (type_role, _name, _type))
++                if _type:
++                    lines.append(':%s %s: %s' % (type_role, _param_name, _type))
+         return lines + ['']
+ 
+     def _format_field(self, _name: str, _type: str, _desc: List[str]) -> List[str]:

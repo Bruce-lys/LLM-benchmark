@@ -1,0 +1,48 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..e4302fca 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -378,7 +378,15 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+-            labels = axis.major.formatter.format_ticks(locs)
++            formatter = axis.major.formatter
++            if isinstance(formatter, ScalarFormatter):
++                # Legends need complete numeric values; ScalarFormatter may
++                # otherwise use offset/scientific scaling that is only shown
++                # on an axis.
++                formatter = copy(formatter)
++                formatter.useOffset = False
++                formatter.set_scientific(False)
++            labels = formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/seaborn/utils.py b/seaborn/utils.py
+index 2407853c..af6da0af 100644
+--- a/seaborn/utils.py
++++ b/seaborn/utils.py
+@@ -695,11 +695,18 @@ def locator_to_legend_entries(locator, limits, dtype):
+         def get_view_interval(self):
+             return limits
+ 
+-    if isinstance(locator, mpl.ticker.LogLocator):
+-        formatter = mpl.ticker.LogFormatter()
+-    else:
+-        formatter = mpl.ticker.ScalarFormatter()
++    formatter = (
++        mpl.ticker.LogFormatter()
++        if isinstance(locator, mpl.ticker.LogLocator)
++        else mpl.ticker.ScalarFormatter()
++    )
+     formatter.axis = dummy_axis()
++    if isinstance(formatter, mpl.ticker.ScalarFormatter):
++        # Legends need complete numeric values; ScalarFormatter may
++        # otherwise use offset/scientific scaling that is only shown
++        # on an axis.
++        formatter.useOffset = False
++        formatter.set_scientific(False)
+ 
+     # TODO: The following two lines should be replaced
+     # once pinned matplotlib>=3.1.0 with:

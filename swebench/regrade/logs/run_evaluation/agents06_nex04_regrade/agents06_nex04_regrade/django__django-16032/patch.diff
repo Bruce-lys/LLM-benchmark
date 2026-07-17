@@ -1,0 +1,18 @@
+diff --git a/django/db/models/fields/related_lookups.py b/django/db/models/fields/related_lookups.py
+index 1a845a1f7f..2f9166e06d 100644
+--- a/django/db/models/fields/related_lookups.py
++++ b/django/db/models/fields/related_lookups.py
+@@ -90,9 +90,10 @@ class RelatedIn(In):
+                         -1
+                     ]
+                     self.rhs = [target_field.get_prep_value(v) for v in self.rhs]
+-            elif not getattr(self.rhs, "has_select_fields", True) and not getattr(
+-                self.lhs.field.target_field, "primary_key", False
+-            ):
++            # The subquery used for __in must only select the target field.
++            # Explicit selections (values()/extra()) are preserved; otherwise
++            # clear default selections and annotations to avoid extra columns.
++            elif not (self.rhs.select or self.rhs.extra_select_mask):
+                 self.rhs.clear_select_clause()
+                 if (
+                     getattr(self.lhs.output_field, "primary_key", False)

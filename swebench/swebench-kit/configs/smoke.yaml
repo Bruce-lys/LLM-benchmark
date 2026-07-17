@@ -1,0 +1,19 @@
+# 1 题端到端冒烟（维护者自检用）：验证 serve -> gen -> grade -> RESULT 全链路
+# 选 verified 第 1 题 astropy__astropy-12907（评分镜像本机已缓存，最快出结果）
+run:
+  tag: smoke
+  dataset: verified
+  slice: "0:1"
+  workers: 1
+model:
+  path: /xttest2/models/Qwen3.6-35B-A3B
+  served_name: Qwen3.6-35B-A3B
+agent:
+  step_limit: 100
+serve:
+  gpus: 1                 # 自动挑 1 张空闲卡
+  port: 8301
+  endpoint: http://localhost:8301/v1
+  extra_args: ["--limit-mm-per-prompt", '{"image":0,"video":0}']
+grade:
+  max_workers: 4

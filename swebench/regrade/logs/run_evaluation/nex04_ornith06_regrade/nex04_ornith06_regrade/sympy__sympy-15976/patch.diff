@@ -1,0 +1,69 @@
+diff --git a/sympy/printing/mathml.py b/sympy/printing/mathml.py
+index 3f8b8d49e..6a6c7c18e 100644
+--- a/sympy/printing/mathml.py
++++ b/sympy/printing/mathml.py
+@@ -369,24 +369,25 @@ def translate(s):
+         if len(supers) == 0:
+             if len(subs) == 0:
+                 ci.appendChild(self.dom.createTextNode(name))
++                x = ci
+             else:
+                 msub = self.dom.createElement('mml:msub')
+                 msub.appendChild(mname)
+                 msub.appendChild(join(subs))
+-                ci.appendChild(msub)
++                x = msub
+         else:
+             if len(subs) == 0:
+                 msup = self.dom.createElement('mml:msup')
+                 msup.appendChild(mname)
+                 msup.appendChild(join(supers))
+-                ci.appendChild(msup)
++                x = msup
+             else:
+                 msubsup = self.dom.createElement('mml:msubsup')
+                 msubsup.appendChild(mname)
+                 msubsup.appendChild(join(subs))
+                 msubsup.appendChild(join(supers))
+-                ci.appendChild(msubsup)
+-        return ci
++                x = msubsup
++        return x
+ 
+     _print_MatrixSymbol = _print_Symbol
+     _print_RandomSymbol = _print_Symbol
+@@ -782,24 +783,30 @@ def translate(s):
+         if len(supers) == 0:
+             if len(subs) == 0:
+                 x.appendChild(self.dom.createTextNode(name))
++                return x
+             else:
+                 msub = self.dom.createElement('msub')
+                 msub.appendChild(mname)
+                 msub.appendChild(join(subs))
+-                x.appendChild(msub)
++                if style == 'bold':
++                    msub.setAttribute('mathvariant', 'bold')
++                return msub
+         else:
+             if len(subs) == 0:
+                 msup = self.dom.createElement('msup')
+                 msup.appendChild(mname)
+                 msup.appendChild(join(supers))
+-                x.appendChild(msup)
++                if style == 'bold':
++                    msup.setAttribute('mathvariant', 'bold')
++                return msup
+             else:
+                 msubsup = self.dom.createElement('msubsup')
+                 msubsup.appendChild(mname)
+                 msubsup.appendChild(join(subs))
+                 msubsup.appendChild(join(supers))
+-                x.appendChild(msubsup)
+-        return x
++                if style == 'bold':
++                    msubsup.setAttribute('mathvariant', 'bold')
++                return msubsup
+ 
+     def _print_MatrixSymbol(self, sym):
+         return self._print_Symbol(sym, style=self._settings['mat_symbol_style'])

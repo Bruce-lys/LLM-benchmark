@@ -1,0 +1,57 @@
+diff --git a/django/contrib/admin/filters.py b/django/contrib/admin/filters.py
+index d65e01d5e2..02e84208bf 100644
+--- a/django/contrib/admin/filters.py
++++ b/django/contrib/admin/filters.py
+@@ -162,6 +162,7 @@ class FieldListFilter(ListFilter):
+ class RelatedFieldListFilter(FieldListFilter):
+     def __init__(self, field, request, params, model, model_admin, field_path):
+         other_model = get_model_from_relation(field)
++        self.other_model = other_model
+         self.lookup_kwarg = '%s__%s__exact' % (field_path, field.target_field.name)
+         self.lookup_kwarg_isnull = '%s__isnull' % field_path
+         self.lookup_val = params.get(self.lookup_kwarg)
+@@ -193,12 +194,24 @@ class RelatedFieldListFilter(FieldListFilter):
+     def expected_parameters(self):
+         return [self.lookup_kwarg, self.lookup_kwarg_isnull]
+ 
+-    def field_choices(self, field, request, model_admin):
+-        ordering = ()
+-        related_admin = model_admin.admin_site._registry.get(field.remote_field.model)
++    def _get_related_model_ordering(self, field, request, model_admin):
++        related_model = field.remote_field.model
++        related_admin = model_admin.admin_site._registry.get(related_model)
+         if related_admin is not None:
+             ordering = related_admin.get_ordering(request)
+-        return field.get_choices(include_blank=False, ordering=ordering)
++        else:
++            ordering = ()
++        if not ordering:
++            ordering = self.other_model._meta.ordering or ()
++        return ordering
++
++    def field_choices(self, field, request, model_admin):
++        return field.get_choices(
++            include_blank=False,
++            ordering=self._get_related_model_ordering(
++                field, request, model_admin
++            ),
++        )
+ 
+     def choices(self, changelist):
+         yield {
+@@ -418,5 +431,13 @@ FieldListFilter.register(lambda f: True, AllValuesFieldListFilter)
+ 
+ class RelatedOnlyFieldListFilter(RelatedFieldListFilter):
+     def field_choices(self, field, request, model_admin):
+-        pk_qs = model_admin.get_queryset(request).distinct().values_list('%s__pk' % self.field_path, flat=True)
+-        return field.get_choices(include_blank=False, limit_choices_to={'pk__in': pk_qs})
++        pk_qs = model_admin.get_queryset(request).distinct().values_list(
++            '%s__pk' % self.field_path, flat=True
++        )
++        return field.get_choices(
++            include_blank=False,
++            limit_choices_to={'pk__in': pk_qs},
++            ordering=self._get_related_model_ordering(
++                field, request, model_admin
++            ),
++        )

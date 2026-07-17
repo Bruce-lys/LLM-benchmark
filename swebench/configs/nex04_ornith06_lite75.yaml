@@ -1,0 +1,25 @@
+# Nex-0.4_Ornith-0.6 合并模型 / lite75 / t1.0（对齐 07-03 合并系对比表口径）
+run:
+  tag: aiden_nex04ornith06_lite75_t10
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 12               # 与 base verified 大跑共存, 收着点
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Nex-0.4_Ornith-0.6
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.101:8002/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 4            # 给 base verified 的评分留余量
+  namespace: swebench

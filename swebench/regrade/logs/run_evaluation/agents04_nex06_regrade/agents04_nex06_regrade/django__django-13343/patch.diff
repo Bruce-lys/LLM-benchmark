@@ -1,0 +1,24 @@
+diff --git a/django/db/models/fields/files.py b/django/db/models/fields/files.py
+index e10a5bb6d9..84802e588e 100644
+--- a/django/db/models/fields/files.py
++++ b/django/db/models/fields/files.py
+@@ -228,6 +228,8 @@ class FileField(Field):
+         self._primary_key_set_explicitly = 'primary_key' in kwargs
+ 
+         self.storage = storage or default_storage
++        # Preserve callable storages so deconstruction can serialize the original callable.
++        self._storage = storage
+         if callable(self.storage):
+             self.storage = self.storage()
+             if not isinstance(self.storage, Storage):
+@@ -278,7 +280,9 @@ class FileField(Field):
+         if kwargs.get("max_length") == 100:
+             del kwargs["max_length"]
+         kwargs['upload_to'] = self.upload_to
+-        if self.storage is not default_storage:
++        if callable(self._storage):
++            kwargs['storage'] = self._storage
++        elif self.storage is not default_storage:
+             kwargs['storage'] = self.storage
+         return name, path, args, kwargs
+ 

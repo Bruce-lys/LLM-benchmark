@@ -1,0 +1,77 @@
+diff --git a/django/core/management/base.py b/django/core/management/base.py
+index abc6f79a15..dcc6999e20 100644
+--- a/django/core/management/base.py
++++ b/django/core/management/base.py
+@@ -5,7 +5,11 @@ be executed through ``django-admin`` or ``manage.py``).
+ import argparse
+ import os
+ import sys
+-from argparse import ArgumentParser, HelpFormatter
++from argparse import (
++    ArgumentParser,
++    HelpFormatter,
++    _SubParsersAction,
++)
+ from io import TextIOBase
+ 
+ import django
+@@ -65,6 +69,31 @@ class CommandParser(ArgumentParser):
+             self.error(self.missing_args_message)
+         return super().parse_args(args, namespace)
+ 
++    def add_subparsers(self, **kwargs):
++        parser_class = kwargs.pop("parser_class", type(self))
++        action_class = kwargs.pop("action", CommandParserSubParsersAction)
++        uses_command_parser = (
++            isinstance(parser_class, type) and issubclass(parser_class, CommandParser)
++        )
++        uses_custom_action = (
++            action_class is CommandParserSubParsersAction
++            or (
++                isinstance(action_class, type)
++                and issubclass(action_class, CommandParserSubParsersAction)
++            )
++        )
++        if uses_custom_action or uses_command_parser:
++            if not uses_custom_action:
++                action_class = CommandParserSubParsersAction
++            kwargs.setdefault("missing_args_message", self.missing_args_message)
++            kwargs.setdefault("called_from_command_line", self.called_from_command_line)
++            return super().add_subparsers(
++                action=action_class, parser_class=parser_class, **kwargs
++            )
++        return super().add_subparsers(
++            action=action_class, parser_class=parser_class, **kwargs
++        )
++
+     def error(self, message):
+         if self.called_from_command_line:
+             super().error(message)
+@@ -72,6 +101,27 @@ class CommandParser(ArgumentParser):
+             raise CommandError("Error: %s" % message)
+ 
+ 
++class CommandParserSubParsersAction(_SubParsersAction):
++    """
++    Customized _SubParsersAction to propagate CommandParser error formatting
++    attributes to subparsers.
++    """
++
++    def __init__(self, *args, parser_class=ArgumentParser, **kwargs):
++        self.missing_args_message = kwargs.pop("missing_args_message", None)
++        self.called_from_command_line = kwargs.pop("called_from_command_line", None)
++        super().__init__(*args, parser_class=parser_class, **kwargs)
++        self._parser_class_is_command = (
++            isinstance(parser_class, type) and issubclass(parser_class, CommandParser)
++        )
++
++    def add_parser(self, name, **kwargs):
++        if self._parser_class_is_command:
++            kwargs.setdefault("missing_args_message", self.missing_args_message)
++            kwargs.setdefault("called_from_command_line", self.called_from_command_line)
++        return super().add_parser(name, **kwargs)
++
++
+ def handle_default_options(options):
+     """
+     Include any default options that all commands should accept here

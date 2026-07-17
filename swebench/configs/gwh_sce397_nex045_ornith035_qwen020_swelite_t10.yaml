@@ -1,0 +1,29 @@
+run:
+  tag: gwh_sce397_nex045_ornith035_qwen020_swelite_t10
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: swelite
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: exp_sce397_Nex_045_Ornith_035_Qwen35_020
+
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.46:8012/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

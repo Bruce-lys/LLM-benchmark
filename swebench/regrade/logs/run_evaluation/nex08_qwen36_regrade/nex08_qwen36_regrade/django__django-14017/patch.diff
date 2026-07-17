@@ -1,0 +1,74 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index ffc3a7fda5..5d6f296b97 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -96,6 +96,9 @@ class Combinable:
+             "Use .bitand() and .bitor() for bitwise logical operations."
+         )
+ 
++    def __rand__(self, other):
++        return self.__and__(other)
++
+     def bitand(self, other):
+         return self._combine(other, self.BITAND, False)
+ 
+@@ -115,6 +118,9 @@ class Combinable:
+             "Use .bitand() and .bitor() for bitwise logical operations."
+         )
+ 
++    def __ror__(self, other):
++        return self.__or__(other)
++
+     def bitor(self, other):
+         return self._combine(other, self.BITOR, False)
+ 
+@@ -136,15 +142,7 @@ class Combinable:
+     def __rpow__(self, other):
+         return self._combine(other, self.POW, True)
+ 
+-    def __rand__(self, other):
+-        raise NotImplementedError(
+-            "Use .bitand() and .bitor() for bitwise logical operations."
+-        )
+ 
+-    def __ror__(self, other):
+-        raise NotImplementedError(
+-            "Use .bitand() and .bitor() for bitwise logical operations."
+-        )
+ 
+ 
+ @deconstructible
+diff --git a/django/db/models/query_utils.py b/django/db/models/query_utils.py
+index c957ffa564..cde9a45300 100644
+--- a/django/db/models/query_utils.py
++++ b/django/db/models/query_utils.py
+@@ -59,9 +59,29 @@ class Q(tree.Node):
+         return obj
+ 
+     def __or__(self, other):
++        if not isinstance(other, Q):
++            if not (hasattr(other, 'resolve_expression') and getattr(other, 'conditional', False)):
++                raise TypeError(other)
++            reverse_op = getattr(other, '__ror__', None)
++            if reverse_op is None:
++                raise TypeError(other)
++            result = reverse_op(self)
++            if result is NotImplemented:
++                raise TypeError(other)
++            return result
+         return self._combine(other, self.OR)
+ 
+     def __and__(self, other):
++        if not isinstance(other, Q):
++            if not (hasattr(other, 'resolve_expression') and getattr(other, 'conditional', False)):
++                raise TypeError(other)
++            reverse_op = getattr(other, '__rand__', None)
++            if reverse_op is None:
++                raise TypeError(other)
++            result = reverse_op(self)
++            if result is NotImplemented:
++                raise TypeError(other)
++            return result
+         return self._combine(other, self.AND)
+ 
+     def __invert__(self):

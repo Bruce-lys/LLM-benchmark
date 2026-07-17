@@ -1,0 +1,90 @@
+# ==============================================================================
+# swebench-kit 配置模板（/xttest2/swebench-kit）
+#
+# 用法：把本文件复制到【你自己的目录】改好后运行——不要在 swebench-kit 里改：
+#     cp /xttest2/swebench-kit/config.example.yaml /xttest2/<你>/my_eval.yaml
+#     cd /xttest2/swebench-kit && ./run.sh /xttest2/<你>/my_eval.yaml --detach
+#
+# 只有 run.tag、run.output_root、model.* 必须改，其余都有合理默认值。
+# 每个字段的默认值见 kit.py 的 DEFAULTS；此处未写的字段自动用默认。
+# ==============================================================================
+
+run:
+  tag: <你的用户名>_qwen36_lite75     # 【必改】结果目录名 + 评分容器名后缀。
+                                      # 必须以你的用户名开头且全局唯一：撞 tag 会
+                                      # 互删对方正在评分的 docker 容器（真发生过）。
+                                      # 换实验必须换新 tag——同 tag 目录里的旧轨迹
+                                      # 会被一起计入评分，污染分母（也真发生过）。
+  output_root: /xttest2/<你>/swebench_runs   # 【必改】一切产物（轨迹/评分/RESULT/日志）
+                                             # 写到这里，不要落在共享目录里。
+  dataset: lite75             # verified = 官方全量 500 题
+                              # swelite  = 自制 100 题子集（65 难 + 35 易，偏难）
+                              # lite75   = 15 难 + 45 高成功率 + 15 易（推荐，区分度好；
+                              #            强模型基线约 73-81%，中档模型 40-70%）
+                              # 或者写一个 SWE-bench 格式 jsonl 的路径（自备数据集）
+  workers: 64                 # 并行题数。单模型 2 卡 TP2 时 64 已验证可跑满
+  slice: null                 # 例 "0:5" = 只跑前 5 题（快速试跑用）
+  filter: null                # 额外的 instance-id 正则过滤（dataset=verified 时可用；
+                              # swelite/lite75 本身就是过滤器，不能再叠加）
+  max_passes: 3               # 断点续跑轮数：每轮结束后缺轨迹的题自动重跑
+  retry_empty: true           # 复测：空 patch 的题再生成一遍（≈空题上的 best-of-2，
+                              # 全量约 +3pp）。2026-07-03 起默认开。
+                              # 【口径】对比实验两侧必须一致；RESULT.txt 会印 on/off
+
+model:
+  path: /xttest2/models/Qwen3.6-35B-A3B   # 【必改】权重目录（serve.manage=true 时必填）
+  served_name: Qwen3.6-35B-A3B            # 【必改】endpoint 上的模型 id；连别人服务时
+                                          # 必须与对方实际服务的模型一致，kit 会校验
+
+sampling:                     # ——【口径核心】对比实验两侧必须完全一致——
+  temperature: 0.85            # 【本机 106 默认口径 = 0.85】注意: 团队 full-500 历史锚点是
+                              # 旧模板曾是 0.85，2026-07-02 夜里的一批 lite75 分数是
+                              # 0.85 口径，混比时注意 RESULT.txt 里的 temp 戳）
+  top_p: 0.95
+  max_tokens: null            # 单次回复输出上限；null = 服务端默认
+  top_k: null                 # 以下为 vLLM 专有参数，经 extra_body 透传；null=服务端默认
+  min_p: null
+  repetition_penalty: null
+  extra: {}                   # 其他任意请求体参数，如 {seed: 1000} 固定种子复测
+
+agent:
+  step_limit: 250             # 每题最大回合数。250 已验证饱和（Ornith 曾因 step100 +
+                              # 300s 超时被压到 30.6% 假分数，勿轻易调小）
+  cost_limit: null
+
+environment:
+  timeout: 1800               # docker 容器内单条命令超时（秒）。太小会把重仓库的
+                              # 测试跑成 TimeoutExpired → 空 patch（gwh 踩过 17 题）
+  pull_timeout: 600           # 镜像拉取超时（秒）
+
+serve:
+  manage: true                # true = kit 自己起 vLLM 并在结束后关闭
+                              # false = 连一个已在运行的 endpoint（见 endpoint 字段）
+  endpoint: http://localhost:8300/v1   # 【必改】端口别撞车：起服务前先 ss -ltn 查占用
+  port: 8300                  # 与 endpoint 保持一致
+  gpus: 2                     # 整数 N = 自动挑 N 张空闲卡（<2GB 占用视为空闲，推荐！
+                              # 手写卡号列表如 "6,7" 会绕过空闲检查，抢卡事故已两起）
+  tensor_parallel: auto       # auto = 卡数
+  max_model_len: 262144       # 上下文窗口。35B 系列 2 卡下 262144 已验证
+  gpu_memory_utilization: 0.90
+  max_num_seqs: 128
+  max_num_batched_tokens: 65536
+  tool_call_parser: qwen3_xml # 【关键】Qwen3.5/3.6/Ornith 必须 qwen3_xml，不是 hermes；
+                              # 用错 parser 分数会掉 10-28pp 且不报错
+  reasoning_parser: qwen3
+  extra_args: ["--limit-mm-per-prompt", '{"image":0,"video":0}']
+                              # SWE-bench 纯文本：禁用多模态，跳过 ViT 显存 profiling。
+                              # vllm20 环境 2026-07-02 升级后视觉路径损坏，没有这行
+                              # Qwen3.5/3.6 系起服务直接崩；环境修好后保留也无害
+  load_timeout: 3600          # 等待模型加载就绪的上限（秒）
+  watchdog: true              # 服务中途挂掉自动拉起
+  keep_alive: false           # true = 评测结束后不关服务（给别人共用时设 true）
+
+grade:
+  enabled: true
+  rolling: false              # 滚动评分（生成期间边跑边评）。2026-07-03 起默认关，
+                              # 需要更快出分时显式开 true（分数与关闭时完全一致）
+  dataset_jsonl: auto         # auto = 跟随 run.dataset；自备数据集目录时需显式指 jsonl
+  max_workers: 24             # 评分容器并发数
+  timeout: 1800               # 单题评分超时（秒）
+  namespace: swebench         # 从官方仓库拉预构建镜像

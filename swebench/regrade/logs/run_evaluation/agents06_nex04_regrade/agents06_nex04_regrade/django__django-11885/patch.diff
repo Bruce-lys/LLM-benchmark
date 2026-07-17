@@ -1,0 +1,52 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index ae82d26340..3dd143e629 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -1,4 +1,4 @@
+-from collections import Counter
++from collections import Counter, defaultdict
+ from itertools import chain
+ from operator import attrgetter
+ 
+@@ -257,6 +257,32 @@ class Collector:
+             **{"%s__in" % related.field.name: objs}
+         )
+ 
++    def combine_fast_deletes(self):
++        """
++        Combine fast delete querysets for the same model and database table
++        to reduce database round trips.
++        """
++        if not self.fast_deletes:
++            return
++        by_model = defaultdict(list)
++        for qs in self.fast_deletes:
++            by_model[(qs.model, qs.model._meta.db_table)].append(qs)
++        combined = []
++        for qs_list in by_model.values():
++            current = None
++            for qs in qs_list:
++                if current is None:
++                    current = qs
++                else:
++                    current = self._combine_fast_delete_qsets(current, qs)
++            combined.append(current)
++        self.fast_deletes = combined
++
++    def _combine_fast_delete_qsets(self, left, right):
++        qs = left._chain()
++        qs.query.combine(right.query, sql.OR)
++        return qs
++
+     def instances_with_model(self):
+         for model, instances in self.data.items():
+             for obj in instances:
+@@ -281,6 +307,8 @@ class Collector:
+         self.data = {model: self.data[model] for model in sorted_models}
+ 
+     def delete(self):
++        self.combine_fast_deletes()
++
+         # sort instance collections
+         for model, instances in self.data.items():
+             self.data[model] = sorted(instances, key=attrgetter("pk"))

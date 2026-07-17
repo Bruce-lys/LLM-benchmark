@@ -1,0 +1,25 @@
+# 单题端到端冒烟: GB300 serve + bench-104 容器/评分
+run:
+  tag: aiden_smoke_gb300
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  slice: "0:1"
+  workers: 1
+  retry_empty: false
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.52:8302/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 2
+  namespace: swebench

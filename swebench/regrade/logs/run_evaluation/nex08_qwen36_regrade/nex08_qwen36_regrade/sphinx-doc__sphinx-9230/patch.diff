@@ -1,0 +1,182 @@
+diff --git a/sphinx/util/docfields.py b/sphinx/util/docfields.py
+index 3a3367ebe..9551d9964 100644
+--- a/sphinx/util/docfields.py
++++ b/sphinx/util/docfields.py
+@@ -9,6 +9,7 @@
+     :license: BSD, see LICENSE for details.
+ """
+ 
++import re
+ from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Type, Union, cast
+ 
+ from docutils import nodes
+@@ -204,6 +205,109 @@ class TypedField(GroupedField):
+         return nodes.field('', fieldname, fieldbody)
+ 
+ 
++def _is_identifier(text: str) -> bool:
++    return bool(text) and re.fullmatch(r'\w+', text) is not None
++
++
++def _find_matching_delimiter(text: str, start: int, opener: str) -> int:
++    closers = {'(': ')', '[': ']', '{': '}'}
++    closer = closers[opener]
++    depth = 0
++    in_quote = None
++    for i in range(start, len(text)):
++        ch = text[i]
++        if in_quote:
++            if ch == in_quote and (i == 0 or text[i - 1] != '\\'):
++                in_quote = None
++            continue
++        if ch in ('"', "'"):
++            in_quote = ch
++            continue
++        if ch == opener:
++            depth += 1
++        elif ch == closer:
++            depth -= 1
++            if depth == 0:
++                return i
++    return -1
++
++
++def _find_type_annotation_end(text: str) -> int:
++    in_quote = None
++    for i, ch in enumerate(text):
++        if in_quote:
++            if ch == in_quote and (i == 0 or text[i - 1] != '\\'):
++                in_quote = None
++            continue
++        if ch in ('"', "'"):
++            in_quote = ch
++            continue
++        if ch in '([{':
++            end = _find_matching_delimiter(text, i, ch)
++            if end != -1:
++                return end
++    return -1
++
++
++def _split_type_and_name(text: str) -> Tuple[str, str]:
++    text = text.strip()
++    if not text:
++        return '', ''
++
++    end = _find_type_annotation_end(text)
++    if end != -1:
++        type_name = text[:end + 1].strip()
++        name = text[end + 1:].strip()
++        if type_name and name:
++            return type_name, name
++
++    # Split simple type/name pairs like "str name".
++    match = re.match(r'(\S+)\s+(.+)$', text)
++    if match:
++        type_name, name = match.groups()
++        if _is_identifier(type_name):
++            return type_name, name
++
++    return '', text
++
++
++def _split_fieldarg(fieldarg: str) -> Tuple[List[str], Dict[str, str]]:
++    specs = []
++    depth = 0
++    in_quote = None
++    start = 0
++    for i, ch in enumerate(fieldarg):
++        if in_quote:
++            if ch == in_quote and (i == 0 or fieldarg[i - 1] != '\\'):
++                in_quote = None
++            continue
++        if ch in ('"', "'"):
++            in_quote = ch
++            continue
++        if ch in '([{':
++            depth += 1
++        elif ch in ')]}':
++            depth -= 1
++        elif ch == ',' and depth == 0:
++            specs.append(fieldarg[start:i])
++            start = i + 1
++    specs.append(fieldarg[start:])
++
++    names = []
++    types = {}
++    for spec in specs:
++        type_name, name = _split_type_and_name(spec)
++        if type_name and name:
++            names.append(name)
++            types[name] = type_name
++        else:
++            names.append(spec.strip())
++
++    if not types:
++        return [fieldarg], {}
++    return names, types
++
++
+ class DocFieldTransformer:
+     """
+     Transforms field lists in "doc field" syntax into better-looking
+@@ -296,22 +400,15 @@ class DocFieldTransformer:
+                 continue
+ 
+             # also support syntax like ``:param type name:``
++            fieldargs = [fieldarg]
+             if typedesc.is_typed:
+-                try:
+-                    argtype, argname = fieldarg.split(None, 1)
+-                except ValueError:
+-                    pass
++                fieldargs, fieldtypes = _split_fieldarg(fieldarg)
++                for fieldarg, argtype in fieldtypes.items():
++                    types.setdefault(typename, {})[fieldarg] = [nodes.Text(argtype)]
++                if fieldtypes:
++                    fieldarg = fieldargs[0] if len(fieldargs) == 1 else None
+                 else:
+-                    types.setdefault(typename, {})[argname] = \
+-                        [nodes.Text(argtype)]
+-                    fieldarg = argname
+-
+-            translatable_content = nodes.inline(field_body.rawsource,
+-                                                translatable=True)
+-            translatable_content.document = field_body.parent.document
+-            translatable_content.source = field_body.parent.source
+-            translatable_content.line = field_body.parent.line
+-            translatable_content += content
++                    fieldargs = [fieldarg]
+ 
+             # grouped entries need to be collected in one entry, while others
+             # get one entry per field
+@@ -322,11 +419,25 @@ class DocFieldTransformer:
+                     groupindices[typename] = len(entries)
+                     group = (typedesc, [])
+                     entries.append(group)
+-                new_entry = typedesc.make_entry(fieldarg, [translatable_content])
+-                group[1].append(new_entry)
++                for argname in fieldargs:
++                    translatable_content = nodes.inline(field_body.rawsource,
++                                                        translatable=True)
++                    translatable_content.document = field_body.parent.document
++                    translatable_content.source = field_body.parent.source
++                    translatable_content.line = field_body.parent.line
++                    translatable_content += content
++                    new_entry = typedesc.make_entry(argname, [translatable_content])
++                    group[1].append(new_entry)
+             else:
+-                new_entry = typedesc.make_entry(fieldarg, [translatable_content])
+-                entries.append((typedesc, new_entry))
++                for argname in fieldargs:
++                    translatable_content = nodes.inline(field_body.rawsource,
++                                                        translatable=True)
++                    translatable_content.document = field_body.parent.document
++                    translatable_content.source = field_body.parent.source
++                    translatable_content.line = field_body.parent.line
++                    translatable_content += content
++                    new_entry = typedesc.make_entry(argname, [translatable_content])
++                    entries.append((typedesc, new_entry))
+ 
+         # step 2: all entries are collected, construct the new field list
+         new_list = nodes.field_list()

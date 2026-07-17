@@ -1,0 +1,84 @@
+diff --git a/xarray/core/dataarray.py b/xarray/core/dataarray.py
+index 807badde..c8b55cc7 100644
+--- a/xarray/core/dataarray.py
++++ b/xarray/core/dataarray.py
+@@ -53,7 +53,7 @@ from .coordinates import (
+ from .dataset import Dataset, merge_indexes, split_indexes
+ from .formatting import format_item
+ from .indexes import Indexes, default_indexes
+-from .options import OPTIONS
++from .options import OPTIONS, _get_keep_attrs
+ from .utils import ReprObject, _check_inplace, either_dict_or_kwargs
+ from .variable import (
+     IndexVariable,
+@@ -2872,7 +2872,11 @@ class DataArray(AbstractArray, DataWithCoords):
+         numpy.nanpercentile, pandas.Series.quantile, Dataset.quantile
+         """
+ 
+-        ds = self._to_temp_dataset().quantile(
++        if keep_attrs is None:
++            keep_attrs = _get_keep_attrs(default=False)
++        ds = self._to_temp_dataset()
++        ds.attrs = self.attrs if keep_attrs else {}
++        ds = ds.quantile(
+             q, dim=dim, keep_attrs=keep_attrs, interpolation=interpolation
+         )
+         return self._from_temp_dataset(ds)
+diff --git a/xarray/core/dataset.py b/xarray/core/dataset.py
+index d6f0da42..fae086e8 100644
+--- a/xarray/core/dataset.py
++++ b/xarray/core/dataset.py
+@@ -4768,7 +4768,10 @@ class Dataset(Mapping, ImplementsDatasetReduce, DataWithCoords):
+                             # the former is often more efficient
+                             reduce_dims = None
+                         variables[name] = var.quantile(
+-                            q, dim=reduce_dims, interpolation=interpolation
++                            q,
++                            dim=reduce_dims,
++                            interpolation=interpolation,
++                            keep_attrs=keep_attrs,
+                         )
+ 
+             else:
+diff --git a/xarray/core/variable.py b/xarray/core/variable.py
+index 2e9906ce..b6cf792a 100644
+--- a/xarray/core/variable.py
++++ b/xarray/core/variable.py
+@@ -1592,7 +1592,9 @@ class Variable(
+         """
+         return self.broadcast_equals(other, equiv=duck_array_ops.array_notnull_equiv)
+ 
+-    def quantile(self, q, dim=None, interpolation="linear"):
++    def quantile(
++        self, q, dim=None, interpolation="linear", keep_attrs=None
++    ):
+         """Compute the qth quantile of the data along the specified dimension.
+ 
+         Returns the qth quantiles(s) of the array elements.
+@@ -1615,6 +1617,10 @@ class Variable(
+                 * higher: ``j``.
+                 * nearest: ``i`` or ``j``, whichever is nearest.
+                 * midpoint: ``(i + j) / 2``.
++        keep_attrs : bool, optional
++            If True, the variable's attributes (`attrs`) will be copied from
++            the original object to the new one.  If False (default), the new
++            object will be returned without attributes.
+ 
+         Returns
+         -------
+@@ -1655,10 +1661,14 @@ class Variable(
+         if q.ndim != 0:
+             new_dims = ["quantile"] + new_dims
+ 
++        if keep_attrs is None:
++            keep_attrs = _get_keep_attrs(default=False)
++        attrs = self._attrs if keep_attrs else None
++
+         qs = np.nanpercentile(
+             self.data, q * 100.0, axis=axis, interpolation=interpolation
+         )
+-        return Variable(new_dims, qs)
++        return Variable(new_dims, qs, attrs=attrs)
+ 
+     def rank(self, dim, pct=False):
+         """Ranks the data.

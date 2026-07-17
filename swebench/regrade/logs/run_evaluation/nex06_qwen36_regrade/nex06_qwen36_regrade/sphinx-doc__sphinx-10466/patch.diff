@@ -1,0 +1,55 @@
+diff --git a/sphinx/builders/gettext.py b/sphinx/builders/gettext.py
+index e8bc547b7..db50c0eab 100644
+--- a/sphinx/builders/gettext.py
++++ b/sphinx/builders/gettext.py
+@@ -32,8 +32,21 @@ class Message:
+     """An entry of translatable message."""
+     def __init__(self, text: str, locations: List[Tuple[str, int]], uuids: List[str]):
+         self.text = text
+-        self.locations = locations
+-        self.uuids = uuids
++        self.locations, self.uuids = self._deduplicate(locations, uuids)
++
++    @staticmethod
++    def _deduplicate(locations: List[Tuple[str, int]], uuids: List[str]) -> Tuple[List[Tuple[str, int]], List[str]]:
++        # Deduplicate locations while preserving order and matching uuids.
++        # Some messages can be extracted multiple times from the same location.
++        seen: Set[Tuple[str, int]] = set()
++        unique_locations: List[Tuple[str, int]] = []
++        unique_uuids: List[str] = []
++        for location, uuid in zip(locations, uuids):
++            if location not in seen:
++                seen.add(location)
++                unique_locations.append(location)
++                unique_uuids.append(uuid)
++        return unique_locations, unique_uuids
+ 
+ 
+ class Catalog:
+diff --git a/tests/test_build_gettext.py b/tests/test_build_gettext.py
+index 3c4617e84..d2d75107d 100644
+--- a/tests/test_build_gettext.py
++++ b/tests/test_build_gettext.py
+@@ -184,3 +184,22 @@ def test_build_single_pot(app):
+          'msgid "Generated section".*'),
+         result,
+         flags=re.S)
++
++
++def test_message_deduplicates_locations():
++    from sphinx.builders.gettext import Message
++
++    locations = [
++        ('file1.rst', 0),
++        ('file1.rst', 0),
++        ('file1.rst', 0),
++        ('file2.rst', 0),
++        ('file2.rst', 0),
++    ]
++    uuids = ['uuid1', 'uuid2', 'uuid3', 'uuid4', 'uuid5']
++
++    message = Message('Type', locations, uuids)
++
++    assert message.locations == [('file1.rst', 0), ('file2.rst', 0)]
++    assert message.uuids == ['uuid1', 'uuid4']
++

@@ -1,0 +1,12 @@
+diff --git a/src/_pytest/logging.py b/src/_pytest/logging.py
+index 11031f2f2..a7c21d08c 100644
+--- a/src/_pytest/logging.py
++++ b/src/_pytest/logging.py
+@@ -685,6 +685,7 @@ class LoggingPlugin:
+ 
+             yield
+ 
++            caplog_handler.setLevel(self.log_level or logging.NOTSET)
+             log = report_handler.stream.getvalue().strip()
+             item.add_report_section(when, "log", log)
+ 

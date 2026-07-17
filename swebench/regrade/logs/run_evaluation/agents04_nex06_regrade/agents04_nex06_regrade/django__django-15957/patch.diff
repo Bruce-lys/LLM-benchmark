@@ -1,0 +1,96 @@
+diff --git a/django/db/models/fields/related_descriptors.py b/django/db/models/fields/related_descriptors.py
+index b192df4fbf..96c7850058 100644
+--- a/django/db/models/fields/related_descriptors.py
++++ b/django/db/models/fields/related_descriptors.py
+@@ -72,6 +72,25 @@ from django.db.models.utils import resolve_callables
+ from django.utils.functional import cached_property
+ 
+ 
++def _clone_without_limits(queryset):
++    queryset = queryset._chain()
++    queryset.query.clear_limits()
++    return queryset
++
++
++def _filter_queryset(queryset, filters, *, next_is_sticky=False, reapply_limits=True):
++    """Filter a queryset, preserving any existing slice after filtering."""
++    low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++    if queryset.query.is_sliced:
++        queryset = _clone_without_limits(queryset)
++    if next_is_sticky:
++        queryset = queryset._next_is_sticky()
++    queryset = queryset.filter(**filters)
++    if reapply_limits and (low_mark != 0 or high_mark is not None):
++        queryset.query.set_limits(low_mark, high_mark)
++    return queryset
++
++
+ class ForeignKeyDeferredAttribute(DeferredAttribute):
+     def __set__(self, instance, value):
+         if instance.__dict__.get(self.field.attname) != value and self.field.is_cached(
+@@ -145,7 +164,7 @@ class ForwardManyToOneDescriptor:
+             }
+         else:
+             query = {"%s__in" % self.field.related_query_name(): instances}
+-        queryset = queryset.filter(**query)
++        queryset = _filter_queryset(queryset, query)
+ 
+         # Since we're going to assign directly in the cache,
+         # we must manage the reverse relation cache manually.
+@@ -404,7 +423,7 @@ class ReverseOneToOneDescriptor:
+         instance_attr = self.related.field.get_foreign_related_value
+         instances_dict = {instance_attr(inst): inst for inst in instances}
+         query = {"%s__in" % self.related.field.name: instances}
+-        queryset = queryset.filter(**query)
++        queryset = _filter_queryset(queryset, query)
+ 
+         # Since we're going to assign directly in the cache,
+         # we must manage the reverse relation cache manually.
+@@ -663,7 +682,7 @@ def create_reverse_many_to_one_manager(superclass, rel):
+             if self._db:
+                 queryset = queryset.using(self._db)
+             queryset._defer_next_filter = True
+-            queryset = queryset.filter(**self.core_filters)
++            queryset = _filter_queryset(queryset, self.core_filters)
+             for field in self.field.foreign_related_fields:
+                 val = getattr(self.instance, field.attname)
+                 if val is None or (val == "" and empty_strings_as_null):
+@@ -719,7 +738,7 @@ def create_reverse_many_to_one_manager(superclass, rel):
+             instance_attr = self.field.get_foreign_related_value
+             instances_dict = {instance_attr(inst): inst for inst in instances}
+             query = {"%s__in" % self.field.name: instances}
+-            queryset = queryset.filter(**query)
++            queryset = _filter_queryset(queryset, query)
+ 
+             # Since we just bypassed this class' get_queryset(), we must manage
+             # the reverse relation manually.
+@@ -1029,7 +1048,7 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+             if self._db:
+                 queryset = queryset.using(self._db)
+             queryset._defer_next_filter = True
+-            return queryset._next_is_sticky().filter(**self.core_filters)
++            return _filter_queryset(queryset, self.core_filters, next_is_sticky=True)
+ 
+         def _remove_prefetched_objects(self):
+             try:
+@@ -1052,7 +1071,10 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+             queryset = queryset.using(queryset._db or self._db)
+ 
+             query = {"%s__in" % self.query_field_name: instances}
+-            queryset = queryset._next_is_sticky().filter(**query)
++            low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++            queryset = _filter_queryset(
++                queryset, query, next_is_sticky=True, reapply_limits=False
++            )
+ 
+             # M2M: need to annotate the query in order to get the primary model
+             # that the secondary model was actually related to. We know that
+@@ -1073,6 +1095,8 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+                     for f in fk.local_related_fields
+                 }
+             )
++            if low_mark != 0 or high_mark is not None:
++                queryset.query.set_limits(low_mark, high_mark)
+             return (
+                 queryset,
+                 lambda result: tuple(

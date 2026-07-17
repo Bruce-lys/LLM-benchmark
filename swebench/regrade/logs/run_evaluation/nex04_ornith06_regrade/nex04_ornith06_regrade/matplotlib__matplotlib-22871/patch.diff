@@ -1,0 +1,37 @@
+diff --git a/lib/matplotlib/dates.py b/lib/matplotlib/dates.py
+index 4d8ddf3ee5..7fa7ac7c09 100644
+--- a/lib/matplotlib/dates.py
++++ b/lib/matplotlib/dates.py
+@@ -792,22 +792,27 @@ class ConciseDateFormatter(ticker.Formatter):
+         offsetfmts = self.offset_formats
+         show_offset = self.show_offset
+ 
++        # level is the basic level we will label at.
++        # now loop through and decide the actual ticklabels
++        zerovals = [0, 1, 1, 0, 0, 0, 0]
++
+         # determine the level we will label at:
+         # mostly 0: years,  1: months,  2: days,
+         # 3: hours, 4: minutes, 5: seconds, 6: microseconds
+         for level in range(5, -1, -1):
+             if len(np.unique(tickdate[:, level])) > 1:
+                 if level < 2:
+-                    show_offset = False
++                    # Only suppress the offset if the higher-level information
++                    # (e.g., the year) is already shown in the tick labels.
++                    # For level 0, all ticks show the year. For level 1, only
++                    # ticks at month=1 (January) show the year.
++                    if level == 0 or zerovals[level] in tickdate[:, level]:
++                        show_offset = False
+                 break
+             elif level == 0:
+                 # all tickdate are the same, so only micros might be different
+                 # set to the most precise (6: microseconds doesn't exist...)
+                 level = 5
+-
+-        # level is the basic level we will label at.
+-        # now loop through and decide the actual ticklabels
+-        zerovals = [0, 1, 1, 0, 0, 0, 0]
+         labels = [''] * len(tickdate)
+         for nn in range(len(tickdate)):
+             if level < 5:

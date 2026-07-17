@@ -1,0 +1,80 @@
+diff --git a/django/utils/html.py b/django/utils/html.py
+index 3bc02b8dd3..f14a5fc1cd 100644
+--- a/django/utils/html.py
++++ b/django/utils/html.py
+@@ -28,6 +28,9 @@ simple_url_2_re = _lazy_re_compile(
+     r'^www\.|^(?!http)\w[^@]+\.(com|edu|gov|int|mil|net|org)($|/.*)$',
+     re.IGNORECASE
+ )
++charref_re = _lazy_re_compile(
++    r'&(#[0-9]+;?|#[xX][0-9a-fA-F]+;?|[^\t\n\f <&#;]{1,32};?)'
++)
+ 
+ 
+ @keep_lazy(str, SafeString)
+@@ -261,6 +264,39 @@ def urlize(text, trim_url_limit=None, nofollow=False, autoescape=False):
+         Trim trailing and wrapping punctuation from `middle`. Return the items
+         of the new state.
+         """
++        def unescape_with_positions(s):
++            last = 0
++            for match in charref_re.finditer(s):
++                start = match.start()
++                # Yield any literal characters before the entity.
++                for i, ch in enumerate(s[last:start]):
++                    yield ch, start + i, start + i + 1
++                entity = match.group()
++                # Find the longest prefix of the entity that decodes to a
++                # single character, mirroring html.unescape()'s behavior.
++                decoded_prefix = None
++                prefix_end = None
++                for end in range(match.end(), start, -1):
++                    prefix = entity[:end - start]
++                    decoded = html.unescape(prefix)
++                    if decoded != prefix and len(decoded) == 1:
++                        decoded_prefix = decoded
++                        prefix_end = end
++                        break
++                if decoded_prefix is not None:
++                    yield decoded_prefix[0], start, prefix_end
++                    # The remaining part of the match is literal.
++                    for i in range(prefix_end, match.end()):
++                        yield entity[i - start], i, i + 1
++                else:
++                    # No valid entity was found; yield the match literally.
++                    for i, ch in enumerate(entity):
++                        yield ch, start + i, start + i + 1
++                last = match.end()
++            # Yield any trailing literal characters.
++            for i, ch in enumerate(s[last:], last):
++                yield ch, i, i + 1
++
+         # Continue trimming until middle remains unchanged.
+         trimmed_something = True
+         while trimmed_something:
+@@ -280,11 +316,22 @@ def urlize(text, trim_url_limit=None, nofollow=False, autoescape=False):
+             # Trim trailing punctuation (after trimming wrapping punctuation,
+             # as encoded entities contain ';'). Unescape entities to avoid
+             # breaking them by removing ';'.
+-            middle_unescaped = html.unescape(middle)
++            middle_unescaped_chars = []
++            middle_unescaped_starts = []
++            for ch, start, _end in unescape_with_positions(middle):
++                middle_unescaped_chars.append(ch)
++                middle_unescaped_starts.append(start)
++            middle_unescaped = ''.join(middle_unescaped_chars)
+             stripped = middle_unescaped.rstrip(TRAILING_PUNCTUATION_CHARS)
+             if middle_unescaped != stripped:
+-                trail = middle[len(stripped):] + trail
+-                middle = middle[:len(stripped) - len(middle_unescaped)]
++                # Determine the index in `middle` corresponding to the first
++                # unescaped trailing punctuation character.
++                trailing_count = len(middle_unescaped) - len(stripped)
++                middle_end = middle_unescaped_starts[
++                    len(middle_unescaped_starts) - trailing_count
++                ]
++                trail = middle[middle_end:] + trail
++                middle = middle[:middle_end]
+                 trimmed_something = True
+         return lead, middle, trail
+ 

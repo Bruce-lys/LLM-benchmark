@@ -1,0 +1,48 @@
+diff --git a/sympy/core/function.py b/sympy/core/function.py
+index 1b8005e1d..d1960c21f 100644
+--- a/sympy/core/function.py
++++ b/sympy/core/function.py
+@@ -507,9 +507,42 @@ def _eval_evalf(self, prec):
+             func = getattr(mpmath, fname)
+         except (AttributeError, KeyError):
+             try:
+-                return Float(self._imp_(*self.args), prec)
++                v = self._imp_(*self.args)
+             except (AttributeError, TypeError, ValueError):
+                 return
++            if isinstance(v, Basic):
++                if v.has(self):
++                    return
++                # If the implementation returns an expression containing
++                # implemented functions, evaluate that expression recursively.
++                implemented_atoms = [
++                    arg for arg in v.atoms(Function)
++                    if getattr(arg.func, '_imp_', None) is not None
++                ]
++                if implemented_atoms:
++                    try:
++                        v_eval = v._eval_evalf(prec)
++                    except (AttributeError, TypeError, ValueError, NotImplementedError):
++                        return
++                    if v_eval is None:
++                        return
++                    implemented_atoms_eval = [
++                        arg for arg in v_eval.atoms(Function)
++                        if getattr(arg.func, '_imp_', None) is not None
++                    ]
++                    if getattr(v_eval, 'is_number', False):
++                        try:
++                            return Float(v_eval, prec)
++                        except (AttributeError, TypeError, ValueError):
++                            return
++                    if len(implemented_atoms_eval) < len(implemented_atoms):
++                        return v_eval
++                    return
++            if getattr(v, 'is_number', False):
++                try:
++                    return Float(v, prec)
++                except (AttributeError, TypeError, ValueError):
++                    return
+ 
+         # Convert all args to mpf or mpc
+         # Convert the arguments to *higher* precision than requested for the

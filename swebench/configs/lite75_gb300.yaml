@@ -1,0 +1,25 @@
+# CPU 评测机 bench-104 + GB300 gpu-node02-007 serve 的标准组合
+run:
+  tag: aiden_qwen36base_lite75_t085_bench104
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 8                # 本机仅 8 核
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"             # 服务在 GB300 上，kit 只校验不管理
+  endpoint: http://10.0.3.52:8302/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 6
+  namespace: swebench

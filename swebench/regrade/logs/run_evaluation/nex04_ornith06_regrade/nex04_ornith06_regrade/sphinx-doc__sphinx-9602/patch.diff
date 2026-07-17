@@ -1,0 +1,137 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 9875a9f4b..360a15600 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -109,7 +109,16 @@ def type_to_xref(text: str, env: BuildEnvironment = None) -> addnodes.pending_xr
+ 
+ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Node]:
+     """Parse type annotation."""
+-    def unparse(node: ast.AST) -> List[Node]:
++    def is_literal(node: ast.AST) -> bool:
++        """Check whether the given node represents Literal."""
++        if isinstance(node, ast.Name):
++            return node.id == 'Literal'
++        elif isinstance(node, ast.Attribute):
++            return node.attr == 'Literal'
++        else:
++            return False
++
++    def unparse(node: ast.AST, inside_literal: bool = False) -> List[Node]:
+         if isinstance(node, ast.Attribute):
+             return [nodes.Text("%s.%s" % (unparse(node.value)[0], node.attr))]
+         elif isinstance(node, ast.BinOp):
+@@ -122,12 +131,14 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+         elif isinstance(node, ast.Constant):  # type: ignore
+             if node.value is Ellipsis:
+                 return [addnodes.desc_sig_punctuation('', "...")]
++            elif inside_literal:
++                return [addnodes.desc_sig_punctuation('', repr(node.value))]
+             else:
+                 return [nodes.Text(node.value)]
+         elif isinstance(node, ast.Expr):
+-            return unparse(node.value)
++            return unparse(node.value, inside_literal)
+         elif isinstance(node, ast.Index):
+-            return unparse(node.value)
++            return unparse(node.value, inside_literal)
+         elif isinstance(node, ast.List):
+             result = [addnodes.desc_sig_punctuation('', '[')]
+             if node.elts:
+@@ -135,26 +146,33 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+                 # last element of result if the for-loop was run at least
+                 # once
+                 for elem in node.elts:
+-                    result.extend(unparse(elem))
++                    result.extend(unparse(elem, inside_literal))
+                     result.append(addnodes.desc_sig_punctuation('', ', '))
+                 result.pop()
+             result.append(addnodes.desc_sig_punctuation('', ']'))
+             return result
+         elif isinstance(node, ast.Module):
+-            return sum((unparse(e) for e in node.body), [])
++            return sum((unparse(e, inside_literal) for e in node.body), [])
+         elif isinstance(node, ast.Name):
+             return [nodes.Text(node.id)]
+         elif isinstance(node, ast.Subscript):
+-            result = unparse(node.value)
+-            result.append(addnodes.desc_sig_punctuation('', '['))
+-            result.extend(unparse(node.slice))
+-            result.append(addnodes.desc_sig_punctuation('', ']'))
+-            return result
++            if is_literal(node.value):
++                result = unparse(node.value)
++                result.append(addnodes.desc_sig_punctuation('', '['))
++                result.extend(unparse(node.slice, inside_literal=True))
++                result.append(addnodes.desc_sig_punctuation('', ']'))
++                return result
++            else:
++                result = unparse(node.value)
++                result.append(addnodes.desc_sig_punctuation('', '['))
++                result.extend(unparse(node.slice))
++                result.append(addnodes.desc_sig_punctuation('', ']'))
++                return result
+         elif isinstance(node, ast.Tuple):
+             if node.elts:
+                 result = []
+                 for elem in node.elts:
+-                    result.extend(unparse(elem))
++                    result.extend(unparse(elem, inside_literal))
+                     result.append(addnodes.desc_sig_punctuation('', ', '))
+                 result.pop()
+             else:
+@@ -167,7 +185,10 @@ def _parse_annotation(annotation: str, env: BuildEnvironment = None) -> List[Nod
+                 if isinstance(node, ast.Ellipsis):
+                     return [addnodes.desc_sig_punctuation('', "...")]
+                 elif isinstance(node, ast.NameConstant):
+-                    return [nodes.Text(node.value)]
++                    if inside_literal:
++                        return [addnodes.desc_sig_punctuation('', repr(node.value))]
++                    else:
++                        return [nodes.Text(node.value)]
+ 
+             raise SyntaxError  # unsupported syntax
+ 
+@@ -330,16 +351,40 @@ class PyXrefMixin:
+ 
+         split_contnode = bool(contnode and contnode.astext() == target)
+ 
+-        results = []
++        results = []  # type: List[Node]
++        inside_literal = False
++        literal_bracket_depth = 0
++        bracket_depth = 0
++        prev_target = None  # type: Optional[str]
++
+         for sub_target in filter(None, sub_targets):
+             if split_contnode:
+                 contnode = nodes.Text(sub_target)
+ 
+             if delims_re.match(sub_target):
++                open_brackets = sub_target.count('[')
++                close_brackets = sub_target.count(']')
++
++                if (open_brackets and bracket_depth == literal_bracket_depth and
++                        (prev_target in ('Literal', 'typing.Literal') or
++                         (isinstance(prev_target, str) and prev_target.endswith('.Literal')))):
++                    inside_literal = True
++                    literal_bracket_depth = bracket_depth
++
++                bracket_depth += open_brackets
++                bracket_depth -= close_brackets
++
++                if close_brackets and bracket_depth == literal_bracket_depth:
++                    inside_literal = False
++
+                 results.append(contnode or innernode(sub_target, sub_target))
+             else:
+-                results.append(self.make_xref(rolename, domain, sub_target,
+-                                              innernode, contnode, env, inliner, location))
++                if inside_literal:
++                    results.append(contnode or innernode(sub_target, sub_target))
++                else:
++                    results.append(self.make_xref(rolename, domain, sub_target,
++                                                  innernode, contnode, env, inliner, location))
++            prev_target = sub_target
+ 
+         return results
+ 

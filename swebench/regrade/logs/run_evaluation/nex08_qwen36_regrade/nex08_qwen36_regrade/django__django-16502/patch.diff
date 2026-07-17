@@ -1,0 +1,56 @@
+diff --git a/django/core/servers/basehttp.py b/django/core/servers/basehttp.py
+index fef5532e58..7d075ff8f9 100644
+--- a/django/core/servers/basehttp.py
++++ b/django/core/servers/basehttp.py
+@@ -128,12 +128,21 @@ class ServerHandler(simple_server.ServerHandler):
+             LimitedStream(stdin, content_length), stdout, stderr, environ, **kwargs
+         )
+ 
++    def _is_head_request(self):
++        return self.environ.get("REQUEST_METHOD") == "HEAD"
++
+     def cleanup_headers(self):
+-        super().cleanup_headers()
++        # For HEAD requests, don't add a Content-Length header based on an
++        # empty body. If the application provided one, preserve it.
++        if not (self._is_head_request() and "Content-Length" not in self.headers):
++            super().cleanup_headers()
+         # HTTP/1.1 requires support for persistent connections. Send 'close' if
+         # the content length is unknown to prevent clients from reusing the
+-        # connection.
+-        if "Content-Length" not in self.headers:
++        # connection. For HEAD requests, close the connection to avoid waiting
++        # for a body that won't be sent.
++        if self._is_head_request():
++            self.headers["Connection"] = "close"
++        elif "Content-Length" not in self.headers:
+             self.headers["Connection"] = "close"
+         # Persistent connections require threading server.
+         elif not isinstance(self.request_handler.server, socketserver.ThreadingMixIn):
+@@ -143,6 +152,26 @@ class ServerHandler(simple_server.ServerHandler):
+         if self.headers.get("Connection") == "close":
+             self.request_handler.close_connection = True
+ 
++    def finish_response(self):
++        if self._is_head_request() and self.headers is not None:
++            # HEAD responses must not include a message-body.
++            if not self.headers_sent:
++                self.send_headers()
++            self.close()
++        else:
++            super().finish_response()
++
++    def write(self, data):
++        if self._is_head_request():
++            # Do not send the response body for HEAD requests.
++            if not self.headers_sent:
++                self.bytes_sent = len(data)
++                self.send_headers()
++            else:
++                self.bytes_sent += len(data)
++            return
++        super().write(data)
++
+     def close(self):
+         self.get_stdin().read()
+         super().close()

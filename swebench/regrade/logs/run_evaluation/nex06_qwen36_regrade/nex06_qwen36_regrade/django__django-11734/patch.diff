@@ -1,0 +1,130 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 105dc93251..5c51622f20 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -102,7 +102,10 @@ class Lookup:
+         new = copy(self)
+         new.lhs = new.lhs.relabeled_clone(relabels)
+         if hasattr(new.rhs, 'relabeled_clone'):
+-            new.rhs = new.rhs.relabeled_clone(relabels)
++            if getattr(new.rhs, '_skip_relabel', False):
++                pass
++            else:
++                new.rhs = new.rhs.relabeled_clone(relabels)
+         return new
+ 
+     def get_group_by_cols(self, alias=None):
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 35f3c5e1ea..1174732efb 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1045,30 +1045,31 @@ class Query(BaseExpression):
+             sql = '(%s)' % sql
+         return sql, params
+ 
+-    def resolve_lookup_value(self, value, can_reuse, allow_joins, simple_col):
+-        if hasattr(value, 'resolve_expression'):
+-            kwargs = {'reuse': can_reuse, 'allow_joins': allow_joins}
+-            if isinstance(value, F):
+-                kwargs['simple_col'] = simple_col
+-            value = value.resolve_expression(self, **kwargs)
+-        elif isinstance(value, (list, tuple)):
+-            # The items of the iterable may be expressions and therefore need
+-            # to be resolved independently.
+-            resolved_values = []
+-            for sub_value in value:
+-                if hasattr(sub_value, 'resolve_expression'):
+-                    if isinstance(sub_value, F):
+-                        resolved_values.append(sub_value.resolve_expression(
+-                            self, reuse=can_reuse, allow_joins=allow_joins,
+-                            simple_col=simple_col,
+-                        ))
++    def resolve_lookup_value(self, value, can_reuse, allow_joins, simple_col, resolve=True):
++        if resolve:
++            if hasattr(value, 'resolve_expression'):
++                kwargs = {'reuse': can_reuse, 'allow_joins': allow_joins}
++                if isinstance(value, F):
++                    kwargs['simple_col'] = simple_col
++                value = value.resolve_expression(self, **kwargs)
++            elif isinstance(value, (list, tuple)):
++                # The items of the iterable may be expressions and therefore need
++                # to be resolved independently.
++                resolved_values = []
++                for sub_value in value:
++                    if hasattr(sub_value, 'resolve_expression'):
++                        if isinstance(sub_value, F):
++                            resolved_values.append(sub_value.resolve_expression(
++                                self, reuse=can_reuse, allow_joins=allow_joins,
++                                simple_col=simple_col,
++                            ))
++                        else:
++                            resolved_values.append(sub_value.resolve_expression(
++                                self, reuse=can_reuse, allow_joins=allow_joins,
++                            ))
+                     else:
+-                        resolved_values.append(sub_value.resolve_expression(
+-                            self, reuse=can_reuse, allow_joins=allow_joins,
+-                        ))
+-                else:
+-                    resolved_values.append(sub_value)
+-            value = tuple(resolved_values)
++                        resolved_values.append(sub_value)
++                value = tuple(resolved_values)
+         return value
+ 
+     def solve_lookup_type(self, lookup):
+@@ -1198,7 +1199,8 @@ class Query(BaseExpression):
+ 
+     def build_filter(self, filter_expr, branch_negated=False, current_negated=False,
+                      can_reuse=None, allow_joins=True, split_subq=True,
+-                     reuse_with_filtered_relation=False, simple_col=False):
++                     reuse_with_filtered_relation=False, simple_col=False,
++                     resolve=True):
+         """
+         Build a WhereNode for a single filter clause but don't add it
+         to this Query. Query.add_q() will then add this filter to the where
+@@ -1250,7 +1252,7 @@ class Query(BaseExpression):
+             raise FieldError("Joined field references are not permitted in this query")
+ 
+         pre_joins = self.alias_refcount.copy()
+-        value = self.resolve_lookup_value(value, can_reuse, allow_joins, simple_col)
++        value = self.resolve_lookup_value(value, can_reuse, allow_joins, simple_col, resolve)
+         used_joins = {k for k, v in self.alias_refcount.items() if v > pre_joins.get(k, 0)}
+ 
+         self.check_filterable(value)
+@@ -1702,11 +1704,15 @@ class Query(BaseExpression):
+         handle.
+         """
+         filter_lhs, filter_rhs = filter_expr
+-        if isinstance(filter_rhs, F):
++        if isinstance(filter_rhs, F) and not isinstance(filter_rhs, OuterRef):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
++        resolve_subquery = not isinstance(filter_rhs, OuterRef)
+         # Generate the inner query.
+         query = Query(self.model)
+         query._filtered_relations = self._filtered_relations
++        query.subquery = True
++        if isinstance(filter_rhs, OuterRef):
++            query._skip_relabel = True
+         query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+@@ -1724,7 +1730,7 @@ class Query(BaseExpression):
+             lookup_class = select_field.get_lookup('isnull')
+             lookup = lookup_class(select_field.get_col(alias), False)
+             query.where.add(lookup, AND)
+-        if alias in can_reuse:
++        if alias in can_reuse and not isinstance(filter_rhs, OuterRef):
+             pk = select_field.model._meta.pk
+             # Need to add a restriction so that outer query's filters are in effect for
+             # the subquery, too.
+@@ -1739,7 +1745,8 @@ class Query(BaseExpression):
+ 
+         condition, needed_inner = self.build_filter(
+             ('%s__in' % trimmed_prefix, query),
+-            current_negated=True, branch_negated=True, can_reuse=can_reuse)
++            current_negated=True, branch_negated=True, can_reuse=can_reuse,
++            resolve=resolve_subquery)
+         if contains_louter:
+             or_null_condition, _ = self.build_filter(
+                 ('%s__isnull' % trimmed_prefix, True),

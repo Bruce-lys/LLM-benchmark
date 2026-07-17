@@ -1,0 +1,74 @@
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index 88c9ca9f28..b30cb79765 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -8,6 +8,7 @@ import uuid
+ import warnings
+ from base64 import b64decode, b64encode
+ from functools import partialmethod, total_ordering
++from itertools import count
+ 
+ from django import forms
+ from django.apps import apps
+@@ -96,6 +97,7 @@ class Field(RegisterLookupMixin):
+     # creates, creation_counter is used for all user-specified fields.
+     creation_counter = 0
+     auto_creation_counter = -1
++    _hash_counter = count()
+     default_validators = []  # Default set of validators
+     default_error_messages = {
+         'invalid_choice': _('Value %(value)r is not a valid choice.'),
+@@ -167,6 +169,8 @@ class Field(RegisterLookupMixin):
+             self.creation_counter = Field.creation_counter
+             Field.creation_counter += 1
+ 
++        self._hash_key = next(Field._hash_counter)
++
+         self._validators = list(validators)  # Store for deconstruction later
+ 
+         messages = {}
+@@ -517,6 +521,7 @@ class Field(RegisterLookupMixin):
+         # Needed for @total_ordering
+         if isinstance(other, Field):
+             return (
++                self._hash_key == other._hash_key and
+                 self.creation_counter == other.creation_counter and
+                 getattr(self, 'model', None) == getattr(other, 'model', None)
+             )
+@@ -535,23 +540,27 @@ class Field(RegisterLookupMixin):
+                 return not hasattr(self, 'model')  # Order no-model fields first
+             else:
+                 # creation_counter's are equal, compare only models.
+-                return (
+-                    (self.model._meta.app_label, self.model._meta.model_name) <
+-                    (other.model._meta.app_label, other.model._meta.model_name)
+-                )
++                if (
++                    self.model._meta.app_label != other.model._meta.app_label or
++                    self.model._meta.model_name != other.model._meta.model_name
++                ):
++                    return (
++                        (self.model._meta.app_label, self.model._meta.model_name) <
++                        (other.model._meta.app_label, other.model._meta.model_name)
++                    )
++                return self._hash_key < other._hash_key
+         return NotImplemented
+ 
+     def __hash__(self):
+-        return hash((
+-            self.creation_counter,
+-            self.model._meta.app_label if hasattr(self, 'model') else None,
+-            self.model._meta.model_name if hasattr(self, 'model') else None,
+-        ))
++        return hash(self._hash_key)
+ 
+     def __deepcopy__(self, memodict):
+         # We don't have to deepcopy very much here, since most things are not
+         # intended to be altered after initial creation.
+         obj = copy.copy(self)
++        model = getattr(self, 'model', None)
++        if model is not None and getattr(model, '_meta', None).abstract:
++            obj._hash_key = next(Field._hash_counter)
+         if self.remote_field:
+             obj.remote_field = copy.copy(self.remote_field)
+             if hasattr(self.remote_field, 'field') and self.remote_field.field is self:

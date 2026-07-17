@@ -1,0 +1,182 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 6c9e9d3707..fb0bdcd7bc 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -1735,6 +1735,7 @@ class Model(metaclass=ModelBase):
+         for field in related_fields:
+             _cls = cls
+             fld = None
++            last_lookup = False
+             for part in field.split(LOOKUP_SEP):
+                 try:
+                     # pk is an alias that won't be found by opts.get_field.
+@@ -1747,7 +1748,18 @@ class Model(metaclass=ModelBase):
+                     else:
+                         _cls = None
+                 except (FieldDoesNotExist, AttributeError):
+-                    if fld is None or fld.get_transform(part) is None:
++                    is_lookup = (
++                        fld is not None and part == 'isnull' and
++                        fld.get_lookup(part) is not None
++                    )
++                    is_transform = (
++                        fld is not None and fld.get_transform(part) is not None
++                    )
++                    if (
++                        fld is None or
++                        last_lookup or
++                        not (is_transform or is_lookup)
++                    ):
+                         errors.append(
+                             checks.Error(
+                                 "'ordering' refers to the nonexistent field, "
+@@ -1756,6 +1768,8 @@ class Model(metaclass=ModelBase):
+                                 id='models.E015',
+                             )
+                         )
++                    elif is_lookup and not is_transform:
++                        last_lookup = True
+ 
+         # Skip ordering on pk. This is always a valid order_by field
+         # but is an alias and therefore won't be found by opts.get_field.
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 05597173ee..46d2b7726c 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -711,12 +711,20 @@ class SQLCompiler:
+         name, order = get_order_dir(name, default_order)
+         descending = order == 'DESC'
+         pieces = name.split(LOOKUP_SEP)
+-        field, targets, alias, joins, path, opts, transform_function = self._setup_joins(pieces, opts, alias)
++        field, targets, alias, joins, path, opts, transform_function = (
++            self._setup_joins(pieces, opts, alias, allow_lookup=True)
++        )
+ 
+         # If we get to this point and the field is a relation to another model,
+         # append the default ordering for that model unless it is the pk
+         # shortcut or the attribute name of the field that is specified.
+-        if field.is_relation and opts.ordering and getattr(field, 'attname', None) != name and name != 'pk':
++        if (
++            field.is_relation
++            and opts.ordering
++            and getattr(field, 'attname', None) != name
++            and name != 'pk'
++            and not name.endswith(LOOKUP_SEP + 'isnull')
++        ):
+             # Firstly, avoid infinite loops.
+             already_seen = already_seen or set()
+             join_tuple = tuple(getattr(self.query.alias_map[j], 'join_cols', None) for j in joins)
+@@ -737,7 +745,7 @@ class SQLCompiler:
+         targets, alias, _ = self.query.trim_joins(targets, joins, path)
+         return [(OrderBy(transform_function(t, alias), descending=descending), False) for t in targets]
+ 
+-    def _setup_joins(self, pieces, opts, alias):
++    def _setup_joins(self, pieces, opts, alias, allow_lookup=False):
+         """
+         Helper method for get_order_by() and get_distinct().
+ 
+@@ -746,7 +754,8 @@ class SQLCompiler:
+         match. Executing SQL where this is not true is an error.
+         """
+         alias = alias or self.query.get_initial_alias()
+-        field, targets, opts, joins, path, transform_function = self.query.setup_joins(pieces, opts, alias)
++        field, targets, opts, joins, path, transform_function = self.query.setup_joins(
++            pieces, opts, alias, allow_lookup=allow_lookup)
+         alias = joins[-1]
+         return field, targets, alias, joins, path, opts, transform_function
+ 
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index bb230647eb..caa1d02954 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -23,8 +23,10 @@ from django.core.exceptions import (
+ from django.db import DEFAULT_DB_ALIAS, NotSupportedError, connections
+ from django.db.models.aggregates import Count
+ from django.db.models.constants import LOOKUP_SEP
+-from django.db.models.expressions import BaseExpression, Col, F, OuterRef, Ref
+-from django.db.models.fields import Field
++from django.db.models.expressions import (
++    BaseExpression, Col, ExpressionWrapper, F, OuterRef, Ref,
++)
++from django.db.models.fields import BooleanField, Field
+ from django.db.models.fields.related_lookups import MultiColSource
+ from django.db.models.lookups import Lookup
+ from django.db.models.query_utils import (
+@@ -141,6 +143,19 @@ class Query(BaseExpression):
+ 
+     compiler = 'SQLCompiler'
+ 
++    class _OrderingLookupExpression(ExpressionWrapper):
++        def get_source_expressions(self):
++            return []
++
++        def set_source_expressions(self, exprs):
++            assert not exprs
++
++        def relabeled_clone(self, change_map):
++            lookup = self.lookup
++            if hasattr(lookup, 'relabeled_clone'):
++                lookup = lookup.relabeled_clone(change_map)
++            return self.__class__(lookup, self.output_field)
++
+     def __init__(self, model, where=WhereNode, alias_cols=True):
+         self.model = model
+         self.alias_refcount = {}
+@@ -1197,6 +1212,21 @@ class Query(BaseExpression):
+                 "permitted%s" % (name, output_field.__name__, suggestion)
+             )
+ 
++    def try_lookup(self, lhs, name):
++        """
++        Helper method for order_by(). Try to fetch and initialize a lookup
++        for name parameter from lhs.
++        """
++        lookup_class = lhs.get_lookup(name)
++        if lookup_class is not None and lookup_class.lookup_name == 'isnull':
++            lookup = lookup_class(lhs, True)
++
++            return self._OrderingLookupExpression(lookup, output_field=BooleanField())
++        output_field = lhs.output_field.__class__
++        raise FieldError(
++            "Unsupported ordering lookup '%s' for %s." % (name, output_field.__name__)
++        )
++
+     def build_filter(self, filter_expr, branch_negated=False, current_negated=False,
+                      can_reuse=None, allow_joins=True, split_subq=True,
+                      reuse_with_filtered_relation=False, check_filterable=True):
+@@ -1514,7 +1544,7 @@ class Query(BaseExpression):
+         return path, final_field, targets, names[pos + 1:]
+ 
+     def setup_joins(self, names, opts, alias, can_reuse=None, allow_many=True,
+-                    reuse_with_filtered_relation=False):
++                    reuse_with_filtered_relation=False, allow_lookup=False):
+         """
+         Compute the necessary table joins for the passage through the fields
+         given in 'names'. 'opts' is the Options class for the current model
+@@ -1536,8 +1566,8 @@ class Query(BaseExpression):
+         for any 'where' constraint), the final 'opts' value, the joins, the
+         field path traveled to generate the joins, and a transform function
+         that takes a field and alias and is equivalent to `field.get_col(alias)`
+-        in the simple case but wraps field transforms if they were included in
+-        names.
++        in the simple case but wraps field transforms and lookups if they were
++        included in names.
+ 
+         The target field is the field containing the concrete value. Final
+         field can be something different, for example foreign key pointing to
+@@ -1578,9 +1608,14 @@ class Query(BaseExpression):
+             def transform(field, alias, *, name, previous):
+                 try:
+                     wrapped = previous(field, alias)
++                    if allow_lookup:
++                        try:
++                            return self.try_lookup(wrapped, name)
++                        except FieldError:
++                            pass
+                     return self.try_transform(wrapped, name)
+                 except FieldError:
+-                    # FieldError is raised if the transform doesn't exist.
++                    # FieldError is raised if the transform or lookup doesn't exist.
+                     if isinstance(final_field, Field) and last_field_exception:
+                         raise last_field_exception
+                     else:

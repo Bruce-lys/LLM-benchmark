@@ -1,0 +1,67 @@
+diff --git a/sphinx/domains/std.py b/sphinx/domains/std.py
+index d820cfe5c..c1b3f70ac 100644
+--- a/sphinx/domains/std.py
++++ b/sphinx/domains/std.py
+@@ -305,7 +305,7 @@ def make_glossary_term(env: "BuildEnvironment", textnodes: Iterable[Node], index
+         term['ids'].append(node_id)
+ 
+     std = cast(StandardDomain, env.get_domain('std'))
+-    std.note_object('term', termtext.lower(), node_id, location=term)
++    std.note_object('term', termtext, node_id, location=term)
+ 
+     # add an index entry too
+     indexnode = addnodes.index()
+@@ -565,7 +565,7 @@ class StandardDomain(Domain):
+         # links to tokens in grammar productions
+         'token':   TokenXRefRole(),
+         # links to terms in glossary
+-        'term':    XRefRole(lowercase=True, innernodeclass=nodes.inline,
++        'term':    XRefRole(innernodeclass=nodes.inline,
+                             warn_dangling=True),
+         # links to headings or arbitrary labels
+         'ref':     XRefRole(lowercase=True, innernodeclass=nodes.inline,
+@@ -931,6 +931,15 @@ class StandardDomain(Domain):
+             if (objtype, target) in self.objects:
+                 docname, labelid = self.objects[objtype, target]
+                 break
++            elif objtype == 'term':
++                # glossary terms are case-insensitive for cross-reference
++                for (otype, tname), info in self.objects.items():
++                    if otype == 'term' and tname.lower() == target.lower():
++                        docname, labelid = info
++                        break
++                else:
++                    continue
++                break
+         else:
+             docname, labelid = '', ''
+         if not docname:
+@@ -951,11 +960,24 @@ class StandardDomain(Domain):
+                 results.append(('std:' + role, res))
+         # all others
+         for objtype in self.object_types:
+-            key = (objtype, target)
+             if objtype == 'term':
+-                key = (objtype, ltarget)
+-            if key in self.objects:
+-                docname, labelid = self.objects[key]
++                # glossary terms are case-insensitive for cross-reference;
++                # try exact match first
++                if (objtype, target) in self.objects:
++                    docname, labelid = self.objects[objtype, target]
++                    results.append(('std:' + self.role_for_objtype(objtype),
++                                    make_refnode(builder, fromdocname, docname,
++                                                 labelid, contnode)))
++                else:
++                    for (otype, tname), info in self.objects.items():
++                        if otype == 'term' and tname.lower() == ltarget:
++                            docname, labelid = info
++                            results.append(('std:' + self.role_for_objtype(objtype),
++                                            make_refnode(builder, fromdocname, docname,
++                                                         labelid, contnode)))
++                            break
++            elif (objtype, target) in self.objects:
++                docname, labelid = self.objects[objtype, target]
+                 results.append(('std:' + self.role_for_objtype(objtype),
+                                 make_refnode(builder, fromdocname, docname,
+                                              labelid, contnode)))

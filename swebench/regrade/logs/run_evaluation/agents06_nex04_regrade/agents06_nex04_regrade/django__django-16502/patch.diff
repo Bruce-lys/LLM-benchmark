@@ -1,0 +1,27 @@
+diff --git a/django/core/servers/basehttp.py b/django/core/servers/basehttp.py
+index fef5532e58..3aef9c4500 100644
+--- a/django/core/servers/basehttp.py
++++ b/django/core/servers/basehttp.py
+@@ -113,6 +113,22 @@ class ThreadedWSGIServer(socketserver.ThreadingMixIn, WSGIServer):
+ class ServerHandler(simple_server.ServerHandler):
+     http_version = "1.1"
+ 
++    def finish_response(self):
++        if self.environ.get("REQUEST_METHOD", "").upper() == "HEAD":
++            try:
++                # RFC 2616, section 4.3: servers MUST NOT send a response body
++                # for HEAD requests.
++                self.write(b"")
++                self.finish_content()
++            except:
++                if hasattr(self.result, "close"):
++                    self.result.close()
++                raise
++            else:
++                self.close()
++        else:
++            super().finish_response()
++
+     def __init__(self, stdin, stdout, stderr, environ, **kwargs):
+         """
+         Use a LimitedStream so that unread request data will be ignored at

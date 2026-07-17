@@ -1,0 +1,81 @@
+diff --git a/sympy/polys/factortools.py b/sympy/polys/factortools.py
+index c6a5f9f063..41910ef27a 100644
+--- a/sympy/polys/factortools.py
++++ b/sympy/polys/factortools.py
+@@ -17,7 +17,7 @@
+     dup_degree, dmp_degree,
+     dmp_degree_in, dmp_degree_list,
+     dmp_from_dict,
+-    dmp_zero_p,
++    dmp_zero_p, dmp_one_p,
+     dmp_one,
+     dmp_nest, dmp_raise,
+     dup_strip,
+@@ -1146,7 +1146,18 @@ def dmp_ext_factor(f, u, K):
+     if all(d <= 0 for d in dmp_degree_list(f, u)):
+         return lc, []
+ 
++    if not dmp_degree(f, u):
++        # f does not depend on the first variable, reduce u and factor recursively
++        q_coeff, q_factors = dmp_ext_factor(f[0], u - 1, K)
++        # Lift factors back to u variables
++        q_factors = [([f], k) for f, k in q_factors]
++        return K.mul(lc, q_coeff), q_factors
++
+     f, F = dmp_sqf_part(f, u, K), f
++
++    if dmp_one_p(f, u, K):
++        return lc, []
++
+     s, g, r = dmp_sqf_norm(f, u, K)
+ 
+     factors = dmp_factor_list_include(r, u, K.dom)
+@@ -1162,7 +1173,22 @@ def dmp_ext_factor(f, u, K):
+             h = dmp_compose(h, H, u, K)
+             factors[i] = h
+ 
+-    return lc, dmp_trial_division(F, factors, u, K)
++    coeff, factors = lc, dmp_trial_division(F, factors, u, K)
++
++    # Factor the remaining quotient
++    q = F
++    total_k = sum(k for _, k in factors)
++    if total_k:
++        for factor, k in factors:
++            for _ in range(k):
++                q, r = dmp_div(q, factor, u, K)
++
++    if q and not dmp_one_p(q, u, K) and total_k:
++        q_coeff, q_factors = dmp_ext_factor(q, u, K)
++        coeff = K.mul(coeff, q_coeff)
++        factors.extend(q_factors)
++
++    return coeff, factors
+ 
+ 
+ def dup_gf_factor(f, K):
+diff --git a/sympy/polys/polyclasses.py b/sympy/polys/polyclasses.py
+index 16a183b085..54d885794b 100644
+--- a/sympy/polys/polyclasses.py
++++ b/sympy/polys/polyclasses.py
+@@ -1523,6 +1523,8 @@ def __init__(self, rep, mod, dom):
+         else:
+             if type(rep) is not list:
+                 rep = [dom.convert(rep)]
++            else:
++                rep = [dom.convert(c) for c in rep]
+ 
+             self.rep = dup_strip(rep)
+ 
+@@ -1532,6 +1534,11 @@ def __init__(self, rep, mod, dom):
+             if type(mod) is dict:
+                 self.mod = dup_from_dict(mod, dom)
+             else:
++                if type(mod) is not list:
++                    mod = [dom.convert(mod)]
++                else:
++                    mod = [dom.convert(c) for c in mod]
++
+                 self.mod = dup_strip(mod)
+ 
+         self.dom = dom

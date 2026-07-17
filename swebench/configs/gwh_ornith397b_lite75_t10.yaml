@@ -1,0 +1,29 @@
+run:
+  tag: gwh_ornith397b_lite75_t10_1.0
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: Ornith-1.0-397B
+
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.47:8011/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

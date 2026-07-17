@@ -1,0 +1,36 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 13a6809dd8..ae5039a433 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -429,6 +429,9 @@ class Query(BaseExpression):
+         # Existing usage of aggregation can be determined by the presence of
+         # selected aggregates but also by filters against aliased aggregates.
+         _, having, qualify = self.where.split_having_qualify()
++        aggregate_refs = set()
++        for aggregate in aggregates.values():
++            aggregate_refs |= aggregate.get_refs()
+         has_existing_aggregation = (
+             any(
+                 getattr(annotation, "contains_aggregate", True)
+@@ -436,6 +439,13 @@ class Query(BaseExpression):
+             )
+             or having
+         )
++        # References to window annotations require a subquery to avoid nesting
++        # window functions inside aggregates.
++        has_existing_over_clause = any(
++            alias in aggregate_refs
++            and getattr(annotation, "contains_over_clause", False)
++            for alias, annotation in self.annotations.items()
++        )
+         # Decide if we need to use a subquery.
+         #
+         # Existing aggregations would cause incorrect results as
+@@ -450,6 +460,7 @@ class Query(BaseExpression):
+             isinstance(self.group_by, tuple)
+             or self.is_sliced
+             or has_existing_aggregation
++            or has_existing_over_clause
+             or refs_subquery
+             or qualify
+             or self.distinct

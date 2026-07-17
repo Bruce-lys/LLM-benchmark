@@ -1,0 +1,51 @@
+diff --git a/django/db/migrations/executor.py b/django/db/migrations/executor.py
+index 57042a8690..1f9c44bcbb 100644
+--- a/django/db/migrations/executor.py
++++ b/django/db/migrations/executor.py
+@@ -254,6 +254,7 @@ class MigrationExecutor:
+         if migration.replaces:
+             for app_label, name in migration.replaces:
+                 self.recorder.record_unapplied(app_label, name)
++            self.recorder.record_unapplied(migration.app_label, migration.name)
+         else:
+             self.recorder.record_unapplied(migration.app_label, migration.name)
+         # Report progress
+diff --git a/tests/migrations/test_executor.py b/tests/migrations/test_executor.py
+index e61d8f1276..fdfe2efc64 100644
+--- a/tests/migrations/test_executor.py
++++ b/tests/migrations/test_executor.py
+@@ -104,6 +104,34 @@ class ExecutorTests(MigrationTestBase):
+         self.assertTableNotExists("migrations_author")
+         self.assertTableNotExists("migrations_book")
+ 
++    @override_settings(MIGRATION_MODULES={"migrations": "migrations.test_migrations_squashed"})
++    def test_unapply_squashed_migration_marks_squashed_as_unapplied(self):
++        """
++        Unapplying a squashed migration marks the squashed migration as unapplied
++        as well as its replaced migrations.
++        """
++        recorder = MigrationRecorder(connection)
++        # Record the first replaced migration as applied, then migrate to the
++        # second one. This will apply 0002_second and mark the squashed
++        # replacement as applied through check_replacements.
++        recorder.record_applied("migrations", "0001_initial")
++        executor = MigrationExecutor(connection)
++        executor.migrate([("migrations", "0002_second")], fake=True)
++        executor.loader.build_graph()
++
++        self.assertIn(
++            ("migrations", "0001_squashed_0002"),
++            recorder.applied_migrations(),
++        )
++
++        executor.migrate([("migrations", None)], fake=True)
++        executor.loader.build_graph()
++
++        self.assertNotIn(
++            ("migrations", "0001_squashed_0002"),
++            recorder.applied_migrations(),
++        )
++
+     @override_settings(MIGRATION_MODULES={"migrations": "migrations.test_migrations_non_atomic"})
+     def test_non_atomic_migration(self):
+         """

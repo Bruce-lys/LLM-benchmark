@@ -1,0 +1,89 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index ddfd2b365..5169aaf43 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -90,6 +90,38 @@ INSTANCEATTR = object()
+ SLOTSATTR = object()
+ 
+ 
++def is_directly_defined_attribute(class_: Any, name: str) -> bool:
++    """Return whether an attribute is directly defined on a class."""
++    return (inspect.isclass(class_) and
++            (name in class_.__dict__ or name in safe_getattr(class_, '__annotations__', {})))
++
++
++def _get_attribute_docstring(class_: Any, membername: str) -> Optional[List[str]]:
++    """Return documentation for an attribute inherited from a base class, if any."""
++    if not inspect.isclass(class_) or not membername:
++        return None
++
++    for base in inspect.getmro(class_)[1:]:
++        try:
++            module = safe_getattr(base, '__module__')
++            qualname = safe_getattr(base, '__qualname__')
++        except AttributeError:
++            continue
++        if not module or not qualname:
++            continue
++
++        try:
++            analyzer = ModuleAnalyzer.for_module(module)
++            analyzer.analyze()
++        except (AttributeError, PycodeError):
++            continue
++
++        key = (qualname, membername)
++        if key in analyzer.attr_docs:
++            return list(analyzer.attr_docs[key])
++    return None
++
++
+ def members_option(arg: Any) -> Union[object, List[str]]:
+     """Used to convert the :members: option to auto directives."""
+     if arg is None or arg is True:
+@@ -606,6 +638,15 @@ class Documenter:
+ 
+                     for i, line in enumerate(self.process_doc(docstrings)):
+                         self.add_line(line, sourcename, i)
++                elif not (self.object is INSTANCEATTR or self.object is SLOTSATTR or
++                          inspect.isroutine(self.object) or
++                          is_directly_defined_attribute(self.parent, self.objpath[-1])):
++                    # Fallback to base classes for inherited attributes.
++                    docstrings = _get_attribute_docstring(self.parent, self.objpath[-1])
++                    if docstrings is not None:
++                        no_docstring = True
++                        for i, line in enumerate(self.process_doc([docstrings])):
++                            self.add_line(line, sourcename, i)
+ 
+         # add content from docstrings
+         if not no_docstring:
+@@ -689,6 +730,10 @@ class Documenter:
+         else:
+             attr_docs = {}
+ 
++        def is_directly_defined(name: str) -> bool:
++            return (member is INSTANCEATTR or
++                    is_directly_defined_attribute(self.object, name))
++
+         # process members and determine which to skip
+         for obj in members:
+             membername, member = obj
+@@ -756,6 +801,18 @@ class Documenter:
+                     # keep documented attributes
+                     keep = True
+                 isattr = True
++            elif (inspect.isclass(self.object) and not is_filtered_inherited_member(membername) and
++                  not is_directly_defined(membername) and
++                  _get_attribute_docstring(self.object, membername)):
++                if want_all and isprivate:
++                    if self.options.private_members is None:
++                        keep = False
++                    else:
++                        keep = membername in self.options.private_members
++                else:
++                    # keep documented attributes
++                    keep = True
++                isattr = True
+             elif want_all and isprivate:
+                 if has_doc or self.options.undoc_members:
+                     if self.options.private_members is None:

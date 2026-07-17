@@ -1,0 +1,105 @@
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 6ea18dd22f..6579f4c1f2 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -322,7 +322,7 @@ class LocalePrefixPattern:
+ 
+     def match(self, path):
+         language_prefix = self.language_prefix
+-        if path.startswith(language_prefix):
++        if path.casefold().startswith(language_prefix.casefold()):
+             return path[len(language_prefix):], (), {}
+         return None
+ 
+diff --git a/django/utils/translation/trans_real.py b/django/utils/translation/trans_real.py
+index 7dcc77b46c..d130209486 100644
+--- a/django/utils/translation/trans_real.py
++++ b/django/utils/translation/trans_real.py
+@@ -43,7 +43,10 @@ language_code_re = _lazy_re_compile(
+     re.IGNORECASE
+ )
+ 
+-language_code_prefix_re = _lazy_re_compile(r'^/(\w+([@-]\w+)?)(/|$)')
++language_code_prefix_re = _lazy_re_compile(
++    r'^/([a-z]{1,8}(?:-[a-z0-9]{1,8})*(?:@[a-z0-9]{1,20})?)(/|$)',
++    re.IGNORECASE,
++)
+ 
+ 
+ @receiver(setting_changed)
+@@ -432,6 +435,66 @@ def all_locale_paths():
+     return [globalpath, *settings.LOCALE_PATHS, *app_paths]
+ 
+ 
++def _is_language_code(lang_code):
++    """
++    Return True if lang_code is a syntactically valid language code.
++
++    This is a stricter validation than language_code_re for path parsing to
++    avoid mistaking a URL segment containing multiple hyphenated words for a
++    language code.
++    """
++    if not lang_code or not language_code_re.match(lang_code):
++        return False
++
++    language_part, _, modifier = lang_code.partition('@')
++    if modifier and not re.fullmatch(r'[a-z0-9]{1,20}', modifier):
++        return False
++
++    subtags = language_part.split('-')
++    if not subtags[0]:
++        return False
++    if not subtags[0].isalpha() or not (1 <= len(subtags[0]) <= 8):
++        return False
++
++    i = 1
++    # Extlangs.
++    while i < len(subtags) and len(subtags[i]) == 3 and subtags[i].isalpha():
++        i += 1
++
++    # Script.
++    if i < len(subtags) and len(subtags[i]) == 4 and subtags[i].isalpha():
++        i += 1
++
++    # Region.
++    if i < len(subtags) and (
++        (len(subtags[i]) == 2 and subtags[i].isalpha()) or
++        (len(subtags[i]) == 3 and subtags[i].isdigit())
++    ):
++        i += 1
++
++    # Variants.
++    while i < len(subtags) and (
++        (len(subtags[i]) == 4 and subtags[i].isdigit()) or
++        (5 <= len(subtags[i]) <= 8 and subtags[i].isalnum())
++    ):
++        i += 1
++
++    # Extensions or private use.
++    if i < len(subtags):
++        if subtags[i] == 'x':
++            i += 1
++            while i < len(subtags) and 1 <= len(subtags[i]) <= 8 and subtags[i].isalnum():
++                i += 1
++        elif len(subtags[i]) == 1 and subtags[i].isalpha():
++            i += 1
++            while i < len(subtags) and subtags[i].isalnum():
++                i += 1
++        else:
++            return False
++
++    return i == len(subtags)
++
++
+ @functools.lru_cache(maxsize=1000)
+ def check_for_language(lang_code):
+     """
+@@ -509,6 +572,8 @@ def get_language_from_path(path, strict=False):
+     if not regex_match:
+         return None
+     lang_code = regex_match[1]
++    if not _is_language_code(lang_code):
++        return None
+     try:
+         return get_supported_language_variant(lang_code, strict=strict)
+     except LookupError:

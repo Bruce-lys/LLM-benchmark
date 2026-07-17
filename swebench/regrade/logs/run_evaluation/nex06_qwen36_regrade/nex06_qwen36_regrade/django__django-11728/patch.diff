@@ -1,0 +1,42 @@
+diff --git a/django/contrib/admindocs/utils.py b/django/contrib/admindocs/utils.py
+index 1ce4594501..5ace40246a 100644
+--- a/django/contrib/admindocs/utils.py
++++ b/django/contrib/admindocs/utils.py
+@@ -181,6 +181,12 @@ def replace_named_groups(pattern):
+                 unmatched_open_brackets -= 1
+             prev_char = val
+ 
++        else:
++            # If we've reached the end of the pattern and brackets are balanced,
++            # the final named capture group pattern has been reached.
++            if unmatched_open_brackets == 0:
++                group_pattern_and_name.append((pattern[start:end + idx + 1], group_name))
++
+     # Replace the string for named capture groups with their group names.
+     for group_pattern, group_name in group_pattern_and_name:
+         pattern = pattern.replace(group_pattern, group_name)
+@@ -213,6 +219,12 @@ def replace_unnamed_groups(pattern):
+                 unmatched_open_brackets -= 1
+             prev_char = val
+ 
++        else:
++            # If we've reached the end of the pattern and brackets are balanced,
++            # the final unnamed capture group has been reached.
++            if unmatched_open_brackets == 0:
++                group_indices.append((start, start + 1 + idx + 1))
++
+     # Remove unnamed group matches inside other unnamed capture groups.
+     group_start_end_indices = []
+     prev_end = None
+@@ -228,8 +240,9 @@ def replace_unnamed_groups(pattern):
+         final_pattern, prev_end = [], None
+         for start, end in group_start_end_indices:
+             if prev_end:
+-                final_pattern.append(pattern[prev_end:start])
+-            final_pattern.append(pattern[:start] + '<var>')
++                final_pattern.append(pattern[prev_end:start] + '<var>')
++            else:
++                final_pattern.append(pattern[:start] + '<var>')
+             prev_end = end
+         final_pattern.append(pattern[prev_end:])
+         return ''.join(final_pattern)

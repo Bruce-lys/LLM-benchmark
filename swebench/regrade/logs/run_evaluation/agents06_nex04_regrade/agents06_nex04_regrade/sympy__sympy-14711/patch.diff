@@ -1,0 +1,18 @@
+diff --git a/sympy/physics/vector/vector.py b/sympy/physics/vector/vector.py
+index a048ee57f..0b7fcd43b 100644
+--- a/sympy/physics/vector/vector.py
++++ b/sympy/physics/vector/vector.py
+@@ -57,7 +57,12 @@ def __hash__(self):
+ 
+     def __add__(self, other):
+         """The add operator for Vector. """
+-        other = _check_vector(other)
++        if not isinstance(other, Vector):
++            if other == 0:
++                return self
++            raise TypeError('A Vector must be supplied')
++        if other.args == []:
++            return self
+         return Vector(self.args + other.args)
+ 
+     def __and__(self, other):

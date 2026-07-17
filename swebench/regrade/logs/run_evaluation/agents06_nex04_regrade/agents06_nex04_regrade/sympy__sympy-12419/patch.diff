@@ -1,0 +1,74 @@
+diff --git a/sympy/concrete/summations.py b/sympy/concrete/summations.py
+index 372487664..5afc75e43 100644
+--- a/sympy/concrete/summations.py
++++ b/sympy/concrete/summations.py
+@@ -20,6 +20,29 @@
+ from sympy.tensor.indexed import Idx
+ 
+ 
++def _eval_kronecker_delta_sum(f, limits):
++    """Evaluate a Sum of KroneckerDelta with identical limits."""
++    from sympy.functions import KroneckerDelta
++
++    if not isinstance(f, KroneckerDelta) or len(limits) != 2:
++        return None
++
++    i, a, b = limits[0]
++    j, c, d = limits[1]
++
++    if f.args == (i, j):
++        pass
++    elif f.args == (j, i):
++        pass
++    else:
++        return None
++
++    if a == c and b == d:
++        return b - a + 1
++
++    return None
++
++
+ class Sum(AddWithLimits, ExprWithIntLimits):
+     r"""Represents unevaluated summation.
+ 
+@@ -177,6 +200,14 @@ def doit(self, **hints):
+         if self.function.is_Matrix:
+             return self.expand().doit()
+ 
++        from sympy.functions import KroneckerDelta
++
++        # Summing KroneckerDelta over identical ranges counts the range length.
++        if isinstance(f, KroneckerDelta) and len(self.limits) == 2:
++            newf = _eval_kronecker_delta_sum(f, self.limits)
++            if newf is not None:
++                return newf
++
+         for n, limit in enumerate(self.limits):
+             i, a, b = limit
+             dif = b - a
+diff --git a/sympy/matrices/expressions/matexpr.py b/sympy/matrices/expressions/matexpr.py
+index b4d759836..0b1ef36ab 100644
+--- a/sympy/matrices/expressions/matexpr.py
++++ b/sympy/matrices/expressions/matexpr.py
+@@ -6,7 +6,7 @@
+ from sympy.core.decorators import call_highest_priority
+ from sympy.core.compatibility import range
+ from sympy.core.sympify import SympifyError, sympify
+-from sympy.functions import conjugate, adjoint
++from sympy.functions import adjoint, conjugate, KroneckerDelta
+ from sympy.matrices import ShapeError
+ from sympy.simplify import simplify
+ 
+@@ -476,10 +476,7 @@ def conjugate(self):
+         return self
+ 
+     def _entry(self, i, j):
+-        if i == j:
+-            return S.One
+-        else:
+-            return S.Zero
++        return KroneckerDelta(i, j)
+ 
+     def _eval_determinant(self):
+         return S.One

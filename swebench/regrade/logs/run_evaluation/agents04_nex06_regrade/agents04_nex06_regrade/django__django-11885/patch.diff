@@ -1,0 +1,86 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index ae82d26340..37efe8a6fc 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -78,6 +78,34 @@ class Collector:
+         # parent.
+         self.dependencies = {}  # {model: {models}}
+ 
++    def _combine_fast_deletes(self, qs_list):
++        """Combine fast delete queries for the same table and batch."""
++        groups = {}
++        for qs in qs_list:
++            if not hasattr(qs, 'query'):
++                return list(qs_list)
++            alias_map = qs.query.alias_map
++            if not alias_map:
++                return list(qs_list)
++            alias_map_key = tuple(sorted(
++                (alias, join.table_name, join.join_type)
++                for alias, join in alias_map.items()
++            ))
++            groups.setdefault((alias_map_key, qs.model), []).append(qs)
++        combined = []
++        for qss in groups.values():
++            if len(qss) == 1:
++                combined.append(qss[0])
++            else:
++                qs = qss[0].using(self.using)
++                where = qs.query.where.clone()
++                for other in qss[1:]:
++                    if other.query.where:
++                        where.add(other.query.where.clone(), 'OR')
++                qs.query.where = where
++                combined.append(qs)
++        return combined
++
+     def add(self, objs, source=None, nullable=False, reverse_dependency=False):
+         """
+         Add 'objs' to the collection of objects to be deleted.  If the call is
+@@ -214,18 +242,22 @@ class Collector:
+         if collect_related:
+             if keep_parents:
+                 parents = set(model._meta.get_parent_list())
+-            for related in get_candidate_relations_to_delete(model._meta):
+-                # Preserve parent reverse relationships if keep_parents=True.
+-                if keep_parents and related.model in parents:
+-                    continue
+-                field = related.field
+-                if field.remote_field.on_delete == DO_NOTHING:
+-                    continue
+-                batches = self.get_del_batches(new_objs, field)
+-                for batch in batches:
++            candidates = [
++                related for related in get_candidate_relations_to_delete(model._meta)
++                if not (keep_parents and related.model in parents)
++                and related.field.remote_field.on_delete != DO_NOTHING
++            ]
++            field_batches = [
++                (related, self.get_del_batches(new_objs, related.field))
++                for related in candidates
++            ]
++            max_batches = max((len(batches) for _, batches in field_batches), default=0)
++            batch_fast_deletes = [[] for _ in range(max_batches)]
++            for related, batches in field_batches:
++                for batch_index, batch in enumerate(batches):
+                     sub_objs = self.related_objects(related, batch)
+-                    if self.can_fast_delete(sub_objs, from_field=field):
+-                        self.fast_deletes.append(sub_objs)
++                    if self.can_fast_delete(sub_objs, from_field=related.field):
++                        batch_fast_deletes[batch_index].append(sub_objs)
+                     else:
+                         related_model = related.related_model
+                         # Non-referenced fields can be deferred if no signal
+@@ -242,7 +274,11 @@ class Collector:
+                             ))
+                             sub_objs = sub_objs.only(*tuple(referenced_fields))
+                         if sub_objs:
+-                            field.remote_field.on_delete(self, field, sub_objs, self.using)
++                            related.field.remote_field.on_delete(
++                                self, related.field, sub_objs, self.using
++                            )
++            for fast_deletes in batch_fast_deletes:
++                self.fast_deletes.extend(self._combine_fast_deletes(fast_deletes))
+             for field in model._meta.private_fields:
+                 if hasattr(field, 'bulk_related_objects'):
+                     # It's something like generic foreign key.

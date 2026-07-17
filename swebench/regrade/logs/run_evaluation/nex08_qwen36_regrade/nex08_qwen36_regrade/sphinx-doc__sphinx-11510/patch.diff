@@ -1,0 +1,56 @@
+diff --git a/sphinx/directives/other.py b/sphinx/directives/other.py
+index 19f7c0a8d..bb34ccc4f 100644
+--- a/sphinx/directives/other.py
++++ b/sphinx/directives/other.py
+@@ -3,7 +3,7 @@ from __future__ import annotations
+ import re
+ from typing import TYPE_CHECKING, Any, cast
+ 
+-from docutils import nodes
++from docutils import io, nodes
+ from docutils.parsers.rst import directives
+ from docutils.parsers.rst.directives.admonitions import BaseAdmonition
+ from docutils.parsers.rst.directives.misc import Class
+@@ -376,7 +376,41 @@ class Include(BaseInclude, SphinxDirective):
+         rel_filename, filename = self.env.relfn2path(self.arguments[0])
+         self.arguments[0] = filename
+         self.env.note_included(filename)
+-        return super().run()
++
++        # Emit the event for included files so source-level transformations
++        # also apply when they are included with the include directive.
++        docname = self.env.path2doc(filename)
++        if docname is None:
++            docname = rel_filename
++        events = self.env.events
++        original_fileinput = io.FileInput
++
++        class RecordingFileInput(original_fileinput):
++            def __init__(self, *args, **kwargs):
++                super().__init__(*args, **kwargs)
++                self._sphinx_docname = docname
++                self._sphinx_events = events
++                self._sphinx_source_read_emitted = False
++
++            def _sphinx_read(self, text: str) -> str:
++                if self._sphinx_source_read_emitted:
++                    return text
++                self._sphinx_source_read_emitted = True
++                source = [text]
++                self._sphinx_events.emit('source-read', self._sphinx_docname, source)
++                return source[0]
++
++            def read(self) -> str:
++                return self._sphinx_read(super().read())
++
++            def readlines(self) -> list[str]:
++                return self._sphinx_read(''.join(super().readlines())).splitlines(True)
++
++        io.FileInput = RecordingFileInput
++        try:
++            return super().run()
++        finally:
++            io.FileInput = original_fileinput
+ 
+ 
+ def setup(app: Sphinx) -> dict[str, Any]:

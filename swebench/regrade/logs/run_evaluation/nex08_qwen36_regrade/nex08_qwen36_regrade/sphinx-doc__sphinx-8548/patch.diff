@@ -1,0 +1,75 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index ddfd2b365..8d64dff64 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -584,6 +584,25 @@ class Documenter:
+         else:
+             return 'docstring of %s' % fullname
+ 
++    def get_attribute_doc_namespace(self, membername: str) -> Optional[str]:
++        """Return the namespace where a class attribute is defined."""
++        if inspect.isclass(self.parent):
++            mro = self.parent.__mro__
++        elif inspect.isclass(self.object):
++            mro = self.object.__mro__
++        else:
++            return None
++
++        for cls in mro:
++            try:
++                if membername in cls.__dict__:
++                    return safe_getattr(cls, '__qualname__', cls.__name__)
++                elif membername in self.get_attr(cls, '__annotations__', {}):
++                    return safe_getattr(cls, '__qualname__', cls.__name__)
++            except AttributeError:
++                pass
++        return None
++
+     def add_content(self, more_content: Optional[StringList], no_docstring: bool = False
+                     ) -> None:
+         """Add content from docstrings, attribute documentation and user."""
+@@ -598,6 +617,7 @@ class Documenter:
+             attr_docs = self.analyzer.find_attr_docs()
+             if self.objpath:
+                 key = ('.'.join(self.objpath[:-1]), self.objpath[-1])
++                attr_doc_namespace = self.get_attribute_doc_namespace(self.objpath[-1])
+                 if key in attr_docs:
+                     no_docstring = True
+                     # make a copy of docstring for attributes to avoid cache
+@@ -606,6 +626,16 @@ class Documenter:
+ 
+                     for i, line in enumerate(self.process_doc(docstrings)):
+                         self.add_line(line, sourcename, i)
++                elif attr_doc_namespace:
++                    key = (attr_doc_namespace, self.objpath[-1])
++                    if key in attr_docs:
++                        no_docstring = True
++                        # make a copy of docstring for attributes to avoid cache
++                        # the change of autodoc-process-docstring event.
++                        docstrings = [list(attr_docs[key])]
++
++                        for i, line in enumerate(self.process_doc(docstrings)):
++                            self.add_line(line, sourcename, i)
+ 
+         # add content from docstrings
+         if not no_docstring:
+@@ -692,6 +722,8 @@ class Documenter:
+         # process members and determine which to skip
+         for obj in members:
+             membername, member = obj
++            attr_doc_namespace = (self.get_attribute_doc_namespace(membername)
++                                  if self.analyzer else None)
+             # if isattr is True, the member is documented as an attribute
+             if member is INSTANCEATTR:
+                 isattr = True
+@@ -746,7 +778,9 @@ class Documenter:
+                         keep = has_doc or self.options.undoc_members
+                 else:
+                     keep = False
+-            elif (namespace, membername) in attr_docs:
++            elif ((namespace, membername) in attr_docs or
++                  (attr_doc_namespace and
++                   (attr_doc_namespace, membername) in attr_docs)):
+                 if want_all and isprivate:
+                     if self.options.private_members is None:
+                         keep = False

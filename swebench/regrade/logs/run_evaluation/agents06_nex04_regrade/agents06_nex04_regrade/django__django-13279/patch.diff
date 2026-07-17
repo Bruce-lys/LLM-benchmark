@@ -1,0 +1,26 @@
+diff --git a/django/contrib/sessions/backends/base.py b/django/contrib/sessions/backends/base.py
+index b5453160a5..f54d5a6f43 100644
+--- a/django/contrib/sessions/backends/base.py
++++ b/django/contrib/sessions/backends/base.py
+@@ -108,11 +108,21 @@ class SessionBase:
+ 
+     def encode(self, session_dict):
+         "Return the given session dictionary serialized and encoded as a string."
++        if settings.DEFAULT_HASHING_ALGORITHM == 'sha1':
++            # Keep the legacy encoding format so older Django versions can
++            # decode sessions during the transition to the 3.1 format.
++            serialized = self.serializer().dumps(session_dict)
++            return self._legacy_encode(serialized)
+         return signing.dumps(
+             session_dict, salt=self.key_salt, serializer=self.serializer,
+             compress=True,
+         )
+ 
++    def _legacy_encode(self, serialized):
++        # RemovedInDjango40Warning: pre-Django 3.1 format will be invalid.
++        hash = self._hash(serialized)
++        return base64.b64encode(hash.encode() + b':' + serialized).decode('ascii')
++
+     def decode(self, session_data):
+         try:
+             return signing.loads(session_data, salt=self.key_salt, serializer=self.serializer)

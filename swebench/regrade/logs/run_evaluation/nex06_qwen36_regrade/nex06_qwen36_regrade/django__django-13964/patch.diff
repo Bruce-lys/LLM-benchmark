@@ -1,0 +1,23 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 2428218696..617bda00e9 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -933,14 +933,12 @@ class Model(metaclass=ModelBase):
+                         "%s() prohibited to prevent data loss due to unsaved "
+                         "related object '%s'." % (operation_name, field.name)
+                     )
+-                elif getattr(self, field.attname) is None:
+-                    # Use pk from related object if it has been saved after
+-                    # an assignment.
+-                    setattr(self, field.attname, obj.pk)
+-                # If the relationship's pk/to_field was changed, clear the
+-                # cached relationship.
++                # If the related object has been saved after being assigned,
++                # or if the related object's pk/to_field has changed, update
++                # the local FK value and clear the cached relationship.
+                 if getattr(obj, field.target_field.attname) != getattr(self, field.attname):
+                     field.delete_cached_value(self)
++                    setattr(self, field.attname, getattr(obj, field.target_field.attname))
+ 
+     def delete(self, using=None, keep_parents=False):
+         using = using or router.db_for_write(self.__class__, instance=self)

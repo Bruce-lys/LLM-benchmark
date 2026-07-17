@@ -1,0 +1,79 @@
+diff --git a/django/core/management/base.py b/django/core/management/base.py
+index abc6f79a15..2d6ef0501d 100644
+--- a/django/core/management/base.py
++++ b/django/core/management/base.py
+@@ -5,7 +5,7 @@ be executed through ``django-admin`` or ``manage.py``).
+ import argparse
+ import os
+ import sys
+-from argparse import ArgumentParser, HelpFormatter
++from argparse import ArgumentParser, HelpFormatter, _SubParsersAction
+ from io import TextIOBase
+ 
+ import django
+@@ -43,6 +43,44 @@ class SystemCheckError(CommandError):
+     pass
+ 
+ 
++class CommandSubParsersAction(_SubParsersAction):
++    """
++    Subclass of argparse._SubParsersAction that passes CommandParser-specific
++    attributes through to constructed subparsers.
++    """
++
++    def __init__(
++        self,
++        option_strings,
++        prog,
++        parser_class,
++        missing_args_message=None,
++        called_from_command_line=None,
++        dest=argparse.SUPPRESS,
++        required=False,
++        help=None,
++        metavar=None,
++    ):
++        self.missing_args_message = missing_args_message
++        self.called_from_command_line = called_from_command_line
++        super().__init__(
++            option_strings,
++            prog,
++            parser_class,
++            dest=dest,
++            required=required,
++            help=help,
++            metavar=metavar,
++        )
++
++    def add_parser(self, name, **kwargs):
++        parser_class = kwargs.get("parser_class", self._parser_class)
++        if isinstance(parser_class, type) and issubclass(parser_class, CommandParser):
++            kwargs.setdefault("missing_args_message", self.missing_args_message)
++            kwargs.setdefault("called_from_command_line", self.called_from_command_line)
++        return super().add_parser(name, **kwargs)
++
++
+ class CommandParser(ArgumentParser):
+     """
+     Customized ArgumentParser class to improve some error messages and prevent
+@@ -65,6 +103,20 @@ class CommandParser(ArgumentParser):
+             self.error(self.missing_args_message)
+         return super().parse_args(args, namespace)
+ 
++    def add_subparsers(self, **kwargs):
++        parser_class = kwargs.get("parser_class", type(self))
++        action = kwargs.get("action", CommandSubParsersAction)
++        if (
++            isinstance(parser_class, type)
++            and issubclass(parser_class, CommandParser)
++            and action is CommandSubParsersAction
++        ):
++            kwargs.setdefault("missing_args_message", self.missing_args_message)
++            kwargs.setdefault("called_from_command_line", self.called_from_command_line)
++        kwargs.setdefault("parser_class", type(self))
++        kwargs.setdefault("action", CommandSubParsersAction)
++        return super().add_subparsers(**kwargs)
++
+     def error(self, message):
+         if self.called_from_command_line:
+             super().error(message)

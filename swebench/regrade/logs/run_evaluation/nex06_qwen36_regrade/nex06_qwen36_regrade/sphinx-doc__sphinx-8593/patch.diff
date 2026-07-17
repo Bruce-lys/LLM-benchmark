@@ -1,0 +1,50 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 76265f5be..6cc2ca349 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -703,28 +703,30 @@ class Documenter:
+         for obj in members:
+             membername, member = obj
+             # if isattr is True, the member is documented as an attribute
+-            if member is INSTANCEATTR:
++            if member is INSTANCEATTR or (namespace, membername) in attr_docs:
+                 isattr = True
+             else:
+                 isattr = False
+ 
+-            doc = getdoc(member, self.get_attr, self.config.autodoc_inherit_docstrings,
+-                         self.parent, self.object_name)
+-            if not isinstance(doc, str):
+-                # Ignore non-string __doc__
+-                doc = None
+-
+-            # if the member __doc__ is the same as self's __doc__, it's just
+-            # inherited and therefore not the member's doc
+-            cls = self.get_attr(member, '__class__', None)
+-            if cls:
+-                cls_doc = self.get_attr(cls, '__doc__', None)
+-                if cls_doc == doc:
+-                    doc = None
+-
+             if isinstance(obj, ObjectMember) and obj.docstring:
+                 # hack for ClassDocumenter to inject docstring via ObjectMember
+                 doc = obj.docstring
++            elif (namespace, membername) in attr_docs:
++                doc = '\n'.join(attr_docs[(namespace, membername)])
++            else:
++                doc = getdoc(member, self.get_attr, self.config.autodoc_inherit_docstrings,
++                             self.parent, self.object_name)
++                if not isinstance(doc, str):
++                    # Ignore non-string __doc__
++                    doc = None
++
++                # if the member __doc__ is the same as self's __doc__, it's just
++                # inherited and therefore not the member's doc
++                cls = self.get_attr(member, '__class__', None)
++                if cls:
++                    cls_doc = self.get_attr(cls, '__doc__', None)
++                    if cls_doc == doc:
++                        doc = None
+ 
+             has_doc = bool(doc)
+ 

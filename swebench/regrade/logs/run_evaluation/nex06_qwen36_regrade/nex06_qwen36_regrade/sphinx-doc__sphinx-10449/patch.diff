@@ -1,0 +1,20 @@
+diff --git a/sphinx/ext/autodoc/typehints.py b/sphinx/ext/autodoc/typehints.py
+index 06768168e..0fe50962e 100644
+--- a/sphinx/ext/autodoc/typehints.py
++++ b/sphinx/ext/autodoc/typehints.py
+@@ -28,8 +28,13 @@ def record_typehints(app: Sphinx, objtype: str, name: str, obj: Any,
+             for param in sig.parameters.values():
+                 if param.annotation is not param.empty:
+                     annotation[param.name] = typing.stringify(param.annotation, mode)
+-            if sig.return_annotation is not sig.empty:
+-                annotation['return'] = typing.stringify(sig.return_annotation, mode)
++            # Classes and exceptions do not have return types; their signatures are
++            # derived from __init__, but autodoc historically recorded the return
++            # annotation when __init__ was explicitly documented as a special member.
++            special_members = options.get('special-members', ())
++            if objtype not in ('class', 'exception') or '__init__' in special_members:
++                if sig.return_annotation is not sig.empty:
++                    annotation['return'] = typing.stringify(sig.return_annotation, mode)
+     except (TypeError, ValueError):
+         pass
+ 

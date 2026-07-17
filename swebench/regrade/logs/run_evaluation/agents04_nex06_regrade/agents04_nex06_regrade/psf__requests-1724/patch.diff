@@ -1,0 +1,13 @@
+diff --git a/requests/models.py b/requests/models.py
+index f82f56a..c2a0378 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -308,6 +308,8 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         self.method = method
+         if self.method is not None:
+             self.method = self.method.upper()
++            if is_py2:
++                self.method = to_native_string(self.method)
+ 
+     def prepare_url(self, url, params):
+         """Prepares the given HTTP URL."""

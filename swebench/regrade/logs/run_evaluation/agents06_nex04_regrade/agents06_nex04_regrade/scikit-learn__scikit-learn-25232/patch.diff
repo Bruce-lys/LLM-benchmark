@@ -1,0 +1,90 @@
+diff --git a/sklearn/impute/_iterative.py b/sklearn/impute/_iterative.py
+index 1d918bc0c..91a200c5d 100644
+--- a/sklearn/impute/_iterative.py
++++ b/sklearn/impute/_iterative.py
+@@ -117,6 +117,13 @@ class IterativeImputer(_BaseImputer):
+         Which strategy to use to initialize the missing values. Same as the
+         `strategy` parameter in :class:`~sklearn.impute.SimpleImputer`.
+ 
++    fill_value : str or numerical value, default=None
++        Only used when `initial_strategy='constant'`. Passed to
++        :class:`~sklearn.impute.SimpleImputer` as the `fill_value` parameter.
++        If `None`, the default value from :class:`~sklearn.impute.SimpleImputer`
++        is used (0 for numerical data). Set to `np.nan` to leave missing
++        values as missing.
++
+     imputation_order : {'ascending', 'descending', 'roman', 'arabic', \
+             'random'}, default='ascending'
+         The order in which the features will be imputed. Possible values:
+@@ -281,6 +288,7 @@ class IterativeImputer(_BaseImputer):
+         "initial_strategy": [
+             StrOptions({"mean", "median", "most_frequent", "constant"})
+         ],
++        "fill_value": "no_validation",
+         "imputation_order": [
+             StrOptions({"ascending", "descending", "roman", "arabic", "random"})
+         ],
+@@ -301,6 +309,7 @@ class IterativeImputer(_BaseImputer):
+         tol=1e-3,
+         n_nearest_features=None,
+         initial_strategy="mean",
++        fill_value=None,
+         imputation_order="ascending",
+         skip_complete=False,
+         min_value=-np.inf,
+@@ -322,6 +331,7 @@ class IterativeImputer(_BaseImputer):
+         self.tol = tol
+         self.n_nearest_features = n_nearest_features
+         self.initial_strategy = initial_strategy
++        self.fill_value = fill_value
+         self.imputation_order = imputation_order
+         self.skip_complete = skip_complete
+         self.min_value = min_value
+@@ -491,7 +501,7 @@ class IterativeImputer(_BaseImputer):
+         how to order the updates, and use a random order if anything else
+         is specified.
+ 
+-        Also, this function skips features which have no missing values.
++        Also, this function skips features consisting exclusively of missing values.
+ 
+         Parameters
+         ----------
+@@ -505,6 +515,7 @@ class IterativeImputer(_BaseImputer):
+             The order in which to impute the features.
+         """
+         frac_of_missing_values = mask_missing_values.mean(axis=0)
++        all_missing = frac_of_missing_values == 1.0
+         if self.skip_complete:
+             missing_values_idx = np.flatnonzero(frac_of_missing_values)
+         else:
+@@ -522,6 +533,7 @@ class IterativeImputer(_BaseImputer):
+         elif self.imputation_order == "random":
+             ordered_idx = missing_values_idx
+             self.random_state_.shuffle(ordered_idx)
++        ordered_idx = ordered_idx[np.logical_not(all_missing[ordered_idx])]
+         return ordered_idx
+ 
+     def _get_abs_corr_mat(self, X_filled, tolerance=1e-6):
+@@ -613,15 +625,19 @@ class IterativeImputer(_BaseImputer):
+             self.initial_imputer_ = SimpleImputer(
+                 missing_values=self.missing_values,
+                 strategy=self.initial_strategy,
++                fill_value=self.fill_value,
+                 keep_empty_features=self.keep_empty_features,
+             )
+             X_filled = self.initial_imputer_.fit_transform(X)
+         else:
+             X_filled = self.initial_imputer_.transform(X)
+ 
+-        valid_mask = np.flatnonzero(
+-            np.logical_not(np.isnan(self.initial_imputer_.statistics_))
+-        )
++        if self.initial_strategy == "constant":
++            valid_mask = np.arange(X.shape[1])
++        else:
++            valid_mask = np.flatnonzero(
++                np.logical_not(np.isnan(self.initial_imputer_.statistics_))
++            )
+ 
+         if not self.keep_empty_features:
+             # drop empty features

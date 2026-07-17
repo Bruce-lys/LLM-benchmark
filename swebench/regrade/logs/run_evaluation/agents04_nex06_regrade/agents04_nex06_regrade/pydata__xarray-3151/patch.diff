@@ -1,0 +1,45 @@
+diff --git a/xarray/core/combine.py b/xarray/core/combine.py
+index 37ae903b..56f25bac 100644
+--- a/xarray/core/combine.py
++++ b/xarray/core/combine.py
+@@ -500,8 +500,10 @@ def combine_by_coords(datasets, compat='no_conflicts', data_vars='all',
+                                    data_vars=data_vars, coords=coords,
+                                    fill_value=fill_value)
+ 
+-        # Check the overall coordinates are monotonically increasing
+-        for dim in concatenated.dims:
++        # Check only coordinates that were used to infer the ordering.
++        # Coordinates which are identical across all datasets are bystanders and
++        # should not be required to be monotonic.
++        for dim in concat_dims:
+             if dim in concatenated:
+                 indexes = concatenated.indexes.get(dim)
+                 if not (indexes.is_monotonic_increasing
+diff --git a/xarray/tests/test_combine.py b/xarray/tests/test_combine.py
+index 77e2993b..cf860ba9 100644
+--- a/xarray/tests/test_combine.py
++++ b/xarray/tests/test_combine.py
+@@ -611,6 +611,23 @@ class TestCombineAuto:
+         expected = Dataset({'x': 0, 'y': 1, 'z': 2})
+         assert_identical(expected, actual)
+ 
++    def test_combine_by_coords_identical_nonmonotonic_coordinate(self):
++        y_coord = ['a', 'c', 'b']
++        ds1 = Dataset(
++            data_vars=dict(data=(['x', 'y'], np.arange(9).reshape(3, 3))),
++            coords=dict(x=[1, 2, 3], y=y_coord))
++        ds2 = Dataset(
++            data_vars=dict(data=(['x', 'y'], np.arange(9, 21).reshape(4, 3))),
++            coords=dict(x=[4, 5, 6, 7], y=y_coord))
++        expected = Dataset(
++            data_vars=dict(
++                data=(['x', 'y'], np.vstack([
++                    np.arange(9).reshape(3, 3),
++                    np.arange(9, 21).reshape(4, 3)]))),
++            coords=dict(x=[1, 2, 3, 4, 5, 6, 7], y=y_coord))
++        actual = combine_by_coords((ds1, ds2))
++        assert_identical(actual, expected)
++
+     def test_check_for_impossible_ordering(self):
+         ds0 = Dataset({'x': [0, 1, 5]})
+         ds1 = Dataset({'x': [2, 3]})

@@ -1,0 +1,27 @@
+diff --git a/requests/sessions.py b/requests/sessions.py
+index a023e4e..0ada22d 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -42,6 +42,10 @@ def merge_setting(request_setting, session_setting, dict_class=OrderedDict):
+         return request_setting
+ 
+     if request_setting is None:
++        if dict_class is CaseInsensitiveDict and isinstance(session_setting, Mapping):
++            session_setting = CaseInsensitiveDict(
++                (k, v) for k, v in session_setting.items() if v is not None
++            )
+         return session_setting
+ 
+     # Bypass if not a dictionary (e.g. verify)
+@@ -51,6 +55,11 @@ def merge_setting(request_setting, session_setting, dict_class=OrderedDict):
+     ):
+         return request_setting
+ 
++    if dict_class is CaseInsensitiveDict:
++        session_setting = CaseInsensitiveDict(
++            (k, v) for k, v in session_setting.items() if v is not None
++        )
++
+     merged_setting = dict_class(to_key_val_list(session_setting))
+     merged_setting.update(to_key_val_list(request_setting))
+ 

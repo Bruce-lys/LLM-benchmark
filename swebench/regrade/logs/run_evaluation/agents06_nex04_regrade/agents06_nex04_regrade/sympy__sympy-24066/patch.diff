@@ -1,0 +1,94 @@
+diff --git a/sympy/physics/units/unitsystem.py b/sympy/physics/units/unitsystem.py
+index 3daf84c108..2f8a2b83a1 100644
+--- a/sympy/physics/units/unitsystem.py
++++ b/sympy/physics/units/unitsystem.py
+@@ -154,47 +154,80 @@ def _collect_factor_and_dimension(self, expr):
+         Return tuple with scale factor expression and dimension expression.
+         """
+         from sympy.physics.units import Quantity
++
++        def is_dimensionless(dim):
++            try:
++                return self.get_dimension_system().is_dimensionless(dim)
++            except TypeError:
++                return False
++
+         if isinstance(expr, Quantity):
+-            return expr.scale_factor, expr.dimension
++            dim = expr.dimension
++            if is_dimensionless(dim):
++                dim = Dimension(1)
++            return expr.scale_factor, dim
+         elif isinstance(expr, Mul):
+             factor = 1
+             dimension = Dimension(1)
+             for arg in expr.args:
+                 arg_factor, arg_dim = self._collect_factor_and_dimension(arg)
+                 factor *= arg_factor
++                if is_dimensionless(arg_dim):
++                    arg_dim = Dimension(1)
+                 dimension *= arg_dim
++            if is_dimensionless(dimension):
++                dimension = Dimension(1)
+             return factor, dimension
+         elif isinstance(expr, Pow):
+             factor, dim = self._collect_factor_and_dimension(expr.base)
+             exp_factor, exp_dim = self._collect_factor_and_dimension(expr.exp)
+-            if self.get_dimension_system().is_dimensionless(exp_dim):
++            if is_dimensionless(exp_dim):
+                 exp_dim = 1
+-            return factor ** exp_factor, dim ** (exp_factor * exp_dim)
++            result_dim = dim ** (exp_factor * exp_dim)
++            if is_dimensionless(result_dim):
++                result_dim = Dimension(1)
++            return factor ** exp_factor, result_dim
+         elif isinstance(expr, Add):
+             factor, dim = self._collect_factor_and_dimension(expr.args[0])
+             for addend in expr.args[1:]:
+                 addend_factor, addend_dim = \
+                     self._collect_factor_and_dimension(addend)
+                 if dim != addend_dim:
+-                    raise ValueError(
+-                        'Dimension of "{}" is {}, '
+-                        'but it should be {}'.format(
+-                            addend, addend_dim, dim))
++                    if (not is_dimensionless(dim)
++                        or not is_dimensionless(addend_dim)):
++                        raise ValueError(
++                            'Dimension of "{}" is {}, '
++                            'but it should be {}'.format(
++                                addend, addend_dim, dim))
++                    dim = Dimension(1)
+                 factor += addend_factor
++            if is_dimensionless(dim):
++                dim = Dimension(1)
+             return factor, dim
+         elif isinstance(expr, Derivative):
+             factor, dim = self._collect_factor_and_dimension(expr.args[0])
++            if is_dimensionless(dim):
++                dim = Dimension(1)
+             for independent, count in expr.variable_count:
+                 ifactor, idim = self._collect_factor_and_dimension(independent)
++                if is_dimensionless(idim):
++                    idim = Dimension(1)
+                 factor /= ifactor**count
+                 dim /= idim**count
++            if is_dimensionless(dim):
++                dim = Dimension(1)
+             return factor, dim
+         elif isinstance(expr, Function):
+             fds = [self._collect_factor_and_dimension(
+                 arg) for arg in expr.args]
+-            return (expr.func(*(f[0] for f in fds)),
+-                    *(d[1] for d in fds))
++            dim = Dimension(1)
++            for _, arg_dim in fds:
++                if not is_dimensionless(arg_dim):
++                    dim *= arg_dim
++            return expr.func(*(f[0] for f in fds)), dim
+         elif isinstance(expr, Dimension):
++            if is_dimensionless(expr):
++                return S.One, Dimension(1)
+             return S.One, expr
+         else:
+             return expr, Dimension(1)

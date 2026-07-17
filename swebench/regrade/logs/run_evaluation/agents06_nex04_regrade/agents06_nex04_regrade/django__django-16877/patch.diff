@@ -1,0 +1,70 @@
+diff --git a/django/template/defaultfilters.py b/django/template/defaultfilters.py
+index 5289ef34a0..747abefaf1 100644
+--- a/django/template/defaultfilters.py
++++ b/django/template/defaultfilters.py
+@@ -498,6 +498,22 @@ def safeseq(value):
+     return [mark_safe(obj) for obj in value]
+ 
+ 
++@register.filter(is_safe=True)
++def escapeseq(value):
++    """
++    Apply the ``escape`` filter to each element of a sequence. Useful in
++    conjunction with other filters that operate on sequences, such as
++    ``join``. For example:
++
++    {{ some_list|escapeseq|join:", " }}
++
++    You couldn't use the ``escape`` filter directly in this case, as it would
++    first convert the variable into a string, rather than working with the
++    individual elements of the sequence.
++    """
++    return [escape_filter(obj) for obj in value]
++
++
+ @register.filter(is_safe=True)
+ @stringfilter
+ def striptags(value):
+diff --git a/docs/ref/templates/builtins.txt b/docs/ref/templates/builtins.txt
+index 3aa20dfc71..34cf741bf4 100644
+--- a/docs/ref/templates/builtins.txt
++++ b/docs/ref/templates/builtins.txt
+@@ -2375,6 +2375,23 @@ You couldn't use the :tfilter:`safe` filter directly in this case, as it would
+ first convert the variable into a string, rather than working with the
+ individual elements of the sequence.
+ 
++.. templatefilter:: escapeseq
++
++``escapeseq``
++-------------
++
++Applies the :tfilter:`escape` filter to each element of a sequence. Useful in
++conjunction with other filters that operate on sequences, such as
++:tfilter:`join`. For example:
++
++.. code-block:: html+django
++
++    {{ some_list|escapeseq|join:", " }}
++
++You couldn't use the :tfilter:`escape` filter directly in this case, as it would
++first convert the variable into a string, rather than working with the
++individual elements of the sequence.
++
+ .. templatefilter:: slice
+ 
+ ``slice``
+diff --git a/docs/releases/5.0.txt b/docs/releases/5.0.txt
+index 611a7bd68b..3bb0fd77d5 100644
+--- a/docs/releases/5.0.txt
++++ b/docs/releases/5.0.txt
+@@ -345,7 +345,9 @@ Signals
+ Templates
+ ~~~~~~~~~
+ 
+-* ...
++* The new :tfilter:`escapeseq` template filter applies the ``escape`` filter to
++  each element of a sequence, making it useful with other sequence filters such
++  as ``join``.
+ 
+ Tests
+ ~~~~~

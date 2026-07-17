@@ -1,0 +1,19 @@
+diff --git a/django/utils/functional.py b/django/utils/functional.py
+index 6d38f932f9..87d8ec6362 100644
+--- a/django/utils/functional.py
++++ b/django/utils/functional.py
+@@ -324,6 +324,14 @@ class LazyObject:
+     __str__ = new_method_proxy(str)
+     __bool__ = new_method_proxy(bool)
+ 
++    def __int__(self):
++        if self._wrapped is empty:
++            self._setup()
++        value = self._wrapped
++        if hasattr(value, '_meta'):
++            value = value.pk
++        return int(value)
++
+     # Introspection support
+     __dir__ = new_method_proxy(dir)
+ 

@@ -1,0 +1,24 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 29e33c075f..89d1e8d1d6 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1407,7 +1407,10 @@ class SQLInsertCompiler(SQLCompiler):
+ class SQLDeleteCompiler(SQLCompiler):
+     @cached_property
+     def single_alias(self):
+-        return sum(self.query.alias_refcount[t] > 0 for t in self.query.alias_map) == 1
++        active_tables = self.query.count_active_tables()
++        # The initial alias may not have been initialized yet, so treat
++        # queries with no joins as single-table deletes.
++        return active_tables == 1 or (active_tables == 0 and len(self.query.alias_map) <= 1)
+ 
+     def _as_sql(self, query):
+         result = [
+@@ -1424,6 +1427,7 @@ class SQLDeleteCompiler(SQLCompiler):
+         parameters.
+         """
+         if self.single_alias:
++            self.query.get_initial_alias()
+             return self._as_sql(self.query)
+         innerq = self.query.clone()
+         innerq.__class__ = Query

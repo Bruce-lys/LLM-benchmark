@@ -1,0 +1,23 @@
+diff --git a/astropy/units/quantity.py b/astropy/units/quantity.py
+index b98abfafb..7e4c5eb8e 100644
+--- a/astropy/units/quantity.py
++++ b/astropy/units/quantity.py
+@@ -667,7 +667,17 @@ class Quantity(np.ndarray):
+         arrays = []
+         for input_, converter in zip(inputs, converters):
+             input_ = getattr(input_, "value", input_)
+-            arrays.append(converter(input_) if converter else input_)
++            if converter is None:
++                arrays.append(input_)
++            else:
++                try:
++                    arrays.append(converter(input_))
++                except ValueError:
++                    # Some input could not be converted to an array, e.g. a
++                    # duck array that has a unit attribute but no value
++                    # attribute.  In that case, return NotImplemented so that
++                    # the duck array can try to handle the operation.
++                    return NotImplemented
+ 
+         # Call our superclass's __array_ufunc__
+         result = super().__array_ufunc__(function, method, *arrays, **kwargs)

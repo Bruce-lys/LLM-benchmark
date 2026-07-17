@@ -1,0 +1,96 @@
+diff --git a/django/contrib/auth/__init__.py b/django/contrib/auth/__init__.py
+index 155330c596..84609ab553 100644
+--- a/django/contrib/auth/__init__.py
++++ b/django/contrib/auth/__init__.py
+@@ -91,6 +91,23 @@ def authenticate(request=None, **credentials):
+     )
+ 
+ 
++def _session_auth_hash_matches(session_hash, user, current_session_auth_hash=None):
++    if not session_hash:
++        return False
++    if current_session_auth_hash is None:
++        current_session_auth_hash = user.get_session_auth_hash()
++    if constant_time_compare(session_hash, current_session_auth_hash):
++        return True
++    for secret in settings.SECRET_KEY_FALLBACKS or ():
++        try:
++            fallback_hash = user.get_session_auth_hash(secret=secret)
++        except TypeError:
++            continue
++        if constant_time_compare(session_hash, fallback_hash):
++            return True
++    return False
++
++
+ def login(request, user, backend=None):
+     """
+     Persist a user id and a backend in the request. This way a user doesn't
+@@ -106,8 +123,10 @@ def login(request, user, backend=None):
+     if SESSION_KEY in request.session:
+         if _get_user_session_key(request) != user.pk or (
+             session_auth_hash
+-            and not constant_time_compare(
+-                request.session.get(HASH_SESSION_KEY, ""), session_auth_hash
++            and not _session_auth_hash_matches(
++                request.session.get(HASH_SESSION_KEY, ""),
++                user,
++                session_auth_hash,
+             )
+         ):
+             # To avoid reusing another user's session, create a new, empty
+@@ -199,9 +218,7 @@ def get_user(request):
+             # Verify the session
+             if hasattr(user, "get_session_auth_hash"):
+                 session_hash = request.session.get(HASH_SESSION_KEY)
+-                session_hash_verified = session_hash and constant_time_compare(
+-                    session_hash, user.get_session_auth_hash()
+-                )
++                session_hash_verified = _session_auth_hash_matches(session_hash, user)
+                 if not session_hash_verified:
+                     request.session.flush()
+                     user = None
+diff --git a/django/contrib/auth/base_user.py b/django/contrib/auth/base_user.py
+index 5ee30bf59c..e4b3a934c1 100644
+--- a/django/contrib/auth/base_user.py
++++ b/django/contrib/auth/base_user.py
+@@ -2,6 +2,7 @@
+ This module allows importing AbstractBaseUser even when django.contrib.auth is
+ not in INSTALLED_APPS.
+ """
++
+ import unicodedata
+ import warnings
+ 
+@@ -17,6 +18,11 @@ from django.utils.deprecation import RemovedInDjango51Warning
+ from django.utils.translation import gettext_lazy as _
+ 
+ 
++_SESSION_AUTH_HASH_KEY_SALT = (
++    "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
++)
++
++
+ class BaseUserManager(models.Manager):
+     @classmethod
+     def normalize_email(cls, email):
+@@ -131,14 +137,16 @@ class AbstractBaseUser(models.Model):
+         """
+         return is_password_usable(self.password)
+ 
+-    def get_session_auth_hash(self):
++    def get_session_auth_hash(self, secret=None):
+         """
+         Return an HMAC of the password field.
++
++        If ``secret`` is not provided, uses settings.SECRET_KEY.
+         """
+-        key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
+         return salted_hmac(
+-            key_salt,
++            _SESSION_AUTH_HASH_KEY_SALT,
+             self.password,
++            secret=secret,
+             algorithm="sha256",
+         ).hexdigest()
+ 

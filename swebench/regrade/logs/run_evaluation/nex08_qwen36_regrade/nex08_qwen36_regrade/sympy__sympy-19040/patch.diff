@@ -1,0 +1,58 @@
+diff --git a/sympy/polys/factortools.py b/sympy/polys/factortools.py
+index c6a5f9f063..8624933d72 100644
+--- a/sympy/polys/factortools.py
++++ b/sympy/polys/factortools.py
+@@ -18,6 +18,7 @@
+     dmp_degree_in, dmp_degree_list,
+     dmp_from_dict,
+     dmp_zero_p,
++    dmp_one_p,
+     dmp_one,
+     dmp_nest, dmp_raise,
+     dup_strip,
+@@ -48,6 +49,7 @@
+ from sympy.polys.densetools import (
+     dup_clear_denoms, dmp_clear_denoms,
+     dup_trunc, dmp_ground_trunc,
++    dmp_diff,
+     dup_content,
+     dup_monic, dmp_ground_monic,
+     dup_primitive, dmp_ground_primitive,
+@@ -58,7 +60,9 @@
+ 
+ from sympy.polys.euclidtools import (
+     dmp_primitive,
+-    dup_inner_gcd, dmp_inner_gcd)
++    dmp_content,
++    dup_inner_gcd, dmp_inner_gcd,
++    dmp_gcd)
+ 
+ from sympy.polys.sqfreetools import (
+     dup_sqf_p,
+@@ -1141,12 +1145,25 @@ def dmp_ext_factor(f, u, K):
+         return dup_ext_factor(f, K)
+ 
+     lc = dmp_ground_LC(f, u, K)
++    F = f
+     f = dmp_ground_monic(f, u, K)
+ 
+     if all(d <= 0 for d in dmp_degree_list(f, u)):
+         return lc, []
+ 
+-    f, F = dmp_sqf_part(f, u, K), f
++    gcd = dmp_gcd(f, dmp_diff(f, 1, u, K), u, K)
++
++    if dmp_degree(gcd, u) > 0:
++        cont = dmp_content(gcd, u, K)
++
++        if dmp_one_p(cont, u - 1, K):
++            factors = gcd
++        else:
++            factors = [dmp_quo(c, cont, u - 1, K) for c in gcd]
++
++        if not dmp_one_p(factors, u, K):
++            f = dmp_quo(f, factors, u, K)
++
+     s, g, r = dmp_sqf_norm(f, u, K)
+ 
+     factors = dmp_factor_list_include(r, u, K.dom)

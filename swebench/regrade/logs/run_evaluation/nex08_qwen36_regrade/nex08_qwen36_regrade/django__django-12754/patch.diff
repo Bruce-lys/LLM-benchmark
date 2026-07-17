@@ -1,0 +1,39 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 30616c0172..26c6f2d01b 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -562,7 +562,34 @@ class MigrationAutodetector:
+             for base in model_state.bases:
+                 if isinstance(base, str) and "." in base:
+                     base_app_label, base_name = base.split(".", 1)
++                    base_key = (base_app_label, base_name.lower())
+                     dependencies.append((base_app_label, base_name, None, True))
++                    # If a field was removed from the concrete base, make the
++                    # CreateModel depend on that removal. Otherwise the
++                    # intermediate state will contain both the base field and
++                    # the subclass that inherits it, causing a clash when the
++                    # base is rendered for the CreateModel operation.
++                    base_model_state = self.to_state.models.get(base_key)
++                    if (
++                        base_model_state is None or
++                        base_model_state.options.get('abstract')
++                    ):
++                        continue
++                    removed_fields = self.old_field_keys - self.new_field_keys
++                    for (
++                        removed_app_label,
++                        removed_model_name,
++                        removed_field_name,
++                    ) in removed_fields:
++                        if (removed_app_label, removed_model_name) == base_key:
++                            dependencies.append(
++                                (
++                                    removed_app_label,
++                                    removed_model_name,
++                                    removed_field_name,
++                                    False,
++                                )
++                            )
+             # Depend on the other end of the primary key if it's a relation
+             if primary_key_rel:
+                 dependencies.append((

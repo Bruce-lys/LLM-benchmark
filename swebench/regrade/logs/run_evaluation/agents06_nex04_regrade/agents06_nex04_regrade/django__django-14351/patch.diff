@@ -1,0 +1,27 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 5089737034..f7c9d1ee2f 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -376,6 +376,22 @@ class IntegerLessThan(IntegerFieldFloatRounding, LessThan):
+ class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup):
+     lookup_name = 'in'
+ 
++    def get_group_by_cols(self, alias=None):
++        cols = self.lhs.get_group_by_cols()
++        rhs = self.rhs
++        if hasattr(rhs, 'get_group_by_cols'):
++            from django.db.models.sql.query import Query
++            if isinstance(rhs, Query) and not rhs.has_select_fields:
++                # For a default model QuerySet used as an IN subquery, the
++                # subquery only needs the primary key column; process_rhs()
++                # will clear the select clause and add that column later.
++                cols.append(
++                    rhs.model._meta.pk.get_col(rhs.get_initial_alias())
++                )
++            else:
++                cols.extend(rhs.get_group_by_cols())
++        return cols
++
+     def process_rhs(self, compiler, connection):
+         db_rhs = getattr(self.rhs, '_db', None)
+         if db_rhs is not None and db_rhs != connection.alias:

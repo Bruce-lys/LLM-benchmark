@@ -1,0 +1,61 @@
+diff --git a/sympy/polys/polytools.py b/sympy/polys/polytools.py
+index c9e77a901f..11a958e1f5 100644
+--- a/sympy/polys/polytools.py
++++ b/sympy/polys/polytools.py
+@@ -5890,6 +5890,32 @@ def key(obj):
+     return sorted(factors, key=key)
+ 
+ 
++def _sqf_can_group(factors):
++    """Return True if factors can be grouped into square-free factors."""
++    return (factors and all(isinstance(f, Poly) for f, _ in factors) and
++            all(len(f.gens) == 1 for f, _ in factors) and
++            len({f.gens for f, _ in factors}) == 1)
++
++
++def _sqf_list_factors(factors):
++    """Combine factors with the same exponent for square-free factorization."""
++    grouped = []
++    i = 0
++
++    while i < len(factors):
++        poly, exp = factors[i]
++        j = i + 1
++
++        while j < len(factors) and factors[j][1] == exp:
++            poly = poly * factors[j][0]
++            j += 1
++
++        grouped.append((poly, exp))
++        i = j
++
++    return grouped
++
++
+ def _factors_product(factors):
+     """Multiply a list of ``(expr, exp)`` pairs. """
+     return Mul(*[f.as_expr()**k for f, k in factors])
+@@ -5959,6 +5985,10 @@ def _symbolic_factor(expr, opt, method):
+         if hasattr(expr,'_eval_factor'):
+             return expr._eval_factor()
+         coeff, factors = _symbolic_factor_list(together(expr, fraction=opt['fraction']), opt, method)
++
++        if method == 'sqf' and _sqf_can_group(factors):
++            factors = _sqf_list_factors(_sorted_factors(factors, method))
++
+         return _keep_coeff(coeff, _factors_product(factors))
+     elif hasattr(expr, 'args'):
+         return expr.func(*[_symbolic_factor(arg, opt, method) for arg in expr.args])
+@@ -5998,6 +6028,12 @@ def _generic_factor_list(expr, gens, args, method):
+         fp = _sorted_factors(fp, method)
+         fq = _sorted_factors(fq, method)
+ 
++        if method == 'sqf' and (
++                (not fp or _sqf_can_group(fp)) and
++                (not fq or _sqf_can_group(fq))):
++            fp = _sqf_list_factors(fp)
++            fq = _sqf_list_factors(fq)
++
+         if not opt.polys:
+             fp = [(f.as_expr(), k) for f, k in fp]
+             fq = [(f.as_expr(), k) for f, k in fq]

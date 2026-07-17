@@ -1,0 +1,25 @@
+    def unapply_migration(self, state, migration, fake=False):
+        """Run a migration backwards."""
+        if self.progress_callback:
+            self.progress_callback("unapply_start", migration, fake)
+        if not fake:
+            with self.connection.schema_editor(atomic=migration.atomic) as schema_editor:
+                state = migration.unapply(state, schema_editor)
+        # For replacement migrations, record individual statuses
+        self.recorder.record_unapplied(migration.app_label, migration.name)
+        if migration.replaces:
+            for app_label, name in migration.replaces:
+                self.recorder.record_unapplied(app_label, name)
+        # Report progress
+        if self.progress_callback:
+            self.progress_callback("unapply_success", migration, fake)
+        return state
+
+    def check_replacements(self):
+        """
+        Mark replacement migrations applied if their replaced set all are.
+
+        Do this unconditionally on every migrate, rather than just when
+        migrations are applied or unapplied, to correctly handle the case
+        when a new squash migration is pushed to a deployment that already had
+        all its replaced migrations applied. In this case no new migration will

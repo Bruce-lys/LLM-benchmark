@@ -1,0 +1,14 @@
+# Secrets
+env.sh
+.env
+
+# Large local run artifacts (not for the monorepo)
+swebench_runs/
+
+# Python
+.venv/
+**/__pycache__/
+*.pyc
+
+# Logs
+*.log

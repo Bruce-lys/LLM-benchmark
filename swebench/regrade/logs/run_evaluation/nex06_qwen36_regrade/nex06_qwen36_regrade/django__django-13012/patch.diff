@@ -1,0 +1,34 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index c1a76584f0..178eb2b71b 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -866,6 +866,10 @@ class ExpressionWrapper(Expression):
+     def as_sql(self, compiler, connection):
+         return self.expression.as_sql(compiler, connection)
+ 
++    def get_group_by_cols(self, alias=None):
++        return self.expression.get_group_by_cols()
++
++
+     def __repr__(self):
+         return "{}({})".format(self.__class__.__name__, self.expression)
+ 
+diff --git a/tests/annotations/tests.py b/tests/annotations/tests.py
+index 142c23ead6..964e7f27d4 100644
+--- a/tests/annotations/tests.py
++++ b/tests/annotations/tests.py
+@@ -168,6 +168,14 @@ class NonAggregateAnnotationTestCase(TestCase):
+             self.assertEqual(book.is_book, 1)
+             self.assertEqual(book.rating_count, 1)
+ 
++    def test_expression_wrapper_constant_annotation_group_by(self):
++        qs = Book.objects.annotate(
++            expr_res=ExpressionWrapper(Value(3, output_field=IntegerField()), output_field=IntegerField()),
++        ).values('expr_res', 'id').annotate(total=Sum('rating'))
++        _, _, group_by = qs.query.get_compiler(using='default').pre_sql_setup()
++        self.assertEqual(len(group_by), 1)
++        self.assertEqual(group_by[0][0], '"annotations_book"."id"')
++
+     def test_aggregate_over_annotation(self):
+         agg = Author.objects.annotate(other_age=F('age')).aggregate(otherage_sum=Sum('other_age'))
+         other_agg = Author.objects.aggregate(age_sum=Sum('age'))

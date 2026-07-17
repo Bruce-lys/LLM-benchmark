@@ -1,0 +1,21 @@
+diff --git a/sympy/polys/polyclasses.py b/sympy/polys/polyclasses.py
+index 238a0f0b25..75176f4ca8 100644
+--- a/sympy/polys/polyclasses.py
++++ b/sympy/polys/polyclasses.py
+@@ -42,6 +42,7 @@ def _perify_factors(per, result, include):
+     dup_convert, dmp_convert,
+     dmp_from_sympy,
+     dup_strip,
++    dmp_strip,
+     dup_degree, dmp_degree_in,
+     dmp_degree_list,
+     dmp_negative_p,
+@@ -152,6 +153,8 @@ def __init__(self, rep, dom, lev=None, ring=None):
+                 rep = dmp_from_dict(rep, lev, dom)
+             elif type(rep) is not list:
+                 rep = dmp_ground(dom.convert(rep), lev)
++
++            rep = dmp_strip(rep, lev)
+         else:
+             rep, lev = dmp_validate(rep)
+ 

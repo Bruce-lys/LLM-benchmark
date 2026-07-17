@@ -1,0 +1,59 @@
+diff --git a/sympy/printing/codeprinter.py b/sympy/printing/codeprinter.py
+index ba0e746f5d..8ecf52c939 100644
+--- a/sympy/printing/codeprinter.py
++++ b/sympy/printing/codeprinter.py
+@@ -2,7 +2,7 @@
+ 
+ from functools import wraps
+ 
+-from sympy.core import Add, Expr, Mul, Pow, S, sympify, Float
++from sympy.core import Add, Expr, Mod, Mul, Pow, S, sympify, Float
+ from sympy.core.basic import Basic
+ from sympy.core.compatibility import default_sort_key
+ from sympy.core.function import Lambda
+@@ -487,8 +487,18 @@ def _print_Mul(self, expr):
+ 
+         a = a or [S.One]
+ 
+-        a_str = [self.parenthesize(x, prec) for x in a]
+-        b_str = [self.parenthesize(x, prec) for x in b]
++        a_str = []
++        for x in a:
++            if isinstance(x, Mod):
++                a_str.append("(%s)" % self._print(x))
++            else:
++                a_str.append(self.parenthesize(x, prec))
++        b_str = []
++        for x in b:
++            if isinstance(x, Mod):
++                b_str.append("(%s)" % self._print(x))
++            else:
++                b_str.append(self.parenthesize(x, prec))
+ 
+         # To parenthesize Pow with exp = -1 and having more than one Symbol
+         for item in pow_paren:
+diff --git a/sympy/printing/pycode.py b/sympy/printing/pycode.py
+index b669a2c783..16f6e57b42 100644
+--- a/sympy/printing/pycode.py
++++ b/sympy/printing/pycode.py
+@@ -5,7 +5,7 @@
+ """
+ from collections import defaultdict
+ from itertools import chain
+-from sympy.core import S
++from sympy.core import S, Mod
+ from .precedence import precedence
+ from .codeprinter import CodePrinter
+ 
+@@ -421,7 +421,10 @@ def _hprint_Pow(self, expr, rational=False, sqrt='math.sqrt'):
+                 return "{num}/{func}({arg})".format(
+                     num=num, func=func, arg=arg)
+ 
+-        base_str = self.parenthesize(expr.base, PREC, strict=False)
++        if isinstance(expr.base, Mod):
++            base_str = "(%s)" % self._print(expr.base)
++        else:
++            base_str = self.parenthesize(expr.base, PREC, strict=False)
+         exp_str = self.parenthesize(expr.exp, PREC, strict=False)
+         return "{}**{}".format(base_str, exp_str)
+ 

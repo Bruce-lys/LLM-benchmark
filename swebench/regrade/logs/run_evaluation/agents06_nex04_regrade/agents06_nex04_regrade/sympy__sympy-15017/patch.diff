@@ -1,0 +1,133 @@
+diff --git a/sympy/tensor/array/dense_ndim_array.py b/sympy/tensor/array/dense_ndim_array.py
+index 9be94a863..f776f43ed 100644
+--- a/sympy/tensor/array/dense_ndim_array.py
++++ b/sympy/tensor/array/dense_ndim_array.py
+@@ -1,6 +1,4 @@
+ from __future__ import print_function, division
+-import functools
+-
+ import itertools
+ 
+ from sympy.core.sympify import _sympify
+@@ -69,7 +67,7 @@ def slice_expand(s, dim):
+ 
+     @classmethod
+     def zeros(cls, *shape):
+-        list_length = functools.reduce(lambda x, y: x*y, shape)
++        list_length = NDimArray._loop_size_from_shape(shape)
+         return cls._new(([0]*list_length,), shape)
+ 
+     def tomatrix(self):
+@@ -121,9 +119,9 @@ def reshape(self, *newshape):
+         [[1, 2], [3, 4], [5, 6]]
+ 
+         """
+-        new_total_size = functools.reduce(lambda x,y: x*y, newshape)
++        new_total_size = NDimArray._loop_size_from_shape(newshape)
+         if new_total_size != self._loop_size:
+-            raise ValueError("Invalid reshape parameters " + newshape)
++            raise ValueError("Invalid reshape parameters " + str(newshape))
+ 
+         # there is no `.func` as this class does not subtype `Basic`:
+         return type(self)(self._array, newshape)
+@@ -149,7 +147,9 @@ def _new(cls, iterable, shape, **kwargs):
+         self._shape = shape
+         self._array = list(flat_list)
+         self._rank = len(shape)
+-        self._loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
++        self._loop_size = NDimArray._loop_size_from_shape(shape)
++        if len(self._array) != self._loop_size:
++            raise ValueError("Number of elements does not match the shape")
+         return self
+ 
+     def __setitem__(self, index, value):
+@@ -174,7 +174,9 @@ def _new(cls, iterable, shape, **kwargs):
+         self._shape = shape
+         self._array = list(flat_list)
+         self._rank = len(shape)
+-        self._loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
++        self._loop_size = NDimArray._loop_size_from_shape(shape)
++        if len(self._array) != self._loop_size:
++            raise ValueError("Number of elements does not match the shape")
+         return self
+ 
+     def __setitem__(self, index, value):
+diff --git a/sympy/tensor/array/ndim_array.py b/sympy/tensor/array/ndim_array.py
+index 099b29116..91a02e114 100644
+--- a/sympy/tensor/array/ndim_array.py
++++ b/sympy/tensor/array/ndim_array.py
+@@ -122,13 +122,20 @@ def f(pointer):
+ 
+         return f(iterable)
+ 
++    @staticmethod
++    def _loop_size_from_shape(shape):
++        loop_size = 1
++        for dim in shape:
++            loop_size *= dim
++        return loop_size
++
+     @classmethod
+     def _handle_ndarray_creation_inputs(cls, iterable=None, shape=None, **kwargs):
+         from sympy.matrices.matrices import MatrixBase
+ 
+         if shape is None and iterable is None:
+             shape = ()
+-            iterable = ()
++            iterable = (0,)
+         # Construction from another `NDimArray`:
+         elif shape is None and isinstance(iterable, NDimArray):
+             shape = iterable.shape
+@@ -306,6 +313,8 @@ def tolist(self):
+         >>> b
+         [[1, 2], [3, 4]]
+         """
++        if self.rank() == 0:
++            return self[()]
+ 
+         def f(sh, shape_left, i, j):
+             if len(shape_left) == 1:
+diff --git a/sympy/tensor/array/sparse_ndim_array.py b/sympy/tensor/array/sparse_ndim_array.py
+index 72b5d5129..e4470cdaa 100644
+--- a/sympy/tensor/array/sparse_ndim_array.py
++++ b/sympy/tensor/array/sparse_ndim_array.py
+@@ -1,6 +1,4 @@
+ from __future__ import print_function, division
+-import functools
+-
+ import itertools
+ 
+ from sympy.core.sympify import _sympify
+@@ -116,11 +114,11 @@ def iterator():
+         return iterator()
+ 
+     def reshape(self, *newshape):
+-        new_total_size = functools.reduce(lambda x,y: x*y, newshape)
++        new_total_size = NDimArray._loop_size_from_shape(newshape)
+         if new_total_size != self._loop_size:
+-            raise ValueError("Invalid reshape parameters " + newshape)
++            raise ValueError("Invalid reshape parameters " + str(newshape))
+ 
+-        return type(self)(*(newshape + (self._array,)))
++        return type(self)(self._sparse_array, newshape)
+ 
+ 
+ class ImmutableSparseNDimArray(SparseNDimArray, ImmutableNDimArray):
+@@ -130,7 +128,7 @@ def __new__(cls, iterable=None, shape=None, **kwargs):
+ 
+         shape, flat_list = cls._handle_ndarray_creation_inputs(iterable, shape, **kwargs)
+         shape = Tuple(*map(_sympify, shape))
+-        loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
++        loop_size = NDimArray._loop_size_from_shape(shape)
+ 
+         # Sparse array:
+         if isinstance(flat_list, (dict, Dict)):
+@@ -167,7 +165,7 @@ def __new__(cls, iterable=None, shape=None, **kwargs):
+         self = object.__new__(cls)
+         self._shape = shape
+         self._rank = len(shape)
+-        self._loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
++        self._loop_size = NDimArray._loop_size_from_shape(shape)
+ 
+         # Sparse array:
+         if isinstance(flat_list, (dict, Dict)):

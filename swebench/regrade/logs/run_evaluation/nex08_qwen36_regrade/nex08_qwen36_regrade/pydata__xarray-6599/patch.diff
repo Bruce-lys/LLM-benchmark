@@ -1,0 +1,48 @@
+diff --git a/xarray/core/computation.py b/xarray/core/computation.py
+index 823cbe02..cf34f187 100644
+--- a/xarray/core/computation.py
++++ b/xarray/core/computation.py
+@@ -1918,22 +1918,39 @@ def polyval(
+ 
+ 
+ def _ensure_numeric(data: T_Xarray) -> T_Xarray:
+-    """Converts all datetime64 variables to float64
++    """Converts all datetime64 and timedelta64 variables to float64.
++
++    For datetime-like DataArrays whose name is a dimension, the coordinate with
++    that name is used when present.
+ 
+     Parameters
+     ----------
+     data : DataArray or Dataset
+-        Variables with possible datetime dtypes.
++        Variables with possible datetime or timedelta dtypes.
+ 
+     Returns
+     -------
+     DataArray or Dataset
+-        Variables with datetime64 dtypes converted to float64.
++        Variables with datetime64 and timedelta64 dtypes converted to float64.
+     """
++    from .dataarray import DataArray
+     from .dataset import Dataset
+ 
+     def to_floatable(x: DataArray) -> DataArray:
+-        if x.dtype.kind in "mM":
++        if isinstance(x, DataArray) and x.name in x.dims:
++            coordinate = x[x.name]
++            if coordinate.dtype.kind in "mM" or x.dtype.kind in "mM":
++                x = coordinate
++
++        if x.dtype.kind == "m":
++            return x.copy(
++                data=datetime_to_numeric(
++                    x.data,
++                    offset=np.timedelta64(0, "ns"),
++                    datetime_unit="ns",
++                ),
++            )
++        elif x.dtype.kind == "M":
+             return x.copy(
+                 data=datetime_to_numeric(
+                     x.data,

@@ -1,0 +1,79 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 90b0bf117e..702a21dcb9 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -1308,11 +1308,23 @@ class _AxesBase(martist.Artist):
+         self._get_patches_for_fill = _process_plot_var_args(self, 'fill')
+ 
+         self._gridOn = mpl.rcParams['axes.grid']
++
++        # Detach children from the cleared Axes.
++        for child in self._children:
++            self._mouseover_set.discard(child)
++            child.axes = None
++            child.figure = None
++            child.stale_callback = None
+         self._children = []
+         self._mouseover_set = _OrderedSet()
+         self.child_axes = []
+         self._current_image = None  # strictly for pyplot via _sci, _gci
+         self._projection_init = None  # strictly for pyplot.subplot
++        legend = getattr(self, 'legend_', None)
++        if legend is not None:
++            legend.axes = None
++            legend.figure = None
++            legend.stale_callback = None
+         self.legend_ = None
+         self.containers = []
+ 
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index 6c18ba1a64..aad5311976 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -928,6 +928,10 @@ default: %(va)s
+         # Break link between any twinned axes
+         _break_share_link(ax, ax._twinned_axes)
+ 
++        # Detach the Axes from this figure.
++        ax.figure = None
++        ax.stale_callback = None
++
+     def clear(self, keep_observers=False):
+         """
+         Clear the figure.
+@@ -941,14 +945,34 @@ default: %(va)s
+         self.suppressComposite = None
+ 
+         # first clear the axes in any subfigures
+-        for subfig in self.subfigs:
++        old_subfigs = list(self.subfigs)
++        for subfig in old_subfigs:
+             subfig.clear(keep_observers=keep_observers)
++        for subfig in old_subfigs:
++            subfig.figure = None
+         self.subfigs = []
+ 
+         for ax in tuple(self.axes):  # Iterate over the copy.
+             ax.clear()
+             self.delaxes(ax)  # Remove ax from self._axstack.
+ 
++        old_fig_artists = (
++            list(self.artists) + list(self.lines) + list(self.patches)
++            + list(self.texts) + list(self.images) + list(self.legends)
++            + [self._suptitle, self._supxlabel, self._supylabel])
++        seen = set()
++        for artist in old_fig_artists:
++            if artist is None or id(artist) in seen:
++                continue
++            seen.add(id(artist))
++            if isinstance(artist, mlegend.Legend):
++                artist.axes = None
++                artist.figure = None
++                artist.stale_callback = None
++            else:
++                artist.figure = None
++                artist.stale_callback = None
++
+         self.artists = []
+         self.lines = []
+         self.patches = []

@@ -1,0 +1,91 @@
+diff --git a/xarray/core/computation.py b/xarray/core/computation.py
+index 3f7e8f74..788ea635 100644
+--- a/xarray/core/computation.py
++++ b/xarray/core/computation.py
+@@ -1860,7 +1860,9 @@ def where(cond, x, y, keep_attrs=None):
+     if keep_attrs is True:
+         # keep the attributes of x, the second parameter, by default to
+         # be consistent with the `where` method of `DataArray` and `Dataset`
+-        keep_attrs = lambda attrs, context: getattr(x, "attrs", {})
++        keep_attrs = lambda attrs, context: (
++            attrs[0] if context == "coordinates" else getattr(x, "attrs", {})
++        )
+ 
+     # alignment for three arguments is complicated, so don't support it yet
+     return apply_ufunc(
+diff --git a/xarray/core/merge.py b/xarray/core/merge.py
+index 859b3aef..c40f66dc 100644
+--- a/xarray/core/merge.py
++++ b/xarray/core/merge.py
+@@ -211,6 +211,7 @@ def merge_collected(
+     compat: CompatOptions = "minimal",
+     combine_attrs: CombineAttrsOptions = "override",
+     equals: dict[Hashable, bool] | None = None,
++    context: str | None = None,
+ ) -> tuple[dict[Hashable, Variable], dict[Hashable, Index]]:
+     """Merge dicts of variables, while resolving conflicts appropriately.
+ 
+@@ -236,6 +237,9 @@ def merge_collected(
+ 
+         If a callable, it must expect a sequence of ``attrs`` dicts and a context object
+         as its only parameters.
++    context : str, optional
++        Context for attribute merging. Used to distinguish coordinate variables
++        from other variables.
+     equals : mapping, optional
+         corresponding to result of compat test
+ 
+@@ -294,6 +298,7 @@ def merge_collected(
+                 merged_vars[name].attrs = merge_attrs(
+                     [var.attrs for var, _ in indexed_elements],
+                     combine_attrs=combine_attrs,
++                    context=context,
+                 )
+                 merged_indexes[name] = index
+             else:
+@@ -310,7 +315,9 @@ def merge_collected(
+ 
+                 if name in merged_vars:
+                     merged_vars[name].attrs = merge_attrs(
+-                        [var.attrs for var in variables], combine_attrs=combine_attrs
++                        [var.attrs for var in variables],
++                        combine_attrs=combine_attrs,
++                        context=context,
+                     )
+ 
+     return merged_vars, merged_indexes
+@@ -394,6 +401,7 @@ def merge_coordinates_without_align(
+     prioritized: Mapping[Any, MergeElement] | None = None,
+     exclude_dims: AbstractSet = frozenset(),
+     combine_attrs: CombineAttrsOptions = "override",
++    context: str | None = "coordinates",
+ ) -> tuple[dict[Hashable, Variable], dict[Hashable, Index]]:
+     """Merge variables/indexes from coordinates without automatic alignments.
+ 
+@@ -418,7 +426,7 @@ def merge_coordinates_without_align(
+     # TODO: indexes should probably be filtered in collected elements
+     # before merging them
+     merged_coords, merged_indexes = merge_collected(
+-        filtered, prioritized, combine_attrs=combine_attrs
++        filtered, prioritized, combine_attrs=combine_attrs, context=context
+     )
+     merged_indexes = filter_indexes_from_coords(merged_indexes, set(merged_coords))
+ 
+diff --git a/xarray/tests/test_computation.py b/xarray/tests/test_computation.py
+index da1bd014..583aaf1f 100644
+--- a/xarray/tests/test_computation.py
++++ b/xarray/tests/test_computation.py
+@@ -1937,6 +1937,13 @@ def test_where_attrs() -> None:
+     assert actual.attrs == {}
+ 
+ 
++def test_where_attrs_preserves_coordinate_attrs() -> None:
++    ds = xr.tutorial.load_dataset("air_temperature")
++    actual = xr.where(True, ds.air, ds.air, keep_attrs=True)
++    assert actual.time.attrs == {"standard_name": "time", "long_name": "Time"}
++    assert actual.attrs == ds.air.attrs
++
++
+ @pytest.mark.parametrize(
+     "use_dask", [pytest.param(False, id="nodask"), pytest.param(True, id="dask")]
+ )

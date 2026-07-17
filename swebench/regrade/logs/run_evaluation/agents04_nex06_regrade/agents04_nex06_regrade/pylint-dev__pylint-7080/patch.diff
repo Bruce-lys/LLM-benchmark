@@ -1,0 +1,142 @@
+diff --git a/pylint/config/argument.py b/pylint/config/argument.py
+index 3c295151..d493c6fb 100644
+--- a/pylint/config/argument.py
++++ b/pylint/config/argument.py
+@@ -107,17 +107,31 @@ def _regexp_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     return patterns
+ 
+ 
++def _regexp_paths_csv_pattern(pattern: str) -> str:
++    """Return a regex that also matches backslash separators."""
++    try:
++        re.compile(pattern)
++    except re.error:
++        pattern = (
++            str(pathlib.PureWindowsPath(pattern)).replace("\\", "\\\\")
++            + "|"
++            + pathlib.PureWindowsPath(pattern).as_posix()
++        )
++    windows_path_pattern = pattern.replace("/", r"[/\\]")
++    if windows_path_pattern != pattern:
++        windows_path_pattern = pattern + "|" + windows_path_pattern
++    try:
++        re.compile(windows_path_pattern)
++    except re.error:
++        re.compile(pattern)
++    return windows_path_pattern
++
++
+ def _regexp_paths_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     """Transforms a comma separated list of regular expressions paths."""
+     patterns: list[Pattern[str]] = []
+     for pattern in _csv_transformer(value):
+-        patterns.append(
+-            re.compile(
+-                str(pathlib.PureWindowsPath(pattern)).replace("\\", "\\\\")
+-                + "|"
+-                + pathlib.PureWindowsPath(pattern).as_posix()
+-            )
+-        )
++        patterns.append(re.compile(_regexp_paths_csv_pattern(pattern)))
+     return patterns
+ 
+ 
+diff --git a/pylint/config/option.py b/pylint/config/option.py
+index 5043fe76..37f5391f 100644
+--- a/pylint/config/option.py
++++ b/pylint/config/option.py
+@@ -31,20 +31,38 @@ def _regexp_csv_validator(_, name, value):
+     return [_regexp_validator(_, name, val) for val in _csv_validator(_, name, value)]
+ 
+ 
++def _regexp_paths_csv_pattern(pattern: str) -> str:
++    """Return a regex that also matches backslash separators."""
++    try:
++        re.compile(pattern)
++    except re.error:
++        pattern = (
++            str(pathlib.PureWindowsPath(pattern)).replace("\\", "\\\\")
++            + "|"
++            + pathlib.PureWindowsPath(pattern).as_posix()
++        )
++    windows_path_pattern = pattern.replace("/", r"[/\\]")
++    if windows_path_pattern != pattern:
++        windows_path_pattern = pattern + "|" + windows_path_pattern
++    try:
++        re.compile(windows_path_pattern)
++    except re.error:
++        re.compile(pattern)
++    return windows_path_pattern
++
++
+ def _regexp_paths_csv_validator(
+     _, name: str, value: str | list[Pattern[str]]
+ ) -> list[Pattern[str]]:
+     if isinstance(value, list):
+-        return value
++        return [
++            pattern if isinstance(pattern, re.Pattern)
++            else re.compile(_regexp_paths_csv_pattern(pattern))
++            for pattern in value
++        ]
+     patterns = []
+     for val in _csv_validator(_, name, value):
+-        patterns.append(
+-            re.compile(
+-                str(pathlib.PureWindowsPath(val)).replace("\\", "\\\\")
+-                + "|"
+-                + pathlib.PureWindowsPath(val).as_posix()
+-            )
+-        )
++        patterns.append(re.compile(_regexp_paths_csv_pattern(val)))
+     return patterns
+ 
+ 
+diff --git a/pylint/lint/expand_modules.py b/pylint/lint/expand_modules.py
+index 5cacc037..0bc78954 100644
+--- a/pylint/lint/expand_modules.py
++++ b/pylint/lint/expand_modules.py
+@@ -60,6 +60,21 @@ def _is_ignored_file(
+     )
+ 
+ 
++def _is_ignored_path(
++    element: str,
++    ignore_list: list[str],
++    ignore_list_re: list[Pattern[str]],
++    ignore_list_paths_re: list[Pattern[str]],
++) -> bool:
++    return (
++        _is_ignored_file(
++            element, ignore_list, ignore_list_re, ignore_list_paths_re
++        )
++        or _is_in_ignore_list_re(element + os.sep + ".*", ignore_list_paths_re)
++        or _is_in_ignore_list_re(element + os.sep + ".*.py", ignore_list_paths_re)
++    )
++
++
+ def expand_modules(
+     files_or_modules: Sequence[str],
+     ignore_list: list[str],
+diff --git a/pylint/lint/pylinter.py b/pylint/lint/pylinter.py
+index e2bbf061..0944a87e 100644
+--- a/pylint/lint/pylinter.py
++++ b/pylint/lint/pylinter.py
+@@ -34,7 +34,7 @@ from pylint.constants import (
+ from pylint.interfaces import HIGH
+ from pylint.lint.base_options import _make_linter_options
+ from pylint.lint.caching import load_results, save_results
+-from pylint.lint.expand_modules import _is_ignored_file, expand_modules
++from pylint.lint.expand_modules import _is_ignored_path, expand_modules
+ from pylint.lint.message_state_handler import _MessageStateHandler
+ from pylint.lint.parallel import check_parallel
+ from pylint.lint.report_functions import (
+@@ -597,7 +597,7 @@ class PyLinter(
+                         # Skip subtree of already discovered package.
+                         continue
+ 
+-                    if _is_ignored_file(
++                    if _is_ignored_path(
+                         root,
+                         self.config.ignore,
+                         self.config.ignore_patterns,

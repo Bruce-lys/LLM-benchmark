@@ -1,0 +1,47 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 802fd3c997..2791d23fb9 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -1309,6 +1309,13 @@ class _AxesBase(martist.Artist):
+             self.yaxis.set_visible(yaxis_visible)
+             self.patch.set_visible(patch_visible)
+ 
++        if hasattr(self, "_label_outer_xaxis_called"):
++            if self._label_outer_xaxis_called:
++                self._label_outer_xaxis()
++        if hasattr(self, "_label_outer_yaxis_called"):
++            if self._label_outer_yaxis_called:
++                self._label_outer_yaxis()
++
+         self.stale = True
+ 
+     class ArtistList(MutableSequence):
+diff --git a/lib/matplotlib/axes/_subplots.py b/lib/matplotlib/axes/_subplots.py
+index f92d08440e..9801f887f6 100644
+--- a/lib/matplotlib/axes/_subplots.py
++++ b/lib/matplotlib/axes/_subplots.py
+@@ -30,6 +30,8 @@ class SubplotBase:
+             Keyword arguments are passed to the Axes (sub)class constructor.
+         """
+         # _axes_class is set in the subplot_class_factory
++        self._label_outer_xaxis_called = False
++        self._label_outer_yaxis_called = False
+         self._axes_class.__init__(self, fig, [0, 0, 1, 1], **kwargs)
+         # This will also update the axes position.
+         self.set_subplotspec(SubplotSpec._from_subplot_args(fig, args))
+@@ -127,6 +129,7 @@ class SubplotBase:
+             self.xaxis.set_tick_params(which="both", labelbottom=False)
+             if self.xaxis.offsetText.get_position()[1] == 0:
+                 self.xaxis.offsetText.set_visible(False)
++        self._label_outer_xaxis_called = True
+ 
+     def _label_outer_yaxis(self):
+         ss = self.get_subplotspec()
+@@ -143,6 +146,7 @@ class SubplotBase:
+             self.yaxis.set_tick_params(which="both", labelright=False)
+             if self.yaxis.offsetText.get_position()[0] == 1:
+                 self.yaxis.offsetText.set_visible(False)
++        self._label_outer_yaxis_called = True
+ 
+     def _make_twin_axes(self, *args, **kwargs):
+         """Make a twinx axes of self. This is used for twinx and twiny."""

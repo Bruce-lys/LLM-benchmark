@@ -1,0 +1,195 @@
+diff --git a/sympy/concrete/summations.py b/sympy/concrete/summations.py
+index 372487664..b43fa39f9 100644
+--- a/sympy/concrete/summations.py
++++ b/sympy/concrete/summations.py
+@@ -3,7 +3,7 @@
+ from sympy.concrete.expr_with_limits import AddWithLimits
+ from sympy.concrete.expr_with_intlimits import ExprWithIntLimits
+ from sympy.core.function import Derivative
+-from sympy.core.relational import Eq
++from sympy.core.relational import Eq, Equality, LessThan, GreaterThan, StrictLessThan, StrictGreaterThan
+ from sympy.core.singleton import S
+ from sympy.core.symbol import Dummy, Wild, Symbol
+ from sympy.core.add import Add
+@@ -11,6 +11,7 @@
+ from sympy.concrete.gosper import gosper_sum
+ from sympy.functions.special.zeta_functions import zeta
+ from sympy.functions.elementary.piecewise import Piecewise
++from sympy.sets.sets import Interval
+ from sympy.logic.boolalg import And
+ from sympy.polys import apart, PolynomialError
+ from sympy.solvers import solve
+@@ -843,6 +844,127 @@ def telescopic(L, R, limits):
+         return telescopic_direct(L, R, s, (i, a, b))
+ 
+ 
++def _cond_to_interval(cond, var):
++    """
++    Try to extract an Interval from a condition.
++
++    Returns None if the condition is too complex, or an Interval if the
++    condition defines a single interval for the variable.
++    """
++    if cond == True:
++        return None  # All real numbers
++    if cond == False:
++        return S.EmptySet
++
++    if isinstance(cond, Equality):
++        if cond.lhs == var:
++            return Interval(cond.rhs, cond.rhs)
++        elif cond.rhs == var:
++            return Interval(cond.lhs, cond.lhs)
++        else:
++            return None
++
++    if isinstance(cond, And):
++        lower = None
++        upper = None
++        lower_open = True
++        upper_open = True
++        has_eq = False
++        eq_val = None
++        for arg in cond.args:
++            if isinstance(arg, Equality):
++                if arg.lhs == var:
++                    eq_val = arg.rhs
++                    has_eq = True
++                elif arg.rhs == var:
++                    eq_val = arg.lhs
++                    has_eq = True
++            elif isinstance(arg, (LessThan, StrictLessThan,
++                                  GreaterThan, StrictGreaterThan)):
++                if has_eq:
++                    return None
++                if isinstance(arg, LessThan):
++                    if arg.lhs == var:
++                        upper = arg.rhs
++                        upper_open = True
++                    elif arg.rhs == var:
++                        lower = arg.lhs
++                        lower_open = True
++                elif isinstance(arg, StrictLessThan):
++                    if arg.lhs == var:
++                        upper = arg.rhs
++                        upper_open = False
++                    elif arg.rhs == var:
++                        lower = arg.lhs
++                        lower_open = False
++                elif isinstance(arg, GreaterThan):
++                    if arg.lhs == var:
++                        lower = arg.rhs
++                        lower_open = True
++                    elif arg.rhs == var:
++                        upper = arg.lhs
++                        upper_open = True
++                elif isinstance(arg, StrictGreaterThan):
++                    if arg.lhs == var:
++                        lower = arg.rhs
++                        lower_open = False
++                    elif arg.rhs == var:
++                        upper = arg.lhs
++                        upper_open = False
++        if has_eq:
++            return Interval(eq_val, eq_val)
++        if lower is not None and upper is not None:
++            return Interval(lower, upper, not lower_open, not upper_open)
++    return None
++
++
++def _interval_subset(subset, superset):
++    """
++    Check if ``subset`` is a subset of ``superset`` for intervals.
++
++    For intervals [a, b] and [c, d], [a, b] is a subset of [c, d] iff
++    c <= a and b <= d (taking into account open/closed endpoints).
++    """
++    # Check if both are actual Interval objects (may be FiniteSet for degenerate cases)
++    if not hasattr(subset, 'start') or not hasattr(superset, 'start'):
++        return False
++
++    # Compare start points: superset.start <= subset.start
++    try:
++        start_comparison = superset.start <= subset.start
++        if start_comparison == False:
++            return False
++    except TypeError:
++        # Cannot compare symbolically
++        pass
++
++    # Compare end points: subset.end <= superset.end
++    try:
++        end_comparison = subset.end <= superset.end
++        if end_comparison == False:
++            return False
++    except TypeError:
++        # Cannot compare symbolically
++        pass
++
++    # Check endpoint openness
++    # If superset start is open and equals subset start, subset is not contained
++    try:
++        if superset.start == subset.start and superset.left_open:
++            return False
++    except TypeError:
++        pass
++
++    # If superset end is open and equals subset end, subset is not contained
++    try:
++        if superset.end == subset.end and superset.right_open:
++            return False
++    except TypeError:
++        pass
++
++    return True
++
++
+ def eval_sum(f, limits):
+     from sympy.concrete.delta import deltasummation, _has_simple_delta
+     from sympy.functions import KroneckerDelta
+@@ -867,6 +989,28 @@ def eval_sum(f, limits):
+                 newargs.append((newexpr, arg.cond))
+             return f.func(*newargs)
+ 
++        # Handle Piecewise where conditions depend on the dummy variable.
++        # For a simple case like Piecewise((expr, cond), (default, True))
++        # where cond defines an interval, we can compute the sum by
++        # intersecting the condition interval with the summation range.
++        if len(f.args) == 2 and f.args[1][1] == True:
++            expr, cond = f.args[0]
++            default = f.args[1][0]
++            cond_interval = _cond_to_interval(cond, i)
++            if cond_interval is not None and not cond_interval.is_EmptySet:
++                sum_interval = Interval(a, b)
++                # Check if summation interval is a subset of condition interval
++                if _interval_subset(sum_interval, cond_interval):
++                    return eval_sum(expr, limits)
++                # Check if condition interval is a subset of summation interval
++                if _interval_subset(cond_interval, sum_interval):
++                    # Sum = Sum(expr, cond_interval) + Sum(default, sum_interval) - Sum(default, cond_interval)
++                    sum_expr = eval_sum(expr, (i, cond_interval.start, cond_interval.end))
++                    sum_default = eval_sum(default, (i, cond_interval.start, cond_interval.end))
++                    total_default = eval_sum(default, limits)
++                    if sum_expr is not None and sum_default is not None and total_default is not None:
++                        return sum_expr + total_default - sum_default
++
+     if f.has(KroneckerDelta) and _has_simple_delta(f, limits[0]):
+         return deltasummation(f, limits)
+ 
+diff --git a/sympy/matrices/expressions/matexpr.py b/sympy/matrices/expressions/matexpr.py
+index b4d759836..cd6770d69 100644
+--- a/sympy/matrices/expressions/matexpr.py
++++ b/sympy/matrices/expressions/matexpr.py
+@@ -476,10 +476,8 @@ def conjugate(self):
+         return self
+ 
+     def _entry(self, i, j):
+-        if i == j:
+-            return S.One
+-        else:
+-            return S.Zero
++        from sympy import KroneckerDelta
++        return KroneckerDelta(i, j)
+ 
+     def _eval_determinant(self):
+         return S.One

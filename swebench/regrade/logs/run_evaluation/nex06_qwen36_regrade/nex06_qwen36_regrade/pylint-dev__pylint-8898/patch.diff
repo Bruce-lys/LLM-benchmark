@@ -1,0 +1,105 @@
+diff --git a/pylint/config/argument.py b/pylint/config/argument.py
+index 30a5fd175..d1304bc1c 100644
+--- a/pylint/config/argument.py
++++ b/pylint/config/argument.py
+@@ -111,10 +111,90 @@ def _regex_transformer(value: str) -> Pattern[str]:
+         raise argparse.ArgumentTypeError(msg) from e
+ 
+ 
++def _consume_regex_quantifier(value: str, start: int) -> int:
++    """Return the index after a regex quantifier starting at ``start``.
++
++    If the substring does not begin a regex quantifier, return ``start + 1``.
++    """
++    index = start + 1
++    length = len(value)
++    while index < length and value[index].isdigit():
++        index += 1
++    if index == start + 1:
++        return start + 1
++    if index < length and value[index] == ",":
++        index += 1
++        while index < length and value[index].isdigit():
++            index += 1
++    if index < length and value[index] == "}":
++        index += 1
++        if index < length and value[index] == "?":
++            index += 1
++    return index
++
++
++def _split_regexp_csv(value: str) -> Sequence[str]:
++    """Split a comma-separated list of regular expressions, ignoring commas inside
++    regex quantifiers, groups, character classes, and escaped characters.
++    """
++    patterns: list[str] = []
++    current: list[str] = []
++    paren_depth = 0
++    bracket_depth = 0
++    brace_depth = 0
++    index = 0
++    while index < len(value):
++        char = value[index]
++        if char == "\\":
++            current.append(char)
++            if index + 1 < len(value):
++                index += 1
++                escaped_char = value[index]
++                current.append(escaped_char)
++                if escaped_char == "{":
++                    brace_depth += 1
++                elif escaped_char == "}":
++                    brace_depth = max(brace_depth - 1, 0)
++        elif char == "(":
++            paren_depth += 1
++            current.append(char)
++        elif char == "[":
++            bracket_depth += 1
++            current.append(char)
++        elif char == ",":
++            if paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
++                pattern = "".join(current).strip()
++                if pattern:
++                    patterns.append(pattern)
++                current = []
++            else:
++                current.append(char)
++        elif char == "{":
++            end = _consume_regex_quantifier(value, index)
++            if end > index + 1:
++                current.append(value[index:end])
++                index = end - 1
++            else:
++                current.append(char)
++        elif char == ")":
++            paren_depth = max(paren_depth - 1, 0)
++            current.append(char)
++        elif char == "]":
++            bracket_depth = max(bracket_depth - 1, 0)
++            current.append(char)
++        else:
++            current.append(char)
++        index += 1
++    pattern = "".join(current).strip()
++    if pattern:
++        patterns.append(pattern)
++    return patterns
++
++
+ def _regexp_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     """Transforms a comma separated list of regular expressions."""
+     patterns: list[Pattern[str]] = []
+-    for pattern in _csv_transformer(value):
++    for pattern in _split_regexp_csv(value):
+         patterns.append(_regex_transformer(pattern))
+     return patterns
+ 
+@@ -122,7 +202,7 @@ def _regexp_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+ def _regexp_paths_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     """Transforms a comma separated list of regular expressions paths."""
+     patterns: list[Pattern[str]] = []
+-    for pattern in _csv_transformer(value):
++    for pattern in _split_regexp_csv(value):
+         patterns.append(
+             re.compile(
+                 str(pathlib.PureWindowsPath(pattern)).replace("\\", "\\\\")

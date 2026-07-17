@@ -1,0 +1,16 @@
+diff --git a/sympy/printing/mathml.py b/sympy/printing/mathml.py
+index 3f8b8d49e..d07c1de3b 100644
+--- a/sympy/printing/mathml.py
++++ b/sympy/printing/mathml.py
+@@ -773,6 +773,11 @@ def translate(s):
+                 return s
+ 
+         name, supers, subs = split_super_sub(sym.name)
++        # Keep unmarked names as single identifiers.
++        if "_" not in sym.name and "^" not in sym.name:
++            name = sym.name
++            supers = []
++            subs = []
+         name = translate(name)
+         supers = [translate(sup) for sup in supers]
+         subs = [translate(sub) for sub in subs]

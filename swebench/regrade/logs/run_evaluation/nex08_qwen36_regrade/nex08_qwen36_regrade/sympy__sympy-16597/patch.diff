@@ -1,0 +1,16 @@
+diff --git a/sympy/core/basic.py b/sympy/core/basic.py
+index bac4d4032..a24367ed5 100644
+--- a/sympy/core/basic.py
++++ b/sympy/core/basic.py
+@@ -114,6 +114,11 @@ def __getnewargs__(self):
+     def __getstate__(self):
+         return {}
+ 
++    def _eval_is_finite(self):
++        # Evenness is defined only for finite integers.
++        if self.is_even is True:
++            return True
++
+     def __setstate__(self, state):
+         for k, v in state.items():
+             setattr(self, k, v)

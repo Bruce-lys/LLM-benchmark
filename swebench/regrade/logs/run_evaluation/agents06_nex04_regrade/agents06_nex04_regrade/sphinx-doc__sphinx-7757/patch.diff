@@ -1,0 +1,44 @@
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index 15f0d66e2..6a423dd55 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -520,21 +520,26 @@ def signature_from_str(signature: str) -> inspect.Signature:
+     args = definition.args
+     params = []
+ 
+-    if hasattr(args, "posonlyargs"):
+-        for arg in args.posonlyargs:  # type: ignore
+-            annotation = ast_unparse(arg.annotation) or Parameter.empty
+-            params.append(Parameter(arg.arg, Parameter.POSITIONAL_ONLY,
+-                                    annotation=annotation))
+-
+-    for i, arg in enumerate(args.args):
+-        if len(args.args) - i <= len(args.defaults):
+-            default = ast_unparse(args.defaults[-len(args.args) + i])
+-        else:
+-            default = Parameter.empty
++    posonlyargs = getattr(args, "posonlyargs", ())
++    posonly_arg_names = {arg.arg for arg in posonlyargs}
++    all_positional = list(posonlyargs) + list(args.args)
++    defaults = list(args.defaults)
++    for i, arg in enumerate(all_positional):
++        default = Parameter.empty
++        if len(all_positional) - i <= len(defaults):
++            default = (
++                ast_unparse(defaults[-len(all_positional) + i])
++                or Parameter.empty
++            )
+ 
+         annotation = ast_unparse(arg.annotation) or Parameter.empty
+-        params.append(Parameter(arg.arg, Parameter.POSITIONAL_OR_KEYWORD,
+-                                default=default, annotation=annotation))
++        kind = (
++            Parameter.POSITIONAL_ONLY if arg.arg in posonly_arg_names
++            else Parameter.POSITIONAL_OR_KEYWORD
++        )
++        params.append(
++            Parameter(arg.arg, kind, default=default, annotation=annotation)
++        )
+ 
+     if args.vararg:
+         annotation = ast_unparse(args.vararg.annotation) or Parameter.empty

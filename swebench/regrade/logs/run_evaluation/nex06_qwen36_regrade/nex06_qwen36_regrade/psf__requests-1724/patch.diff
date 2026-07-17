@@ -1,0 +1,50 @@
+diff --git a/requests/models.py b/requests/models.py
+index f82f56a..fea30a4 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -305,9 +305,11 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+     def prepare_method(self, method):
+         """Prepares the given HTTP method."""
+-        self.method = method
+-        if self.method is not None:
+-            self.method = self.method.upper()
++        if method is not None:
++            method = to_native_string(method)
++            self.method = method.upper()
++        else:
++            self.method = None
+ 
+     def prepare_url(self, url, params):
+         """Prepares the given HTTP URL."""
+diff --git a/requests/sessions.py b/requests/sessions.py
+index cc72f65..6b5b1d9 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -16,7 +16,7 @@ from .compat import cookielib, OrderedDict, urljoin, urlparse, urlunparse
+ from .cookies import cookiejar_from_dict, extract_cookies_to_jar, RequestsCookieJar
+ from .models import Request, PreparedRequest
+ from .hooks import default_hooks, dispatch_hook
+-from .utils import to_key_val_list, default_headers
++from .utils import to_key_val_list, default_headers, to_native_string
+ from .exceptions import TooManyRedirects, InvalidSchema
+ from .structures import CaseInsensitiveDict
+ 
+@@ -85,7 +85,7 @@ class SessionRedirectMixin(object):
+             resp.close()
+ 
+             url = resp.headers['location']
+-            method = req.method
++            method = to_native_string(req.method) if req.method is not None else None
+ 
+             # Handle redirection without scheme (see: RFC 1808 Section 4)
+             if url.startswith('//'):
+@@ -118,7 +118,7 @@ class SessionRedirectMixin(object):
+                     method not in ('GET', 'HEAD')):
+                 method = 'GET'
+ 
+-            prepared_request.method = method
++            prepared_request.method = to_native_string(method) if method is not None else None
+ 
+             # https://github.com/kennethreitz/requests/issues/1084
+             if resp.status_code not in (codes.temporary, codes.resume):

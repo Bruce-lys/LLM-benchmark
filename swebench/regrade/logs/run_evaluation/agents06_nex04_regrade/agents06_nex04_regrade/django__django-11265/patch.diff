@@ -1,0 +1,27 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index d69c24419b..9faf81c60e 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1666,6 +1666,9 @@ class Query(BaseExpression):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
+         # Generate the inner query.
+         query = Query(self.model)
++        # FilteredRelation instances are needed when resolving the filter
++        # expression in the subquery.
++        query._filtered_relations = self._filtered_relations.copy()
+         query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+@@ -2145,7 +2148,11 @@ class Query(BaseExpression):
+         if self.alias_map[lookup_tables[trimmed_paths + 1]].join_type != LOUTER:
+             select_fields = [r[0] for r in join_field.related_fields]
+             select_alias = lookup_tables[trimmed_paths + 1]
+-            self.unref_alias(lookup_tables[trimmed_paths])
++            # Keep the base table when the filtered join must remain in the
++            # FROM clause so its filtered condition is preserved.
++            select_alias_join = self.alias_map[select_alias]
++            if not (isinstance(select_alias_join, Join) and select_alias_join.filtered_relation):
++                self.unref_alias(lookup_tables[trimmed_paths])
+             extra_restriction = join_field.get_extra_restriction(
+                 self.where_class, None, lookup_tables[trimmed_paths + 1])
+             if extra_restriction:

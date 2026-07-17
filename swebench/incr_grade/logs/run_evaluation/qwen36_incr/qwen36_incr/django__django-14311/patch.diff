@@ -1,0 +1,20 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index b6af5f5491..c37df4b5f4 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -224,7 +224,14 @@ def get_child_arguments():
+     # see https://docs.python.org/3/reference/import.html#main-spec
+     # __spec__ may not exist, e.g. when running in a Conda env.
+     if getattr(__main__, '__spec__', None) is not None and __main__.__spec__.parent:
+-        args += ['-m', __main__.__spec__.parent]
++        if __main__.__spec__.name.endswith('.__main__'):
++            # The server was started with `python -m <package>` where
++            # <package> has a __main__.py file.
++            args += ['-m', __main__.__spec__.parent]
++        else:
++            # The server was started with `python -m <module>` where
++            # <module> is a regular module (not a package with __main__.py).
++            args += ['-m', __main__.__spec__.name]
+         args += sys.argv[1:]
+     elif not py_script.exists():
+         # sys.argv[0] may not exist for several reasons on Windows.

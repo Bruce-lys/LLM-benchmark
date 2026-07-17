@@ -1,0 +1,21 @@
+diff --git a/sympy/core/numbers.py b/sympy/core/numbers.py
+index 79f6a7d165..cd1c60b5be 100644
+--- a/sympy/core/numbers.py
++++ b/sympy/core/numbers.py
+@@ -1382,11 +1382,16 @@ def __int__(self):
+ 
+     def __eq__(self, other):
+         from sympy.logic.boolalg import Boolean
++        if isinstance(other, bool):
++            if not self:
++                return other is False
+         try:
+             other = _sympify(other)
+         except SympifyError:
+             return NotImplemented
+         if not self:
++            if isinstance(other, Boolean):
++                return False
+             return not other
+         if isinstance(other, Boolean):
+             return False

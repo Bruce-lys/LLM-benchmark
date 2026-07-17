@@ -1,0 +1,24 @@
+diff --git a/django/contrib/staticfiles/storage.py b/django/contrib/staticfiles/storage.py
+index 494890cc23..87b09cf43f 100644
+--- a/django/contrib/staticfiles/storage.py
++++ b/django/contrib/staticfiles/storage.py
+@@ -234,11 +234,18 @@ class HashedFilesMixin:
+         paths = {path: paths[path] for path in adjustable_paths}
+ 
+         for i in range(self.max_post_process_passes):
++            # Only the first pass yields post-processed files back to
++            # collectstatic; subsequent passes only update references.
+             substitutions = False
++            errors = []
+             for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
+-                yield name, hashed_name, processed
++                if isinstance(processed, Exception):
++                    errors.append((name, processed))
+                 substitutions = substitutions or subst
+ 
++            for name, exc in errors:
++                yield name, None, exc
++
+             if not substitutions:
+                 break
+ 

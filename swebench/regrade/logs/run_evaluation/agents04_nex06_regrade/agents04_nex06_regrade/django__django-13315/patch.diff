@@ -1,0 +1,32 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 5d115458a1..0c1b0415da 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1158,7 +1158,14 @@ class ModelChoiceIterator:
+         # Can't use iterator() when queryset uses prefetch_related()
+         if not queryset._prefetch_related_lookups:
+             queryset = queryset.iterator()
++        seen = set()
+         for obj in queryset:
++            # Deduplicate objects that match the queryset more than once
++            # because of joins.
++            value = self.field.prepare_value(obj)
++            if value in seen:
++                continue
++            seen.add(value)
+             yield self.choice(obj)
+ 
+     def __len__(self):
+@@ -1276,8 +1283,10 @@ class ModelChoiceField(ChoiceField):
+             key = self.to_field_name or 'pk'
+             if isinstance(value, self.queryset.model):
+                 value = getattr(value, key)
+-            value = self.queryset.get(**{key: value})
+-        except (ValueError, TypeError, self.queryset.model.DoesNotExist):
++            value = self.queryset.filter(**{key: value}).first()
++        except (ValueError, TypeError):
++            raise ValidationError(self.error_messages['invalid_choice'], code='invalid_choice')
++        if value is None:
+             raise ValidationError(self.error_messages['invalid_choice'], code='invalid_choice')
+         return value
+ 

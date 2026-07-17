@@ -1,0 +1,29 @@
+diff --git a/lib/matplotlib/colorbar.py b/lib/matplotlib/colorbar.py
+index c59b0ac815..f1eee11091 100644
+--- a/lib/matplotlib/colorbar.py
++++ b/lib/matplotlib/colorbar.py
+@@ -651,8 +651,22 @@ class Colorbar:
+             if not self.drawedges:
+                 if len(self._y) >= self.n_rasterize:
+                     self.solids.set_rasterized(True)
+-        self.dividers.set_segments(
+-            np.dstack([X, Y])[1:-1] if self.drawedges else [])
++        if self.drawedges:
++            dstack = np.dstack([X, Y])
++            segments = dstack[1:-1]
++            _, extendlen = self._proportional_y()
++            inverted = self._long_axis().get_inverted()
++            # For an inverted axis, the lower/upper ends of the colorbar
++            # correspond to the opposite ends of the data range.
++            lower_idx = -1 if inverted else 0
++            upper_idx = 0 if inverted else -1
++            if self._extend_lower() and extendlen[0] > 0:
++                segments = np.concatenate((segments, dstack[[lower_idx]]), axis=0)
++            if self._extend_upper() and extendlen[1] > 0:
++                segments = np.concatenate((segments, dstack[[upper_idx]]), axis=0)
++            self.dividers.set_segments(segments)
++        else:
++            self.dividers.set_segments([])
+ 
+     def _add_solids_patches(self, X, Y, C, mappable):
+         hatches = mappable.hatches * len(C)  # Have enough hatches.

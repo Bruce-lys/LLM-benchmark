@@ -1,0 +1,25 @@
+# 压力测试专用: 10.0.3.100:8000, gen64 + grade64, 独立目录, 不碰正式评测
+run:
+  tag: stress_qwen36_100
+  output_root: /home/ubuntu/swebench/stress_runs
+  dataset: verified
+  workers: 64
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B-hf
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.100:8000/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 64
+  namespace: swebench

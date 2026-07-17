@@ -1,0 +1,13 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 893bb0a22..e94707cf1 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -72,7 +72,7 @@ def _parse_annotation(annotation: str) -> List[Node]:
+     """Parse type annotation."""
+     def make_xref(text: str) -> addnodes.pending_xref:
+         return pending_xref('', nodes.Text(text),
+-                            refdomain='py', reftype='class', reftarget=text)
++                            refdomain='py', reftype='obj' if text == 'None' else 'class', reftarget=text)
+ 
+     def unparse(node: ast.AST) -> List[Node]:
+         if isinstance(node, ast.Attribute):

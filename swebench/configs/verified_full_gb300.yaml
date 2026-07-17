@@ -1,0 +1,26 @@
+# 全量 SWE-bench Verified 500 题: GB300 serve + bench-104 执行/评分
+# 口径 = Aiden full-500 历史锚点 (t1.0, step250, retry_empty on)
+run:
+  tag: aiden_qwen36base_verified_t10_bench104
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 32               # 8核30G: RAM墙~48, 取32稳态
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.52:8302/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 7            # grade每容器吃1核, 7≈95%饱和
+  namespace: swebench

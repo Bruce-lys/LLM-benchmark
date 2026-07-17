@@ -1,0 +1,78 @@
+diff --git a/django/utils/numberformat.py b/django/utils/numberformat.py
+index 88b35fc435..5950bc8835 100644
+--- a/django/utils/numberformat.py
++++ b/django/utils/numberformat.py
+@@ -27,20 +27,60 @@ def format(number, decimal_sep, decimal_pos=None, grouping=0, thousand_sep='',
+     # sign
+     sign = ''
+     if isinstance(number, Decimal):
+-        # Format values with more than 200 digits (an arbitrary cutoff) using
+-        # scientific notation to avoid high memory usage in {:f}'.format().
+-        _, digits, exponent = number.as_tuple()
+-        if abs(exponent) + len(digits) > 200:
+-            number = '{:e}'.format(number)
+-            coefficient, exponent = number.split('e')
+-            # Format the coefficient.
+-            coefficient = format(
+-                coefficient, decimal_sep, decimal_pos, grouping,
+-                thousand_sep, force_grouping, use_l10n,
+-            )
+-            return '{}e{}'.format(coefficient, exponent)
+-        else:
++        if type(number) is not Decimal:
+             str_number = '{:f}'.format(number)
++        else:
++            decimal_sign, digits, exponent = number.as_tuple()
++            digits_str = ''.join(str(d) for d in digits)
++            # Format values with more than 200 digits using scientific notation to
++            # avoid high memory usage in {:f}'.format(). For very small numbers
++            # when decimal_pos is provided, we can determine the result without
++            # expanding all zeros.
++            if decimal_pos is None and abs(exponent) + len(digits) > 200:
++                number = '{:e}'.format(number)
++                coefficient, exponent = number.split('e')
++                # Format the coefficient.
++                coefficient = format(
++                    coefficient, decimal_sep, decimal_pos, grouping,
++                    thousand_sep, force_grouping, use_l10n,
++                )
++                return '{}e{}'.format(coefficient, exponent)
++            elif exponent >= 0 and abs(exponent) + len(digits) > 200:
++                number = '{:e}'.format(number)
++                coefficient, exponent = number.split('e')
++                # Format the coefficient.
++                coefficient = format(
++                    coefficient, decimal_sep, decimal_pos, grouping,
++                    thousand_sep, force_grouping, use_l10n,
++                )
++                return '{}e{}'.format(coefficient, exponent)
++            elif digits_str == '0':
++                str_number = '0' + (decimal_sep + '0' * decimal_pos if decimal_pos is not None else '')
++            elif exponent >= 0:
++                str_number = digits_str + '0' * exponent
++            else:
++                fractional_digits = -exponent
++                if fractional_digits < len(digits_str):
++                    int_part = digits_str[:-fractional_digits] or '0'
++                    dec_part = digits_str[-fractional_digits:]
++                    str_number = int_part + (decimal_sep + dec_part if dec_part else '')
++                else:
++                    int_part = '0'
++                    leading_zeros = fractional_digits - len(digits_str)
++                    if decimal_pos is not None and leading_zeros >= decimal_pos:
++                        str_number = '0' + decimal_sep + '0' * decimal_pos
++                    else:
++                        if decimal_pos is not None:
++                            dec_part = '0' * leading_zeros
++                            needed = decimal_pos - leading_zeros
++                            if needed > 0:
++                                dec_part += digits_str[:needed]
++                            dec_part += '0' * (decimal_pos - len(dec_part))
++                        else:
++                            dec_part = '0' * leading_zeros + digits_str
++                        str_number = int_part + ((decimal_sep + dec_part) if decimal_pos is not None else '')
++            if decimal_sign:
++                str_number = '-' + str_number
+     else:
+         str_number = str(number)
+     if str_number[0] == '-':

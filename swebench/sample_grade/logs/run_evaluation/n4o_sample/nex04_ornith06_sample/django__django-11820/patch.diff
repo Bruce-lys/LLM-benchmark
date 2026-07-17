@@ -1,0 +1,31 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 3ce711f3f1..6ea359f2e1 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -1712,15 +1712,18 @@ class Model(metaclass=ModelBase):
+                     if fld.is_relation:
+                         _cls = fld.get_path_info()[-1].to_opts.model
+                 except (FieldDoesNotExist, AttributeError):
+-                    if fld is None or fld.get_transform(part) is None:
+-                        errors.append(
+-                            checks.Error(
+-                                "'ordering' refers to the nonexistent field, "
+-                                "related field, or lookup '%s'." % field,
+-                                obj=cls,
+-                                id='models.E015',
++                    if part != 'pk':
++                        if fld is None or fld.get_transform(part) is None:
++                            errors.append(
++                                checks.Error(
++                                    "'ordering' refers to the nonexistent field, "
++                                    "related field, or lookup '%s'." % field,
++                                    obj=cls,
++                                    id='models.E015',
++                                )
+                             )
+-                        )
++                    else:
++                        fld = _cls._meta.pk
+ 
+         # Skip ordering on pk. This is always a valid order_by field
+         # but is an alias and therefore won't be found by opts.get_field.

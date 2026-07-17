@@ -1,0 +1,74 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 66f3396a6b..3a1ce158af 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -28,6 +28,7 @@ from django.core.exceptions import (
+ )
+ from django.core.paginator import Paginator
+ from django.db import models, router, transaction
++from django.db.models import ManyToManyField
+ from django.db.models.constants import LOOKUP_SEP
+ from django.forms.formsets import DELETION_FIELD_NAME, all_valid
+ from django.forms.models import (
+@@ -1031,14 +1032,53 @@ class ModelAdmin(BaseModelAdmin):
+         if search_fields and search_term:
+             orm_lookups = [construct_search(str(search_field))
+                            for search_field in search_fields]
+-            for bit in smart_split(search_term):
+-                if bit.startswith(('"', "'")) and bit[0] == bit[-1]:
+-                    bit = unescape_string_literal(bit)
+-                or_queries = models.Q(
+-                    *((orm_lookup, bit) for orm_lookup in orm_lookups),
+-                    _connector=models.Q.OR,
+-                )
+-                queryset = queryset.filter(or_queries)
++            # Check if any lookup involves a ManyToMany relationship
++            # If so, we must use separate filter calls to preserve correct semantics
++
++            has_m2m = False
++            opts = queryset.model._meta
++            for search_field in search_fields:
++                field_name = search_field.lstrip('^=@')
++                lookup_fields = field_name.split(LOOKUP_SEP)
++                current_opts = opts
++                for path_part in lookup_fields:
++                    if path_part == 'pk':
++                        path_part = current_opts.pk.name
++                    try:
++                        field = current_opts.get_field(path_part)
++                    except FieldDoesNotExist:
++                        break
++                    else:
++                        if isinstance(field, ManyToManyField):
++                            has_m2m = True
++                            break
++                        if hasattr(field, 'path_infos'):
++                            current_opts = field.path_infos[-1].to_opts
++                if has_m2m:
++                    break
++
++            if has_m2m:
++                # Use separate filter calls for M2M relationships
++                for bit in smart_split(search_term):
++                    if bit.startswith(('"', "'")) and bit[0] == bit[-1]:
++                        bit = unescape_string_literal(bit)
++                    or_queries = models.Q(
++                        *((orm_lookup, bit) for orm_lookup in orm_lookups),
++                        _connector=models.Q.OR,
++                    )
++                    queryset = queryset.filter(or_queries)
++            else:
++                # Combine Q objects to avoid duplicate JOINs
++                search_q = models.Q()
++                for bit in smart_split(search_term):
++                    if bit.startswith(('"', "'")) and bit[0] == bit[-1]:
++                        bit = unescape_string_literal(bit)
++                    search_q &= models.Q(
++                        *((orm_lookup, bit) for orm_lookup in orm_lookups),
++                        _connector=models.Q.OR,
++                    )
++                if search_q:
++                    queryset = queryset.filter(search_q)
+             may_have_duplicates |= any(
+                 lookup_spawns_duplicates(self.opts, search_spec)
+                 for search_spec in orm_lookups

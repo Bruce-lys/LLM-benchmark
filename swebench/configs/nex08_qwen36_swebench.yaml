@@ -1,0 +1,25 @@
+# Nex-0.8_Qwen3.6-0.2 swebench-kit config (2026-07-08, 防挂机安全口径)
+run:
+  tag: aiden_nex08_qwen36_swebench
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 6
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Nex-0.8_Qwen3.6-0.2
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.35:8005/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 48
+  namespace: swebench

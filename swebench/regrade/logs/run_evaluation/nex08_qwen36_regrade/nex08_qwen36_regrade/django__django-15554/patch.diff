@@ -1,0 +1,99 @@
+diff --git a/django/db/models/query_utils.py b/django/db/models/query_utils.py
+index fde686b2cd..dbb3c340da 100644
+--- a/django/db/models/query_utils.py
++++ b/django/db/models/query_utils.py
+@@ -336,5 +336,10 @@ class FilteredRelation:
+     def as_sql(self, compiler, connection):
+         # Resolve the condition in Join.filtered_relation.
+         query = compiler.query
+-        where = query.build_filtered_relation_q(self.condition, reuse=set(self.path))
++        where = query.build_filtered_relation_q(
++            self.condition,
++            reuse=set(self.path),
++            alias=self.alias,
++            relation_name=self.relation_name,
++        )
+         return compiler.compile(where)
+diff --git a/django/db/models/sql/datastructures.py b/django/db/models/sql/datastructures.py
+index 1edf040e82..0949a67acf 100644
+--- a/django/db/models/sql/datastructures.py
++++ b/django/db/models/sql/datastructures.py
+@@ -162,8 +162,7 @@ class Join:
+         return hash(self.identity)
+ 
+     def equals(self, other):
+-        # Ignore filtered_relation in equality check.
+-        return self.identity[:-1] == other.identity[:-1]
++        return self.identity == other.identity
+ 
+     def demote(self):
+         new = self.relabeled_clone({})
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 54f3258eac..d5ddf6efe9 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -805,8 +805,16 @@ class Query(BaseExpression):
+ 
+         # Create a new alias for this table.
+         if alias_list:
+-            alias = "%s%d" % (self.alias_prefix, len(self.alias_map) + 1)
+-            alias_list.append(alias)
++            if (
++                filtered_relation is not None
++                and filtered_relation.alias not in alias_list
++            ):
++                alias_list.append(filtered_relation.alias)
++            alias = (
++                filtered_relation.alias if filtered_relation is not None else "%s%d" % (
++                    self.alias_prefix, len(self.alias_map) + 1
++                )
++            )
+         else:
+             # The first occurrence of a table uses the table name directly.
+             alias = (
+@@ -1541,8 +1549,28 @@ class Query(BaseExpression):
+         needed_inner = joinpromoter.update_join_types(self)
+         return target_clause, needed_inner
+ 
++    def _replace_lookup_relation_name(self, lookup, alias, relation_name):
++        if not isinstance(lookup, str):
++            return lookup
++        relation_parts = relation_name.split(LOOKUP_SEP)
++        lookup_parts, lookup_field_parts, _ = self.solve_lookup_type(lookup)
++        if lookup_field_parts[: len(relation_parts)] != relation_parts:
++            return lookup
++        lookup_field_parts = lookup_field_parts[len(relation_parts) :]
++        if not lookup_parts:
++            return LOOKUP_SEP.join([alias, *lookup_field_parts])
++        if lookup_parts == ("exact",):
++            return LOOKUP_SEP.join([alias, *lookup_field_parts]) or alias
++        return LOOKUP_SEP.join([alias, *lookup_field_parts, lookup_parts[-1]])
++
+     def build_filtered_relation_q(
+-        self, q_object, reuse, branch_negated=False, current_negated=False
++        self,
++        q_object,
++        reuse,
++        branch_negated=False,
++        current_negated=False,
++        alias=None,
++        relation_name=None,
+     ):
+         """Add a FilteredRelation object to the current filter."""
+         connector = q_object.connector
+@@ -1556,8 +1584,15 @@ class Query(BaseExpression):
+                     reuse=reuse,
+                     branch_negated=branch_negated,
+                     current_negated=current_negated,
++                    alias=alias,
++                    relation_name=relation_name,
+                 )
+             else:
++                lookup, value = child
++                lookup = self._replace_lookup_relation_name(
++                    lookup, alias, relation_name
++                )
++                child = (lookup, value)
+                 child_clause, _ = self.build_filter(
+                     child,
+                     can_reuse=reuse,

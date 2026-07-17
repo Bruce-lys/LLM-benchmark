@@ -1,0 +1,174 @@
+diff --git a/pylint/pyreverse/inspector.py b/pylint/pyreverse/inspector.py
+index 8fa12202..a2bf3c3b 100644
+--- a/pylint/pyreverse/inspector.py
++++ b/pylint/pyreverse/inspector.py
+@@ -218,11 +218,51 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+                     self.visit_module(frame)
+ 
+             current = frame.locals_type[node.name]
+-            values = set(node.infer())
++            values = {
++                v
++                for v in node.infer()
++                if not (isinstance(v, astroid.Const) and v.value is None)
++            }
+             frame.locals_type[node.name] = list(set(current) | values)
++            # Handle type annotations for function arguments and annotated assignments
++            self._handle_assignname_annotation(node, frame)
+         except astroid.InferenceError:
+             pass
+ 
++    @staticmethod
++    def _handle_assignname_annotation(node, frame):
++        """Add type annotation information to the frame's type mapping.
++
++        Handle PEP 484 type hints for function arguments and annotated assignments.
++        """
++        # Check if this is a function argument with a type annotation
++        if isinstance(node.parent, astroid.Arguments):
++            arguments = node.parent
++            try:
++                index = arguments.args.index(node)
++                annotation = arguments.annotations[index]
++            except (IndexError, ValueError):
++                return
++            if annotation is not None:
++                try:
++                    values = set(annotation.infer())
++                    current = frame.locals_type[node.name]
++                    frame.locals_type[node.name] = list(set(current) | values)
++                except astroid.InferenceError:
++                    pass
++            return
++
++        # Check if this is an annotated assignment (AnnAssign)
++        if isinstance(node.parent, astroid.AnnAssign):
++            ann_assign = node.parent
++            if ann_assign.annotation is not None:
++                try:
++                    values = set(ann_assign.annotation.infer())
++                    current = frame.locals_type[node.name]
++                    frame.locals_type[node.name] = list(set(current) | values)
++                except astroid.InferenceError:
++                    pass
++
+     @staticmethod
+     def handle_assignattr_type(node, parent):
+         """handle an astroid.assignattr node
+@@ -230,11 +270,115 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         handle instance_attrs_type
+         """
+         try:
+-            values = set(node.infer())
++            values = {
++                v
++                for v in node.infer()
++                if not (isinstance(v, astroid.Const) and v.value is None)
++            }
+             current = set(parent.instance_attrs_type[node.attrname])
+             parent.instance_attrs_type[node.attrname] = list(current | values)
+         except astroid.InferenceError:
+             pass
++        # Also look at function parameter type annotations
++        Linker._handle_assignattr_annotation(node, parent)
++
++    @staticmethod
++    def _handle_assignattr_annotation(node, parent):
++        """Add type annotation information from function parameters.
++
++        When an instance attribute is assigned from a function parameter
++        (e.g. ``self.a = a`` where ``a`` has a type hint), use the
++        parameter's type annotation to enrich the instance_attrs_type.
++        """
++        # The assignattr is part of an Assign node; go up to find the function
++        assign_node = node.parent
++        if not isinstance(assign_node, astroid.Assign):
++            return
++        func_node = assign_node.parent
++        if not isinstance(func_node, astroid.FunctionDef):
++            return
++
++        # Only consider simple cases where self.<attr> = <attr>
++        rhs = assign_node.value
++        if not isinstance(rhs, astroid.Name):
++            return
++        if rhs.name != node.attrname:
++            return
++
++        # Look for the parameter in the function's arguments
++        arguments = func_node.args
++        for i, arg in enumerate(arguments.args):
++            if arg.name == rhs.name:
++                try:
++                    annotation = arguments.annotations[i]
++                except IndexError:
++                    return
++                if annotation is not None:
++                    try:
++                        values = set(annotation.infer())
++                        current = set(parent.instance_attrs_type[node.attrname])
++                        parent.instance_attrs_type[node.attrname] = list(
++                            current | values
++                        )
++                    except astroid.InferenceError:
++                        pass
++                return
++        # Also check posonlyargs and kwonlyargs
++        for i, arg in enumerate(arguments.posonlyargs):
++            if arg.name == rhs.name:
++                try:
++                    annotation = arguments.posonlyargs_annotations[i]
++                except IndexError:
++                    return
++                if annotation is not None:
++                    try:
++                        values = set(annotation.infer())
++                        current = set(parent.instance_attrs_type[node.attrname])
++                        parent.instance_attrs_type[node.attrname] = list(
++                            current | values
++                        )
++                    except astroid.InferenceError:
++                        pass
++                return
++        for i, arg in enumerate(arguments.kwonlyargs):
++            if arg.name == rhs.name:
++                try:
++                    annotation = arguments.kwonlyargs_annotations[i]
++                except IndexError:
++                    return
++                if annotation is not None:
++                    try:
++                        values = set(annotation.infer())
++                        current = set(parent.instance_attrs_type[node.attrname])
++                        parent.instance_attrs_type[node.attrname] = list(
++                            current | values
++                        )
++                    except astroid.InferenceError:
++                        pass
++                return
++        # Check vararg (*args) and kwarg (**kwargs)
++        if arguments.vararg and arguments.vararg == rhs.name:
++            annotation = arguments.varargannotation
++            if annotation is not None:
++                try:
++                    values = set(annotation.infer())
++                    current = set(parent.instance_attrs_type[node.attrname])
++                    parent.instance_attrs_type[node.attrname] = list(
++                        current | values
++                    )
++                except astroid.InferenceError:
++                    pass
++        if arguments.kwarg and arguments.kwarg == rhs.name:
++            annotation = arguments.kwargannotation
++            if annotation is not None:
++                try:
++                    values = set(annotation.infer())
++                    current = set(parent.instance_attrs_type[node.attrname])
++                    parent.instance_attrs_type[node.attrname] = list(
++                        current | values
++                    )
++                except astroid.InferenceError:
++                    pass
+ 
+     def visit_import(self, node):
+         """visit an astroid.Import node

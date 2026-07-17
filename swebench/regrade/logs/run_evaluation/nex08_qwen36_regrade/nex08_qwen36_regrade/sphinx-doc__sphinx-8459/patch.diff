@@ -1,0 +1,144 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 278e47d88..22f3cd9be 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -1697,7 +1697,7 @@ class DataDocumenter(ModuleLevelDocumenter):
+             try:
+                 self.parent = importlib.import_module(self.modname)
+                 annotations = get_type_hints(self.parent, None,
+-                                             self.config.autodoc_type_aliases)
++                                             type_aliases=self.config.autodoc_type_aliases)
+                 if self.objpath[-1] in annotations:
+                     self.object = UNINITIALIZED_ATTR
+                     return True
+@@ -1716,7 +1716,8 @@ class DataDocumenter(ModuleLevelDocumenter):
+         sourcename = self.get_sourcename()
+         if not self.options.annotation:
+             # obtain annotation for this data
+-            annotations = get_type_hints(self.parent, None, self.config.autodoc_type_aliases)
++            annotations = get_type_hints(
++                self.parent, None, type_aliases=self.config.autodoc_type_aliases)
+             if self.objpath[-1] in annotations:
+                 objrepr = stringify_typehint(annotations.get(self.objpath[-1]))
+                 self.add_line('   :type: ' + objrepr, sourcename)
+@@ -2048,7 +2049,7 @@ class AttributeDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
+                                     warningiserror=self.config.autodoc_warningiserror)
+                 self.parent = ret[3]
+                 annotations = get_type_hints(self.parent, None,
+-                                             self.config.autodoc_type_aliases)
++                                             type_aliases=self.config.autodoc_type_aliases)
+                 if self.objpath[-1] in annotations:
+                     self.object = UNINITIALIZED_ATTR
+                     return True
+@@ -2103,7 +2104,8 @@ class AttributeDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
+         sourcename = self.get_sourcename()
+         if not self.options.annotation:
+             # obtain type annotation for this attribute
+-            annotations = get_type_hints(self.parent, None, self.config.autodoc_type_aliases)
++            annotations = get_type_hints(
++                self.parent, None, type_aliases=self.config.autodoc_type_aliases)
+             if self.objpath[-1] in annotations:
+                 objrepr = stringify_typehint(annotations.get(self.objpath[-1]))
+                 self.add_line('   :type: ' + objrepr, sourcename)
+diff --git a/sphinx/ext/autodoc/typehints.py b/sphinx/ext/autodoc/typehints.py
+index 70cbc3ba1..e6451b52c 100644
+--- a/sphinx/ext/autodoc/typehints.py
++++ b/sphinx/ext/autodoc/typehints.py
+@@ -27,7 +27,7 @@ def record_typehints(app: Sphinx, objtype: str, name: str, obj: Any,
+         if callable(obj):
+             annotations = app.env.temp_data.setdefault('annotations', {})
+             annotation = annotations.setdefault(name, OrderedDict())
+-            sig = inspect.signature(obj)
++            sig = inspect.signature(obj, type_aliases=app.config.autodoc_type_aliases)
+             for param in sig.parameters.values():
+                 if param.annotation is not param.empty:
+                     annotation[param.name] = typing.stringify(param.annotation)
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index c7375aa57..3694a3838 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -26,8 +26,9 @@ from sphinx.deprecation import RemovedInSphinx40Warning, RemovedInSphinx50Warnin
+ from sphinx.pycode.ast import ast  # for py35-37
+ from sphinx.pycode.ast import unparse as ast_unparse
+ from sphinx.util import logging
+-from sphinx.util.typing import ForwardRef
+-from sphinx.util.typing import stringify as stringify_annotation
++from sphinx.util.typing import (
++    ForwardRef, get_type_hints, stringify as stringify_annotation
++)
+ 
+ if sys.version_info > (3, 7):
+     from types import ClassMethodDescriptorType, MethodDescriptorType, WrapperDescriptorType
+@@ -505,7 +506,7 @@ def signature(subject: Callable, bound_method: bool = False, follow_wrapped: boo
+ 
+     try:
+         # Resolve annotations using ``get_type_hints()`` and type_aliases.
+-        annotations = typing.get_type_hints(subject, None, type_aliases)
++        annotations = get_type_hints(subject, None, type_aliases=type_aliases)
+         for i, param in enumerate(parameters):
+             if param.name in annotations:
+                 parameters[i] = param.replace(annotation=annotations[param.name])
+diff --git a/sphinx/util/typing.py b/sphinx/util/typing.py
+index 18649433b..60a4d7027 100644
+--- a/sphinx/util/typing.py
++++ b/sphinx/util/typing.py
+@@ -57,7 +57,8 @@ TitleGetter = Callable[[nodes.Node], str]
+ Inventory = Dict[str, Dict[str, Tuple[str, str, str, str]]]
+ 
+ 
+-def get_type_hints(obj: Any, globalns: Dict = None, localns: Dict = None) -> Dict[str, Any]:
++def get_type_hints(obj: Any, globalns: Dict = None, localns: Dict = None,
++                   type_aliases: Optional[Dict] = None) -> Dict[str, Any]:
+     """Return a dictionary containing type hints for a function, method, module or class object.
+ 
+     This is a simple wrapper of `typing.get_type_hints()` that does not raise an error on
+@@ -65,19 +66,44 @@ def get_type_hints(obj: Any, globalns: Dict = None, localns: Dict = None) -> Dic
+     """
+     from sphinx.util.inspect import safe_getattr  # lazy loading
+ 
++    if type_aliases is None:
++        type_aliases = localns
++
+     try:
+-        return typing.get_type_hints(obj, None, localns)
++        hints = typing.get_type_hints(obj, globalns, localns)
+     except NameError:
+         # Failed to evaluate ForwardRef (maybe TYPE_CHECKING)
+-        return safe_getattr(obj, '__annotations__', {})
++        hints = safe_getattr(obj, '__annotations__', {})
+     except TypeError:
+-        return {}
++        hints = {}
+     except KeyError:
+         # a broken class found (refs: https://github.com/sphinx-doc/sphinx/issues/8084)
+-        return {}
++        hints = {}
+     except AttributeError:
+         # AttributeError is raised on 3.5.2 (fixed by 3.5.3)
+-        return {}
++        hints = {}
++
++    if type_aliases is not None:
++        raw_hints = safe_getattr(obj, '__annotations__', {})
++        for alias_name, alias in type_aliases.items():
++            for annotation_name, raw_annotation in raw_hints.items():
++                if _is_annotation_alias(raw_annotation, alias_name):
++                    hints[annotation_name] = alias
++
++    return hints
++
++
++def _is_annotation_alias(raw_annotation: Any, alias_name: str) -> bool:
++    if raw_annotation == alias_name:
++        return True
++
++    if isinstance(raw_annotation, str):
++        return raw_annotation in ("'" + alias_name + "'", '"' + alias_name + '"')
++
++    forward_arg = getattr(raw_annotation, '__forward_arg__', None)
++    if forward_arg is None:
++        forward_arg = getattr(raw_annotation, '_arg', None)
++    return forward_arg == alias_name
+ 
+ 
+ def is_system_TypeVar(typ: Any) -> bool:

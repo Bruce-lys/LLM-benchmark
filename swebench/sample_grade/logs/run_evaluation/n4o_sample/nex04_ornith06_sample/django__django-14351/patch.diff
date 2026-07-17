@@ -1,0 +1,19 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 5089737034..4393bffbc9 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -115,9 +115,13 @@ class Lookup:
+         return new
+ 
+     def get_group_by_cols(self, alias=None):
++        from django.db.models.sql.query import Query
+         cols = self.lhs.get_group_by_cols()
+         if hasattr(self.rhs, 'get_group_by_cols'):
+-            cols.extend(self.rhs.get_group_by_cols())
++            # Avoid adding rhs Query to GROUP BY. The rhs is a subquery used
++            # in the lookup and shouldn't be in GROUP BY.
++            if not isinstance(self.rhs, Query):
++                cols.extend(self.rhs.get_group_by_cols())
+         return cols
+ 
+     def as_sql(self, compiler, connection):

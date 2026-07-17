@@ -1,0 +1,88 @@
+diff --git a/sphinx/ext/napoleon/docstring.py b/sphinx/ext/napoleon/docstring.py
+index b3daa06f1..6aa35d802 100644
+--- a/sphinx/ext/napoleon/docstring.py
++++ b/sphinx/ext/napoleon/docstring.py
+@@ -14,7 +14,7 @@ import collections
+ import inspect
+ import re
+ from functools import partial
+-from typing import Any, Callable, Dict, List, Tuple, Union
++from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+ 
+ from sphinx.application import Sphinx
+ from sphinx.config import Config as SphinxConfig
+@@ -337,6 +337,12 @@ class GoogleDocstring:
+             return [line[min_indent:] for line in lines]
+ 
+     def _escape_args_and_kwargs(self, name: str) -> str:
++        if ', ' in name:
++            return ', '.join(
++                self._escape_args_and_kwargs(param) for param in name.split(', '))
++        return self._escape_arg_and_kwarg(name)
++
++    def _escape_arg_and_kwarg(self, name: str) -> str:
+         if name.endswith('_') and getattr(self._config, 'strip_signature_backslash', False):
+             name = name[:-1] + r'\_'
+ 
+@@ -432,11 +438,12 @@ class GoogleDocstring:
+         else:
+             return [field]
+ 
+-    def _format_fields(self, field_type: str, fields: List[Tuple[str, str, List[str]]]
+-                       ) -> List[str]:
++    def _format_fields(self, field_type: str, fields: List[Tuple[str, str, List[str]]],
++                       multi: Optional[bool] = None) -> List[str]:
+         field_type = ':%s:' % field_type.strip()
+         padding = ' ' * len(field_type)
+-        multi = len(fields) > 1
++        if multi is None:
++            multi = len(fields) > 1
+         lines = []  # type: List[str]
+         for _name, _type, _desc in fields:
+             field = self._format_field(_name, _type, _desc)
+@@ -451,6 +458,10 @@ class GoogleDocstring:
+             lines.append('')
+         return lines
+ 
++    def _has_multiple_parameter_names(
++            self, fields: List[Tuple[str, str, List[str]]]) -> bool:
++        return any(', ' in _name for _name, _type, _desc in fields)
++
+     def _get_current_indent(self, peek_ahead: int = 0) -> int:
+         line = self._line_iter.peek(peek_ahead + 1)[peek_ahead]
+         while line != self._line_iter.sentinel:
+@@ -654,13 +665,16 @@ class GoogleDocstring:
+ 
+     def _parse_keyword_arguments_section(self, section: str) -> List[str]:
+         fields = self._consume_fields()
+-        if self._config.napoleon_use_keyword:
++        has_multiple_names = self._has_multiple_parameter_names(fields)
++        if self._config.napoleon_use_keyword and not has_multiple_names:
+             return self._format_docutils_params(
+                 fields,
+                 field_role="keyword",
+                 type_role="kwtype")
+         else:
+-            return self._format_fields(_('Keyword Arguments'), fields)
++            return self._format_fields(
++                _('Keyword Arguments'), fields,
++                multi=has_multiple_names if self._config.napoleon_use_keyword else None)
+ 
+     def _parse_methods_section(self, section: str) -> List[str]:
+         lines = []  # type: List[str]
+@@ -682,10 +696,13 @@ class GoogleDocstring:
+ 
+     def _parse_parameters_section(self, section: str) -> List[str]:
+         fields = self._consume_fields()
+-        if self._config.napoleon_use_param:
++        has_multiple_names = self._has_multiple_parameter_names(fields)
++        if self._config.napoleon_use_param and not has_multiple_names:
+             return self._format_docutils_params(fields)
+         else:
+-            return self._format_fields(_('Parameters'), fields)
++            return self._format_fields(
++                _('Parameters'), fields,
++                multi=has_multiple_names if self._config.napoleon_use_param else None)
+ 
+     def _parse_raises_section(self, section: str) -> List[str]:
+         fields = self._consume_fields(parse_type=False, prefer_type=True)

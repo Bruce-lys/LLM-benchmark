@@ -1,0 +1,59 @@
+diff --git a/django/core/management/__init__.py b/django/core/management/__init__.py
+index 5f2e64761e..562de34d72 100644
+--- a/django/core/management/__init__.py
++++ b/django/core/management/__init__.py
+@@ -113,10 +113,18 @@ def call_command(command_name, *args, **options):
+     # Simulate argument parsing to get the option defaults (see #10080 for details).
+     parser = command.create_parser('', command_name)
+     # Use the `dest` option name from the parser option
+-    opt_mapping = {
+-        min(s_opt.option_strings).lstrip('-').replace('-', '_'): s_opt.dest
+-        for s_opt in parser._actions if s_opt.option_strings
+-    }
++    def get_opt_mapping(parser):
++        result = {
++            min(s_opt.option_strings).lstrip('-').replace('-', '_'): s_opt.dest
++            for s_opt in parser._actions if s_opt.option_strings
++        }
++        for opt in parser._actions:
++            if isinstance(opt, _SubParsersAction):
++                for sub_opt in opt.choices.values():
++                    result.update(get_opt_mapping(sub_opt))
++        return result
++
++    opt_mapping = get_opt_mapping(parser)
+     arg_options = {opt_mapping.get(key, key): value for key, value in options.items()}
+     parse_args = [str(a) for a in args]
+ 
+@@ -127,20 +135,28 @@ def call_command(command_name, *args, **options):
+                 for sub_opt in opt.choices.values():
+                     yield from get_actions(sub_opt)
+             else:
+-                yield opt
++                yield parser, opt
++
++    def is_required(opt, parser):
++        if opt.required:
++            return True
++        return any(
++            group.required and opt in group._group_actions
++            for group in parser._mutually_exclusive_groups
++        )
+ 
+     parser_actions = list(get_actions(parser))
+     # Any required arguments which are passed in via **options must be passed
+     # to parse_args().
+     parse_args += [
+         '{}={}'.format(min(opt.option_strings), arg_options[opt.dest])
+-        for opt in parser_actions if opt.required and opt.dest in options
++        for parser, opt in parser_actions if is_required(opt, parser) and opt.dest in arg_options
+     ]
+     defaults = parser.parse_args(args=parse_args)
+     defaults = dict(defaults._get_kwargs(), **arg_options)
+     # Raise an error if any unknown options were passed.
+     stealth_options = set(command.base_stealth_options + command.stealth_options)
+-    dest_parameters = {action.dest for action in parser_actions}
++    dest_parameters = {opt.dest for parser, opt in parser_actions}
+     valid_options = (dest_parameters | stealth_options).union(opt_mapping)
+     unknown_options = set(options) - valid_options
+     if unknown_options:

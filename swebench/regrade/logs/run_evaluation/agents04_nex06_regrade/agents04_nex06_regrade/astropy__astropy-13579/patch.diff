@@ -1,0 +1,72 @@
+diff --git a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+index d7605b078..5a404c121 100644
+--- a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
++++ b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+@@ -3,6 +3,8 @@ from collections import defaultdict
+ 
+ import numpy as np
+ 
++import astropy.units as u
++
+ from astropy.utils import isiterable
+ from astropy.utils.decorators import lazyproperty
+ 
+@@ -242,8 +244,48 @@ class SlicedLowLevelWCS(BaseWCSWrapper):
+ 
+         return world_arrays
+ 
++    def _world_arrays_to_values(self, world_arrays):
++        values = []
++        for world_array, unit in zip(world_arrays, self.world_axis_units):
++            if isinstance(world_array, u.Quantity):
++                values.append(np.asanyarray(world_array.to(unit).value))
++            else:
++                values.append(np.asanyarray(world_array))
++        return values
++
++    def _reference_dropped_world_values(self):
++        """
++        Return world coordinates for dropped dimensions at the reference pixel
++        point of the sliced WCS.
++        """
++        pixel_arrays = []
++        for ipixel in range(self._wcs.pixel_n_dim):
++            if isinstance(self._slices_pixel[ipixel], numbers.Integral):
++                pixel_arrays.append(self._slices_pixel[ipixel])
++            else:
++                pixel_arrays.append(0 if self._slices_pixel[ipixel].start is None
++                                    else self._slices_pixel[ipixel].start)
++
++        world_arrays = self._wcs.pixel_to_world_values(*pixel_arrays)
++        if self._wcs.world_n_dim == 1:
++            world_arrays = (world_arrays,)
++
++        dropped_world_values = {}
++        for iworld in range(self._wcs.world_n_dim):
++            if iworld in self._world_keep:
++                continue
++            value = world_arrays[iworld]
++            if isinstance(value, u.Quantity):
++                value = value.to(self._wcs.world_axis_units[iworld]).value
++            dropped_world_values[iworld] = np.asanyarray(value)
++        return dropped_world_values
++
+     def world_to_pixel_values(self, *world_arrays):
+-        world_arrays = tuple(map(np.asanyarray, world_arrays))
++        world_arrays = self._world_arrays_to_values(world_arrays)
++        if self.world_n_dim < self._wcs.world_n_dim:
++            dropped_world_values = self._reference_dropped_world_values()
++        else:
++            dropped_world_values = {}
+         world_arrays_new = []
+         iworld_curr = -1
+         for iworld in range(self._wcs.world_n_dim):
+@@ -251,7 +293,7 @@ class SlicedLowLevelWCS(BaseWCSWrapper):
+                 iworld_curr += 1
+                 world_arrays_new.append(world_arrays[iworld_curr])
+             else:
+-                world_arrays_new.append(1.)
++                world_arrays_new.append(dropped_world_values[iworld])
+ 
+         world_arrays_new = np.broadcast_arrays(*world_arrays_new)
+         pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))

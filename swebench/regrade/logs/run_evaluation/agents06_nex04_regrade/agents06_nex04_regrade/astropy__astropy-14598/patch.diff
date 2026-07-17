@@ -1,0 +1,58 @@
+diff --git a/astropy/io/fits/card.py b/astropy/io/fits/card.py
+index 1b3285ddc..60c3c98bd 100644
+--- a/astropy/io/fits/card.py
++++ b/astropy/io/fits/card.py
+@@ -64,9 +64,9 @@ class Card(_Verify):
+ 
+     # Used in cards using the CONTINUE convention which expect a string
+     # followed by an optional comment
+-    _strg = r"\'(?P<strg>([ -~]+?|\'\'|) *?)\'(?=$|/| )"
++    _strg = r"\'(?P<strg>(?:[ -~]|\'\'|)*)\'(?=$|/| )"
+     _comm_field = r"(?P<comm_field>(?P<sepr>/ *)(?P<comm>(.|\n)*))"
+-    _strg_comment_RE = re.compile(f"({_strg})? *{_comm_field}?")
++    _strg_comment_RE = re.compile(f"({_strg})? *{_comm_field}?$")
+ 
+     # FSC commentary card string which must contain printable ASCII characters.
+     # Note: \Z matches the end of the string without allowing newlines
+@@ -84,20 +84,16 @@ class Card(_Verify):
+         r'(?P<valu_field> *'
+             r'(?P<valu>'
+ 
+-                #  The <strg> regex is not correct for all cases, but
+-                #  it comes pretty darn close.  It appears to find the
+-                #  end of a string rather well, but will accept
+-                #  strings with an odd number of single quotes,
+-                #  instead of issuing an error.  The FITS standard
+-                #  appears vague on this issue and only states that a
+-                #  string should not end with two single quotes,
+-                #  whereas it should not end with an even number of
++                #  The <strg> regex is not perfect: it accepts strings with
++                #  an odd number of single quotes instead of issuing an
++                #  error.  The FITS standard appears vague on this issue and
++                #  only states that a string should not end with two single
++                #  quotes, whereas it should not end with an even number of
+                 #  quotes to be precise.
+                 #
+-                #  Note that a non-greedy match is done for a string,
+-                #  since a greedy match will find a single-quote after
+-                #  the comment separator resulting in an incorrect
+-                #  match.
++                #  The regex is greedy so that escaped quote sequences are
++                #  not mistaken for the closing quote when followed by a
++                #  delimiter such as / or a space.
+                 rf'{_strg}|'
+                 r'(?P<bool>[FT])|'
+                 r'(?P<numr>' + _numr_FSC + r')|'
+@@ -859,9 +855,11 @@ class Card(_Verify):
+                     return kw, vc
+ 
+                 value = m.group("strg") or ""
+-                value = value.rstrip().replace("''", "'")
++                value = value.rstrip()
+                 if value and value[-1] == "&":
+                     value = value[:-1]
++                # Unescape quote sequences only after concatenating all chunks,
++                # since they may be split across CONTINUE cards.
+                 values.append(value)
+                 comment = m.group("comm")
+                 if comment:

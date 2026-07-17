@@ -1,0 +1,24 @@
+diff --git a/sympy/core/mod.py b/sympy/core/mod.py
+index eae25630c..10c180c56 100644
+--- a/sympy/core/mod.py
++++ b/sympy/core/mod.py
+@@ -138,6 +138,19 @@ def doit(p, q):
+                 prod_mod1 = Mul(*[i.args[0] for i in mod_l])
+                 net = prod_mod1*prod_mod
+                 return prod_non_mod*cls(net, q)
++            elif not mod_l:
++                numerics = [arg for arg in non_mod_l if arg.is_number]
++                non_numerics = [arg for arg in non_mod_l if not arg.is_number]
++                if (
++                    numerics and non_numerics and
++                    all(arg.is_integer for arg in non_mod_l)
++                ):
++                    c = Mul(*numerics)
++                    cmod = c % q
++                    if cmod == 0:
++                        return 0
++                    elif cmod == 1:
++                        return cls(Mul(*non_numerics), q)
+ 
+         # XXX other possibilities?
+ 

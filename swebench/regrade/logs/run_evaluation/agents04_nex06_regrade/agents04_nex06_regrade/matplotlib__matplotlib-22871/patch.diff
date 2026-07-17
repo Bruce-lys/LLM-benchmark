@@ -1,0 +1,59 @@
+diff --git a/lib/matplotlib/dates.py b/lib/matplotlib/dates.py
+index 4d8ddf3ee5..25e1499dd3 100644
+--- a/lib/matplotlib/dates.py
++++ b/lib/matplotlib/dates.py
+@@ -798,7 +798,10 @@ class ConciseDateFormatter(ticker.Formatter):
+         for level in range(5, -1, -1):
+             if len(np.unique(tickdate[:, level])) > 1:
+                 if level < 2:
+-                    show_offset = False
++                    # For years, the default offset format is empty.  For
++                    # months, the default offset format is the year, which is
++                    # useful when no tick label already contains it.
++                    show_offset = level != 0
+                 break
+             elif level == 0:
+                 # all tickdate are the same, so only micros might be different
+@@ -843,6 +846,12 @@ class ConciseDateFormatter(ticker.Formatter):
+             self.offset_string = tickdatetime[-1].strftime(offsetfmts[level])
+             if self._usetex:
+                 self.offset_string = _wrap_in_tex(self.offset_string)
++            # If the offset text is identical to a tick label, it is
++            # redundant and should not be shown.
++            if (self.offset_string and
++                    any(label == self.offset_string for label in labels)):
++                show_offset = False
++                self.offset_string = ''
+         else:
+             self.offset_string = ''
+ 
+diff --git a/lib/matplotlib/tests/test_dates.py b/lib/matplotlib/tests/test_dates.py
+index a78c39c560..a592c7e39d 100644
+--- a/lib/matplotlib/tests/test_dates.py
++++ b/lib/matplotlib/tests/test_dates.py
+@@ -613,6 +613,25 @@ def test_concise_formatter_show_offset(t_delta, expected):
+     assert formatter.get_offset() == expected
+ 
+ 
++def test_concise_formatter_show_offset_when_year_missing():
++    # If tick labels show only month names, the year should be shown in the
++    # offset so the date is not ambiguous.
++    d1 = datetime.datetime(2021, 2, 14)
++    d2 = d1 + datetime.timedelta(days=200)
++    data = np.arange(d2.toordinal() - d1.toordinal())
++
++    fig, ax = plt.subplots()
++    locator = mdates.AutoDateLocator()
++    formatter = mdates.ConciseDateFormatter(locator)
++    ax.xaxis.set_major_locator(locator)
++    ax.xaxis.set_major_formatter(formatter)
++
++    ax.plot([d1 + datetime.timedelta(days=x) for x in range(200)], data)
++    fig.canvas.draw()
++
++    assert formatter.get_offset() == "2021"
++
++
+ def test_offset_changes():
+     fig, ax = plt.subplots()
+ 

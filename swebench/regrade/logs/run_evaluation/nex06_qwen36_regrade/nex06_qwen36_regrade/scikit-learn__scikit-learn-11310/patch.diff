@@ -1,0 +1,105 @@
+diff --git a/sklearn/grid_search.py b/sklearn/grid_search.py
+index 6ba673d2f..3d004c975 100644
+--- a/sklearn/grid_search.py
++++ b/sklearn/grid_search.py
+@@ -15,6 +15,7 @@ from collections import Mapping, namedtuple, Sized
+ from functools import partial, reduce
+ from itertools import product
+ import operator
++import time
+ import warnings
+ 
+ import numpy as np
+@@ -616,11 +617,16 @@ class BaseSearchCV(six.with_metaclass(ABCMeta, BaseEstimator,
+             # clone first to work around broken estimators
+             best_estimator = clone(base_estimator).set_params(
+                 **best.parameters)
++            start_time = time.time()
+             if y is not None:
+                 best_estimator.fit(X, y, **self.fit_params)
+             else:
+                 best_estimator.fit(X, **self.fit_params)
++            end_time = time.time()
+             self.best_estimator_ = best_estimator
++            self.refit_time_ = end_time - start_time
++        else:
++            self.refit_time_ = 0.0
+         return self
+ 
+ 
+@@ -775,6 +781,9 @@ class GridSearchCV(BaseSearchCV):
+     best_score_ : float
+         Score of best_estimator on the left out data.
+ 
++    refit_time_ : float
++        Time to refit the best estimator using the full training set.
++
+     best_params_ : dict
+         Parameter setting that gave the best results on the hold out data.
+ 
+@@ -986,6 +995,9 @@ class RandomizedSearchCV(BaseSearchCV):
+     best_score_ : float
+         Score of best_estimator on the left out data.
+ 
++    refit_time_ : float
++        Time to refit the best estimator using the full training set.
++
+     best_params_ : dict
+         Parameter setting that gave the best results on the hold out data.
+ 
+diff --git a/sklearn/model_selection/_search.py b/sklearn/model_selection/_search.py
+index 99d6096af..fe1b95304 100644
+--- a/sklearn/model_selection/_search.py
++++ b/sklearn/model_selection/_search.py
+@@ -17,6 +17,7 @@ from collections import Mapping, namedtuple, defaultdict, Sequence, Iterable
+ from functools import partial, reduce
+ from itertools import product
+ import operator
++import time
+ import warnings
+ 
+ import numpy as np
+@@ -764,12 +765,17 @@ class BaseSearchCV(six.with_metaclass(ABCMeta, BaseEstimator,
+                 self.best_index_]
+ 
+         if self.refit:
++            start_time = time.time()
+             self.best_estimator_ = clone(base_estimator).set_params(
+                 **self.best_params_)
+             if y is not None:
+                 self.best_estimator_.fit(X, y, **fit_params)
+             else:
+                 self.best_estimator_.fit(X, **fit_params)
++            end_time = time.time()
++            self.refit_time_ = end_time - start_time
++        else:
++            self.refit_time_ = 0.0
+ 
+         # Store the only scorer not as a dict for single metric evaluation
+         self.scorer_ = scorers if self.multimetric_ else scorers['score']
+@@ -1049,6 +1055,12 @@ class GridSearchCV(BaseSearchCV):
+         For multi-metric evaluation, this is present only if ``refit`` is
+         specified.
+ 
++    refit_time_ : float
++        Time to refit the best estimator using the full training set.
++
++        For multi-metric evaluation, this is present only if ``refit`` is
++        specified.
++
+     best_params_ : dict
+         Parameter setting that gave the best results on the hold out data.
+ 
+@@ -1360,6 +1372,12 @@ class RandomizedSearchCV(BaseSearchCV):
+         For multi-metric evaluation, this is not available if ``refit`` is
+         ``False``. See ``refit`` parameter for more information.
+ 
++    refit_time_ : float
++        Time to refit the best estimator using the full training set.
++
++        For multi-metric evaluation, this is not available if ``refit`` is
++        ``False``. See ``refit`` parameter for more information.
++
+     best_params_ : dict
+         Parameter setting that gave the best results on the hold out data.
+ 

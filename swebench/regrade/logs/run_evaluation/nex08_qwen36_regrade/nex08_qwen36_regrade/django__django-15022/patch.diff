@@ -1,0 +1,67 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 66f3396a6b..c68484e63c 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -1026,19 +1026,60 @@ class ModelAdmin(BaseModelAdmin):
+             # Otherwise, use the field with icontains.
+             return "%s__icontains" % field_name
+ 
++        def lookup_spawns_joins(opts, lookup_path):
++            lookup_fields = lookup_path.split(LOOKUP_SEP)
++            for field_name in lookup_fields:
++                if field_name == 'pk':
++                    field_name = opts.pk.name
++                try:
++                    field = opts.get_field(field_name)
++                except FieldDoesNotExist:
++                    # Ignore query lookups.
++                    continue
++                else:
++                    if hasattr(field, 'path_infos'):
++                        return True
++            return False
++
+         may_have_duplicates = False
+         search_fields = self.get_search_fields(request)
+         if search_fields and search_term:
+             orm_lookups = [construct_search(str(search_field))
+                            for search_field in search_fields]
++            search_q = []
+             for bit in smart_split(search_term):
+                 if bit.startswith(('"', "'")) and bit[0] == bit[-1]:
+                     bit = unescape_string_literal(bit)
+-                or_queries = models.Q(
++                search_q.append(models.Q(
+                     *((orm_lookup, bit) for orm_lookup in orm_lookups),
+                     _connector=models.Q.OR,
++                ))
++            search_spawns_joins = any(
++                lookup_spawns_joins(self.opts, search_spec)
++                for search_spec in orm_lookups
++            )
++            if search_spawns_joins:
++                # Annotate each search term with a count so that different
++                # related rows can match different terms without duplicating
++                # joins.
++                search_subquery = queryset.values('pk')
++                for index, bit_q in enumerate(search_q):
++                    search_subquery = search_subquery.annotate(
++                        **{
++                            '__search_match_%d' % index:
++                            models.Count('pk', filter=bit_q),
++                        }
++                    )
++                queryset = queryset.filter(
++                    pk__in=models.Subquery(
++                        search_subquery.filter(
++                            **{'__search_match_%d__gt' % index: 0
++                               for index in range(len(search_q))}
++                        ).values('pk')
++                    )
+                 )
+-                queryset = queryset.filter(or_queries)
++            else:
++                queryset = queryset.filter(*search_q)
+             may_have_duplicates |= any(
+                 lookup_spawns_duplicates(self.opts, search_spec)
+                 for search_spec in orm_lookups

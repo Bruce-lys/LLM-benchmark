@@ -1,0 +1,29 @@
+run:
+  tag: chwang_20260710_sce_a1_nex_ornith_topk100_lite75
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: sce_a1-nex-ornith_topk100
+
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.61:8017/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

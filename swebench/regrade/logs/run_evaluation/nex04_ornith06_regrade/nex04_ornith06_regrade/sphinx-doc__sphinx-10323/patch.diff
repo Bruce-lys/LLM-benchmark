@@ -1,0 +1,61 @@
+diff --git a/sphinx/directives/code.py b/sphinx/directives/code.py
+index dc44ed314..69e8755a9 100644
+--- a/sphinx/directives/code.py
++++ b/sphinx/directives/code.py
+@@ -1,3 +1,4 @@
++import re
+ import sys
+ import textwrap
+ from difflib import unified_diff
+@@ -224,9 +225,9 @@ class LiteralIncludeReader:
+                        self.start_filter,
+                        self.end_filter,
+                        self.lines_filter,
++                       self.dedent_filter,
+                        self.prepend_filter,
+-                       self.append_filter,
+-                       self.dedent_filter]
++                       self.append_filter]
+             lines = self.read_file(self.filename, location=location)
+             for func in filters:
+                 lines = func(lines, location=location)
+@@ -396,6 +397,24 @@ class LiteralInclude(SphinxDirective):
+         'diff': directives.unchanged_required,
+     }
+ 
++    @staticmethod
++    def _get_raw_option(block_text: str, option_name: str) -> str:
++        """Extract the raw value of an option from block_text.
++
++        The RST parser strips leading whitespace from directive option values,
++        but for ``:prepend:`` and ``:append:`` we want to preserve it.
++        """
++        pattern = r'^[\s]*:' + re.escape(option_name) + r':(?P<value>.*)$'
++        match = re.search(pattern, block_text, re.MULTILINE)
++        if match:
++            value = match.group('value')
++            # Strip exactly one leading space (the mandatory RST separator),
++            # but preserve any additional leading whitespace.
++            if value.startswith(' '):
++                value = value[1:]
++            return value
++        return None
++
+     def run(self) -> List[Node]:
+         document = self.state.document
+         if not document.settings.file_insertion_enabled:
+@@ -411,6 +430,14 @@ class LiteralInclude(SphinxDirective):
+             rel_filename, filename = self.env.relfn2path(self.arguments[0])
+             self.env.note_dependency(rel_filename)
+ 
++            # Recover raw prepend/append values from block_text, since the
++            # RST parser strips leading whitespace from option values.
++            for option_name in ('prepend', 'append'):
++                if option_name in self.options:
++                    raw_value = self._get_raw_option(self.block_text, option_name)
++                    if raw_value is not None:
++                        self.options[option_name] = raw_value
++
+             reader = LiteralIncludeReader(filename, self.options, self.config)
+             text, lines = reader.read(location=location)
+ 

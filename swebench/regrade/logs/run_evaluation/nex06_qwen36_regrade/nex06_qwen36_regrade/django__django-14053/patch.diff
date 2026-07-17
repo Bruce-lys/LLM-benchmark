@@ -1,0 +1,54 @@
+diff --git a/django/contrib/staticfiles/storage.py b/django/contrib/staticfiles/storage.py
+index 494890cc23..5caa72b6aa 100644
+--- a/django/contrib/staticfiles/storage.py
++++ b/django/contrib/staticfiles/storage.py
+@@ -226,18 +226,33 @@ class HashedFilesMixin:
+             path for path in paths
+             if matches_patterns(path, self._patterns)
+         ]
++        adjustable_paths_set = set(adjustable_paths)
++        # Store processed results for adjustable files so we can yield
++        # each file once, with its final hashed name.
++        adjustable_results = {}
++
+         # Do a single pass first. Post-process all files once, then repeat for
+         # adjustable files.
+         for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
+-            yield name, hashed_name, processed
++            if isinstance(processed, Exception):
++                yield name, hashed_name, processed
++            else:
++                adjustable_results[name] = (name, hashed_name, processed)
++                if name not in adjustable_paths_set:
++                    yield name, hashed_name, processed
+ 
+         paths = {path: paths[path] for path in adjustable_paths}
+ 
++        substitutions = False
+         for i in range(self.max_post_process_passes):
+-            substitutions = False
++            pass_substitutions = False
+             for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
+-                yield name, hashed_name, processed
+-                substitutions = substitutions or subst
++                if isinstance(processed, Exception):
++                    yield name, hashed_name, processed
++                else:
++                    adjustable_results[name] = (name, hashed_name, processed)
++                    pass_substitutions = pass_substitutions or subst
++            substitutions = pass_substitutions
+ 
+             if not substitutions:
+                 break
+@@ -248,6 +263,11 @@ class HashedFilesMixin:
+         # Store the processed paths
+         self.hashed_files.update(hashed_files)
+ 
++        if not substitutions:
++            for name in adjustable_paths:
++                if name in adjustable_results:
++                    yield adjustable_results[name]
++
+     def _post_process(self, paths, adjustable_paths, hashed_files):
+         # Sort the files by directory level
+         def path_level(name):

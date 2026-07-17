@@ -1,0 +1,22 @@
+diff --git a/src/_pytest/logging.py b/src/_pytest/logging.py
+index 11031f2f2..2bc8ce6e1 100644
+--- a/src/_pytest/logging.py
++++ b/src/_pytest/logging.py
+@@ -346,13 +346,15 @@ class LogCaptureFixture:
+         self._item = item
+         # dict of log name -> log level
+         self._initial_logger_levels = {}  # type: Dict[Optional[str], int]
++        self._initial_handler_level = self.handler.level  # type: int
+ 
+     def _finalize(self) -> None:
+         """Finalizes the fixture.
+ 
+-        This restores the log levels changed by :meth:`set_level`.
++        This restores the logger and handler levels changed by :meth:`set_level`.
+         """
+-        # restore log levels
++        # restore log levels and handler level
++        self.handler.setLevel(self._initial_handler_level)
+         for logger_name, level in self._initial_logger_levels.items():
+             logger = logging.getLogger(logger_name)
+             logger.setLevel(level)

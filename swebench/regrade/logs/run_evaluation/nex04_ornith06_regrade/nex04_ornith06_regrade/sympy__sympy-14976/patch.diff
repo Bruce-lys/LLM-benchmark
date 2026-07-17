@@ -1,0 +1,26 @@
+diff --git a/sympy/printing/pycode.py b/sympy/printing/pycode.py
+index d06901425..cd8dde187 100644
+--- a/sympy/printing/pycode.py
++++ b/sympy/printing/pycode.py
+@@ -319,7 +319,9 @@ class MpmathPrinter(PythonCodePrinter):
+ 
+     _kf = dict(chain(
+         _known_functions.items(),
+-        [(k, 'mpmath.' + v) for k, v in _known_functions_mpmath.items()]
++        [(k, 'mpmath.' + v) for k, v in _known_functions_mpmath.items()],
++        [('RisingFactorial', 'rf'),
++         ('FallingFactorial', 'ff')]
+     ))
+ 
+     def _print_Float(self, e):
+@@ -331,6 +333,10 @@ def _print_Float(self, e):
+         args = str(tuple(map(int, e._mpf_)))
+         return '{func}({args})'.format(func=self._module_format('mpmath.mpf'), args=args)
+ 
++    def _print_Rational(self, e):
++        return '{0}({1})/{0}({2})'.format(
++            self._module_format('mpmath.mpf'), e.p, e.q)
++
+ 
+     def _print_uppergamma(self, e):
+         return "{0}({1}, {2}, {3})".format(

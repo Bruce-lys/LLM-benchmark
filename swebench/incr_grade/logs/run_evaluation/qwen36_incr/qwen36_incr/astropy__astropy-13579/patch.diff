@@ -1,0 +1,19 @@
+--- No patch file found, showing git diff ---
+diff --git a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+index d7605b078..50ccede27 100644
+--- a/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
++++ b/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+@@ -251,7 +251,12 @@ class SlicedLowLevelWCS(BaseWCSWrapper):
+                 iworld_curr += 1
+                 world_arrays_new.append(world_arrays[iworld_curr])
+             else:
+-                world_arrays_new.append(1.)
++                # Compute the world coordinate for the sliced dimension
++                # by finding the world coordinate at the slice pixel position.
++                # For integer slices, use the slice value; for slices, use 0.
++                world_coord = self._pixel_to_world_values_all(
++                    *[0] * len(self._pixel_keep))[iworld]
++                world_arrays_new.append(world_coord)
+ 
+         world_arrays_new = np.broadcast_arrays(*world_arrays_new)
+         pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))

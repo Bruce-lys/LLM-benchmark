@@ -1,0 +1,28 @@
+diff --git a/sklearn/metrics/_ranking.py b/sklearn/metrics/_ranking.py
+index 0cdead923..0ebe69dec 100644
+--- a/sklearn/metrics/_ranking.py
++++ b/sklearn/metrics/_ranking.py
+@@ -1019,7 +1019,8 @@ def roc_curve(
+     thresholds : ndarray of shape = (n_thresholds,)
+         Decreasing thresholds on the decision function used to compute
+         fpr and tpr. `thresholds[0]` represents no instances being predicted
+-        and is arbitrarily set to `max(y_score) + 1`.
++        and is arbitrarily set to `max(y_score) + 1` unless all scores
++        are in ``[0, 1)``, in which case it is clipped to `1`.
+ 
+     See Also
+     --------
+@@ -1083,7 +1084,12 @@ def roc_curve(
+     # to make sure that the curve starts at (0, 0)
+     tps = np.r_[0, tps]
+     fps = np.r_[0, fps]
+-    thresholds = np.r_[thresholds[0] + 1, thresholds]
++    first_threshold = thresholds[0] + 1
++    # For probability scores in [0, 1), the extra threshold does not need
++    # to exceed the probability scale.
++    if thresholds[0] < 1 and thresholds[-1] >= 0:
++        first_threshold = min(first_threshold, 1)
++    thresholds = np.r_[first_threshold, thresholds]
+ 
+     if fps[-1] <= 0:
+         warnings.warn(

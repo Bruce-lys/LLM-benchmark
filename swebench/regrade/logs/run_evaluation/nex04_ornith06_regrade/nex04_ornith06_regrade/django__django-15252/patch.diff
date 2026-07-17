@@ -1,0 +1,112 @@
+diff --git a/django/db/migrations/executor.py b/django/db/migrations/executor.py
+index aa2fe0883b..5aab6b9123 100644
+--- a/django/db/migrations/executor.py
++++ b/django/db/migrations/executor.py
+@@ -16,9 +16,51 @@ class MigrationExecutor:
+     def __init__(self, connection, progress_callback=None):
+         self.connection = connection
+         self.loader = MigrationLoader(self.connection)
+-        self.recorder = MigrationRecorder(self.connection)
++        if connection is not None:
++            migrations_allowed = self._migrations_allowed()
++        else:
++            migrations_allowed = False
++        self.recorder = MigrationRecorder(self.connection, migrations_allowed)
+         self.progress_callback = progress_callback
+ 
++    def _migrations_allowed(self):
++        """
++        Return whether any migrations are allowed to be applied on the
++        current connection, according to the database routers.
++        """
++        return any(
++            self._migration_allowed(migration)
++            for migration in self.loader.disk_migrations.values()
++        )
++
++    def _migration_allowed(self, migration):
++        """
++        Return whether at least one model in the given migration is allowed
++        to be migrated on the current connection.
++        """
++        has_model_operations = False
++        for operation in migration.operations:
++            model_name = None
++            if hasattr(operation, 'model_name'):
++                model_name = operation.model_name
++            elif hasattr(operation, 'name'):
++                model_name = operation.name
++            if model_name is not None:
++                has_model_operations = True
++                if router.allow_migrate(
++                    self.connection.alias,
++                    migration.app_label,
++                    model_name=model_name,
++                ):
++                    return True
++        # If the migration has no model operations, check at the app level.
++        if not has_model_operations:
++            return router.allow_migrate(
++                self.connection.alias,
++                migration.app_label,
++            )
++        return False
++
+     def migration_plan(self, targets, clean_start=False):
+         """
+         Given a set of targets, return a list of (Migration instance, backwards?).
+diff --git a/django/db/migrations/recorder.py b/django/db/migrations/recorder.py
+index 1a37c6b7d0..bfbda0d8a1 100644
+--- a/django/db/migrations/recorder.py
++++ b/django/db/migrations/recorder.py
+@@ -43,8 +43,9 @@ class MigrationRecorder:
+             cls._migration_class = Migration
+         return cls._migration_class
+ 
+-    def __init__(self, connection):
++    def __init__(self, connection, migrations_allowed=True):
+         self.connection = connection
++        self.migrations_allowed = migrations_allowed
+ 
+     @property
+     def migration_qs(self):
+@@ -52,6 +53,8 @@ class MigrationRecorder:
+ 
+     def has_table(self):
+         """Return True if the django_migrations table exists."""
++        if not self.migrations_allowed:
++            return False
+         with self.connection.cursor() as cursor:
+             tables = self.connection.introspection.table_names(cursor)
+         return self.Migration._meta.db_table in tables
+@@ -62,6 +65,9 @@ class MigrationRecorder:
+         # in the codebase.
+         if self.has_table():
+             return
++        # Don't create the table if migrations aren't allowed on the database.
++        if not self.migrations_allowed:
++            return
+         # Make the table
+         try:
+             with self.connection.schema_editor() as editor:
+@@ -83,14 +89,20 @@ class MigrationRecorder:
+ 
+     def record_applied(self, app, name):
+         """Record that a migration was applied."""
++        if not self.migrations_allowed:
++            return
+         self.ensure_schema()
+         self.migration_qs.create(app=app, name=name)
+ 
+     def record_unapplied(self, app, name):
+         """Record that a migration was unapplied."""
++        if not self.migrations_allowed:
++            return
+         self.ensure_schema()
+         self.migration_qs.filter(app=app, name=name).delete()
+ 
+     def flush(self):
+         """Delete all migration records. Useful for testing migrations."""
++        if not self.migrations_allowed:
++            return
+         self.migration_qs.all().delete()

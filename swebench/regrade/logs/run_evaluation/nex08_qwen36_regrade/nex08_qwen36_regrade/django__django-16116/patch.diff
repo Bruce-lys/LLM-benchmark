@@ -1,0 +1,25 @@
+diff --git a/django/core/management/commands/makemigrations.py b/django/core/management/commands/makemigrations.py
+index 2e97d9064b..75a294e350 100644
+--- a/django/core/management/commands/makemigrations.py
++++ b/django/core/management/commands/makemigrations.py
+@@ -70,7 +70,10 @@ class Command(BaseCommand):
+             "--check",
+             action="store_true",
+             dest="check_changes",
+-            help="Exit with a non-zero status if model changes are missing migrations.",
++            help=(
++                "Exit with a non-zero status if model changes are missing "
++                "migrations without writing migrations."
++            ),
+         )
+         parser.add_argument(
+             "--scriptable",
+@@ -103,7 +106,7 @@ class Command(BaseCommand):
+         self.written_files = []
+         self.verbosity = options["verbosity"]
+         self.interactive = options["interactive"]
+-        self.dry_run = options["dry_run"]
++        self.dry_run = options["dry_run"] or options["check_changes"]
+         self.merge = options["merge"]
+         self.empty = options["empty"]
+         self.migration_name = options["name"]

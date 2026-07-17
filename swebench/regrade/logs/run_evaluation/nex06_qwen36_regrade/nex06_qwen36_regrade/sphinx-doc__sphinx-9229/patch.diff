@@ -1,0 +1,16 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 1f4c98284..8943d76d6 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -910,6 +910,11 @@ class Documenter:
+         if not self.import_object():
+             return
+ 
++        if getattr(self, 'doc_as_attr', False):
++            # For aliases of classes, use the module where the alias is defined
++            # to find attribute docs, not the target class's module.
++            real_modname = self.modname
++
+         # If there is no real module defined, figure out which to use.
+         # The real module is used in the module analyzer to look up the module
+         # where the attribute documentation would actually be found in.

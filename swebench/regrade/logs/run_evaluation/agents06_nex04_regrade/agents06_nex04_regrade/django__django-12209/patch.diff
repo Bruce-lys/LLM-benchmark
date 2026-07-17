@@ -1,0 +1,108 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index e3b14a41a0..5760f0dfb4 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -398,6 +398,11 @@ class ModelState:
+     # explicit (non-auto) PKs. This impacts validation only; it has no effect
+     # on the actual save.
+     adding = True
++    explicit_pk_set = False
++    # Set to True while Model.__init__() populates defaults so
++    # DeferredAttribute assignments don't mark a default pk as explicitly
++    # provided.
++    _setting = False
+     fields_cache = ModelStateFieldsCacheDescriptor()
+ 
+ 
+@@ -414,6 +419,14 @@ class Model(metaclass=ModelBase):
+ 
+         # Set up the storage for instance state
+         self._state = ModelState()
++        self._state._setting = True
++
++        explicit_pk_set = False
++        if kwargs:
++            explicit_pk_set = (
++                (opts.pk.name in kwargs and kwargs[opts.pk.name] is not _DEFERRED) or
++                (opts.pk.attname in kwargs and kwargs[opts.pk.attname] is not _DEFERRED)
++            )
+ 
+         # There is a rather weird disparity here; if kwargs, it's set, then args
+         # overrides it. It should be one or the other; don't duplicate the work
+@@ -432,6 +445,8 @@ class Model(metaclass=ModelBase):
+             for val, field in zip(args, fields_iter):
+                 if val is _DEFERRED:
+                     continue
++                if field is opts.pk:
++                    explicit_pk_set = True
+                 _setattr(self, field.attname, val)
+         else:
+             # Slower, kwargs-ready version.
+@@ -439,6 +454,8 @@ class Model(metaclass=ModelBase):
+             for val, field in zip(args, fields_iter):
+                 if val is _DEFERRED:
+                     continue
++                if field is opts.pk:
++                    explicit_pk_set = True
+                 _setattr(self, field.attname, val)
+                 kwargs.pop(field.name, None)
+ 
+@@ -499,6 +516,8 @@ class Model(metaclass=ModelBase):
+                     pass
+             for kwarg in kwargs:
+                 raise TypeError("%s() got an unexpected keyword argument '%s'" % (cls.__name__, kwarg))
++        self._state._setting = False
++        self._state.explicit_pk_set = explicit_pk_set or self._state.explicit_pk_set
+         super().__init__()
+         post_init.send(sender=cls, instance=self)
+ 
+@@ -569,7 +588,9 @@ class Model(metaclass=ModelBase):
+         return getattr(self, meta.pk.attname)
+ 
+     def _set_pk_val(self, value):
+-        return setattr(self, self._meta.pk.attname, value)
++        setattr(self, self._meta.pk.attname, value)
++        self._state.explicit_pk_set = True
++        return None
+ 
+     pk = property(_get_pk_val, _set_pk_val)
+ 
+@@ -840,6 +861,7 @@ class Model(metaclass=ModelBase):
+                        if f.name in update_fields or f.attname in update_fields]
+ 
+         pk_val = self._get_pk_val(meta)
++        explicit_pk_set = getattr(self._state, 'explicit_pk_set', False)
+         if pk_val is None:
+             pk_val = meta.pk.get_pk_value_on_save(self)
+             setattr(self, meta.pk.attname, pk_val)
+@@ -847,10 +869,12 @@ class Model(metaclass=ModelBase):
+         if not pk_set and (force_update or update_fields):
+             raise ValueError("Cannot force an update in save() with no primary key.")
+         updated = False
+-        # Skip an UPDATE when adding an instance and primary key has a default.
++        # Skip an UPDATE when adding an instance without an explicitly
++        # provided primary key and the primary key has a default.
+         if (
+             not force_insert and
+             self._state.adding and
++            not explicit_pk_set and
+             self._meta.pk.default and
+             self._meta.pk.default is not NOT_PROVIDED
+         ):
+diff --git a/django/db/models/query_utils.py b/django/db/models/query_utils.py
+index 96409cc67c..ee369db2d2 100644
+--- a/django/db/models/query_utils.py
++++ b/django/db/models/query_utils.py
+@@ -151,6 +151,12 @@ class DeferredAttribute:
+             data[field_name] = val
+         return data[field_name]
+ 
++    def __set__(self, instance, value):
++        instance.__dict__[self.field.attname] = value
++        if self.field.primary_key and not getattr(instance._state, '_setting', False):
++            # Mark explicit pk assignments for save/update logic.
++            instance._state.explicit_pk_set = True
++
+     def _check_parent_chain(self, instance):
+         """
+         Check if the field value can be fetched from a parent field already

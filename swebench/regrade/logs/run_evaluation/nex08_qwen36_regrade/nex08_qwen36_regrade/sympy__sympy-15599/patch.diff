@@ -1,0 +1,22 @@
+diff --git a/sympy/core/mod.py b/sympy/core/mod.py
+index eae25630c..50fb4e513 100644
+--- a/sympy/core/mod.py
++++ b/sympy/core/mod.py
+@@ -123,6 +123,17 @@ def doit(p, q):
+             for arg in p.args:
+                 both_l[isinstance(arg, cls)].append(arg)
+ 
++            if not mod_l:
++                # if a non-mod factor is 0 or 1 modulo q, the other factors
++                # can be put inside the Mod
++                for x in non_mod_l:
++                    x_mod = cls(x, q)
++                    if q.is_positive and q not in (S.One, S.NegativeOne):
++                        if x_mod == S.Zero:
++                            return S.Zero
++                        if x_mod == S.One:
++                            return cls(Mul(*[arg for arg in non_mod_l if arg != x]), q)
++
+             if mod_l and all(inner.args[1] == q for inner in mod_l):
+                 # finding distributive term
+                 non_mod_l = [cls(x, q) for x in non_mod_l]

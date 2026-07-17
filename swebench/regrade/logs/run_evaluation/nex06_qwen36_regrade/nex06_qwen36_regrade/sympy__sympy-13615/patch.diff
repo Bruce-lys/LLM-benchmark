@@ -1,0 +1,23 @@
+diff --git a/sympy/sets/sets.py b/sympy/sets/sets.py
+index 917717bb7..4ff27a185 100644
+--- a/sympy/sets/sets.py
++++ b/sympy/sets/sets.py
+@@ -8,7 +8,7 @@
+ from sympy.core.expr import Expr
+ from sympy.core.singleton import Singleton, S
+ from sympy.core.evalf import EvalfMixin
+-from sympy.core.numbers import Float
++from sympy.core.numbers import Float, Number
+ from sympy.core.compatibility import (iterable, with_metaclass,
+     ordered, range, PY3)
+ from sympy.core.evaluate import global_evaluate
+@@ -1727,6 +1727,9 @@ def reduce(A, B):
+ 
+         result = B._complement(A)
+         if result != None:
++            if (isinstance(result, FiniteSet) and result.has(Symbol)
++                    and A != result and getattr(A, 'has', lambda *a: False)(Number)):
++                return Complement(result, B, evaluate=False)
+             return result
+         else:
+             return Complement(A, B, evaluate=False)

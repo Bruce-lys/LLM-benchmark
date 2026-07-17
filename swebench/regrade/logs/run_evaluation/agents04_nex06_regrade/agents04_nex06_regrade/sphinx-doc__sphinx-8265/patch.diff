@@ -1,0 +1,73 @@
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index 378174993..ace5b322d 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -45,6 +45,26 @@ else:
+ 
+ logger = logging.getLogger(__name__)
+ 
++
++class _StringDefault(str):
++    """String default value stored in an inspect.Parameter.
++
++    This subclass is used for values parsed from a signature string.  It keeps
++    the original source text so that ``stringify_signature()`` can render it
++    without adding quotes around numeric, tuple or other non-string defaults.
++    """
++
++
++def _unparse_default(node: ast.AST) -> str:
++    """Unparse a default value expression."""
++    if isinstance(node, ast.Tuple):
++        elts = ", ".join(_unparse_default(elt) for elt in node.elts)
++        if len(node.elts) == 1:
++            elts += ","
++        return "(%s)" % elts
++    else:
++        return ast_unparse(node)
++
+ memory_address_re = re.compile(r' at 0x[0-9a-f]{8,16}(?=>)', re.IGNORECASE)
+ 
+ 
+@@ -580,7 +600,10 @@ def stringify_signature(sig: inspect.Signature, show_annotation: bool = True,
+                 arg.write(' = ')
+             else:
+                 arg.write('=')
+-            arg.write(object_description(param.default))
++            if isinstance(param.default, _StringDefault):
++                arg.write(str(param.default))
++            else:
++                arg.write(object_description(param.default))
+ 
+         args.append(arg.getvalue())
+         last_kind = param.kind
+@@ -626,7 +649,7 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+             if defaults[i] is Parameter.empty:
+                 default = Parameter.empty
+             else:
+-                default = ast_unparse(defaults[i])
++                default = _StringDefault(_unparse_default(defaults[i]))
+ 
+             annotation = ast_unparse(arg.annotation) or Parameter.empty
+             params.append(Parameter(arg.arg, Parameter.POSITIONAL_ONLY,
+@@ -636,7 +659,7 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+         if defaults[i + posonlyargs] is Parameter.empty:
+             default = Parameter.empty
+         else:
+-            default = ast_unparse(defaults[i + posonlyargs])
++            default = _StringDefault(_unparse_default(defaults[i + posonlyargs]))
+ 
+         annotation = ast_unparse(arg.annotation) or Parameter.empty
+         params.append(Parameter(arg.arg, Parameter.POSITIONAL_OR_KEYWORD,
+@@ -648,7 +671,10 @@ def signature_from_ast(node: ast.FunctionDef) -> inspect.Signature:
+                                 annotation=annotation))
+ 
+     for i, arg in enumerate(args.kwonlyargs):
+-        default = ast_unparse(args.kw_defaults[i]) or Parameter.empty
++        if args.kw_defaults[i] is None or args.kw_defaults[i] is Parameter.empty:
++            default = Parameter.empty
++        else:
++            default = _StringDefault(_unparse_default(args.kw_defaults[i]))
+         annotation = ast_unparse(arg.annotation) or Parameter.empty
+         params.append(Parameter(arg.arg, Parameter.KEYWORD_ONLY, default=default,
+                                 annotation=annotation))

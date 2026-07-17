@@ -1,0 +1,16 @@
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 916478d075..f884c1ab00 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -548,8 +548,9 @@ class YearLookup(Lookup):
+ 
+     def as_sql(self, compiler, connection):
+         # Avoid the extract operation if the rhs is a direct value to allow
+-        # indexes to be used.
+-        if self.rhs_is_direct_value():
++        # indexes to be used. The same optimization can't be applied to ISO
++        # years since the year boundaries are not aligned with calendar years.
++        if self.rhs_is_direct_value() and self.lhs.lookup_name != 'iso_year':
+             # Skip the extract part by directly using the originating field,
+             # that is self.lhs.lhs.
+             lhs_sql, params = self.process_lhs(compiler, connection, self.lhs.lhs)

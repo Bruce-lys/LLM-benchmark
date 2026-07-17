@@ -1,0 +1,33 @@
+diff --git a/sympy/printing/repr.py b/sympy/printing/repr.py
+index c936a692c0..336f0adc9a 100644
+--- a/sympy/printing/repr.py
++++ b/sympy/printing/repr.py
+@@ -13,6 +13,8 @@
+ from sympy.core.mul import Mul
+ from mpmath.libmp import repr_dps, to_str as mlib_to_str
+ 
++from sympy.utilities import default_sort_key
++
+ from .printer import Printer
+ 
+ 
+@@ -144,6 +146,19 @@ def _print_EmptySequence(self, expr):
+     def _print_list(self, expr):
+         return "[%s]" % self.reprify(expr, ", ")
+ 
++    def _print_dict(self, expr):
++        items = []
++        for key, value in sorted(
++                expr.items(), key=lambda item: default_sort_key(item[0])):
++            items.append("%s: %s" % (self._print(key), self._print(value)))
++        return "{%s}" % ", ".join(items)
++
++    def _print_set(self, expr):
++        items = sorted(expr, key=default_sort_key)
++        if not items:
++            return "set()"
++        return "{%s}" % ", ".join(self._print(item) for item in items)
++
+     def _print_MatrixBase(self, expr):
+         # special case for some empty matrices
+         if (expr.rows == 0) ^ (expr.cols == 0):

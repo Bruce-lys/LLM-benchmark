@@ -1,0 +1,108 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..c4174071cd 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1106,9 +1106,17 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.Pow: 'Pow',
+         ast.Sub: 'Add',
+         ast.Div: 'Mul',
++        ast.Lt: 'Lt',
++        ast.Gt: 'Gt',
++        ast.LtE: 'Le',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
+         ast.BitOr: 'Or',
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
++        ast.Invert: 'Not',
++        ast.Not: 'Not',
+     }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+@@ -1117,6 +1125,7 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         'cos', 'cot', 'csc', 'sec', 'sin', 'tan',
+         'cosh', 'coth', 'csch', 'sech', 'sinh', 'tanh',
+         'exp', 'ln', 'log', 'sqrt', 'cbrt',
++        'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge',
+     )
+ 
+     def flatten(self, args, func):
+@@ -1186,10 +1195,76 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_UnaryOp(self, node):
++        operand = self.visit(node.operand)
++        if node.op.__class__ in self.operators:
++            sympy_class = self.operators[node.op.__class__]
++            return ast.Call(
++                func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                args=[operand],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++        return node
++
++    def visit_BoolOp(self, node):
++        if isinstance(node.op, ast.And):
++            sympy_class = 'And'
++        elif isinstance(node.op, ast.Or):
++            sympy_class = 'Or'
++        else:
++            return node
++
++        result = None
++        for value in node.values:
++            visited = self.visit(value)
++            if result is None:
++                result = visited
++            else:
++                result = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[result, visited],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++        return result
++
++    def visit_Compare(self, node):
++        left = self.visit(node.left)
++        result = None
++        for op, comparator in zip(node.ops, node.comparators):
++            right = self.visit(comparator)
++            if op.__class__ in self.operators:
++                sympy_class = self.operators[op.__class__]
++                comparison = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                if result is None:
++                    result = comparison
++                else:
++                    result = ast.Call(
++                        func=ast.Name(id='And', ctx=ast.Load()),
++                        args=[result, comparison],
++                        keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                        starargs=None,
++                        kwargs=None
++                    )
++                left = right
++            else:
++                return node
++        return result if result is not None else self.generic_visit(node)
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:
+-            new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
++            if not any(kw.arg == 'evaluate' for kw in new_node.keywords):
++                new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
+ 

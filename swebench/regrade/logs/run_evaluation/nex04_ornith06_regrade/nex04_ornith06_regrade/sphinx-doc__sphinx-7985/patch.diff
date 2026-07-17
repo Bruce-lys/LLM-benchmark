@@ -1,0 +1,53 @@
+diff --git a/sphinx/builders/linkcheck.py b/sphinx/builders/linkcheck.py
+index dd5317087..8e6dd8e15 100644
+--- a/sphinx/builders/linkcheck.py
++++ b/sphinx/builders/linkcheck.py
+@@ -109,6 +109,32 @@ class CheckExternalLinksBuilder(Builder):
+             thread.start()
+             self.workers.append(thread)
+ 
++    def check_local(self, uri: str, docname: str) -> Tuple[str, str, int]:
++        """Check a local URI by looking for the corresponding file."""
++        # split off anchor
++        if '#' in uri:
++            req_url, anchor = uri.split('#', 1)
++            for rex in self.anchors_ignore:
++                if rex.match(anchor):
++                    anchor = None
++                    break
++        else:
++            req_url = uri
++            anchor = None
++
++        if not req_url:
++            return 'unchecked', '', 0
++
++        # resolve the path and check if the file exists
++        try:
++            rel_fn, abs_fn = self.env.relfn2path(req_url, docname)
++            if path.exists(abs_fn):
++                return 'working', '', 0
++            else:
++                return 'broken', "No such file: " + rel_fn, 0
++        except Exception as err:
++            return 'broken', str(err), 0
++
+     def check_thread(self) -> None:
+         kwargs = {
+             'allow_redirects': True,
+@@ -213,7 +239,14 @@ class CheckExternalLinksBuilder(Builder):
+             if len(uri) == 0 or uri.startswith(('#', 'mailto:', 'ftp:')):
+                 return 'unchecked', '', 0
+             elif not uri.startswith(('http:', 'https:')):
+-                return 'local', '', 0
++                status, info, code = self.check_local(uri, docname)
++                if status == "working":
++                    self.good.add(uri)
++                elif status == "broken":
++                    self.broken[uri] = info
++                elif status == "redirected":
++                    self.redirected[uri] = (info, code)
++                return status, info, code
+             elif uri in self.good:
+                 return 'working', 'old', 0
+             elif uri in self.broken:

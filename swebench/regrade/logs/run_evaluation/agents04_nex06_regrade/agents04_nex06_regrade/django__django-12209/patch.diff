@@ -1,0 +1,39 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index e3b14a41a0..690de63cfc 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -16,7 +16,7 @@ from django.db import (
+     connections, router, transaction,
+ )
+ from django.db.models import (
+-    NOT_PROVIDED, ExpressionWrapper, IntegerField, Max, Value,
++    ExpressionWrapper, IntegerField, Max, Value,
+ )
+ from django.db.models.constants import LOOKUP_SEP
+ from django.db.models.constraints import CheckConstraint, UniqueConstraint
+@@ -840,6 +840,8 @@ class Model(metaclass=ModelBase):
+                        if f.name in update_fields or f.attname in update_fields]
+ 
+         pk_val = self._get_pk_val(meta)
++        pk_set = pk_val is not None
++        pk_val_was_set = pk_set
+         if pk_val is None:
+             pk_val = meta.pk.get_pk_value_on_save(self)
+             setattr(self, meta.pk.attname, pk_val)
+@@ -847,12 +849,13 @@ class Model(metaclass=ModelBase):
+         if not pk_set and (force_update or update_fields):
+             raise ValueError("Cannot force an update in save() with no primary key.")
+         updated = False
+-        # Skip an UPDATE when adding an instance and primary key has a default.
++        # Skip an UPDATE when adding an instance and the primary key was
++        # automatically set. If the primary key was explicitly set, try an
++        # UPDATE before INSERT to preserve backwards compatibility.
+         if (
+             not force_insert and
+             self._state.adding and
+-            self._meta.pk.default and
+-            self._meta.pk.default is not NOT_PROVIDED
++            not pk_val_was_set
+         ):
+             force_insert = True
+         # If possible, try an UPDATE. If that doesn't update anything, do an INSERT.

@@ -1,0 +1,19 @@
+diff --git a/lib/matplotlib/axis.py b/lib/matplotlib/axis.py
+index e1cb06f934..f454884306 100644
+--- a/lib/matplotlib/axis.py
++++ b/lib/matplotlib/axis.py
+@@ -1739,6 +1739,14 @@ class Axis(martist.Artist):
+         for axis in self._get_shared_axis():
+             axis.units = u
+             axis._update_axisinfo()
++            # If compatible units are already set, the axis does not need to
++            # recompute its data limits when they are updated.
++            if (axis is not self
++                    and axis.units is not None
++                    and axis.converter is not None
++                    and type(axis.converter) is type(self.converter)):
++                axis.stale = True
++                continue
+             axis.callbacks.process('units')
+             axis.stale = True
+ 

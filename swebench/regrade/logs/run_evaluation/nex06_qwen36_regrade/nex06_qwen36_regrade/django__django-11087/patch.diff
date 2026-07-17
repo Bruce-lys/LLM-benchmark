@@ -1,0 +1,86 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index 3a462f1c4c..c11f3432d7 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -109,12 +109,29 @@ class Collector:
+         Schedule a field update. 'objs' must be a homogeneous iterable
+         collection of model instances (e.g. a QuerySet).
+         """
+-        if not objs:
+-            return
+-        model = objs[0].__class__
+-        self.field_updates.setdefault(
+-            model, {}).setdefault(
+-            (field, value), set()).update(objs)
++        if hasattr(objs, 'model') and hasattr(objs, '_raw_delete'):
++            model = objs.model
++            if objs._result_cache is not None:
++                pks = [obj.pk for obj in objs._result_cache]
++            else:
++                pks = objs.values_list(model._meta.pk.attname, flat=True)
++            self.field_updates.setdefault(
++                model, {}).setdefault(
++                (field, value), set()).update(pks)
++        else:
++            if not objs:
++                return
++            model = objs[0].__class__
++            self.field_updates.setdefault(
++                model, {}).setdefault(
++                (field, value), set()).update(objs)
++
++    def _has_signal_listeners(self, model):
++        return (
++            signals.pre_delete.has_listeners(model) or
++            signals.post_delete.has_listeners(model) or
++            signals.m2m_changed.has_listeners(model)
++        )
+ 
+     def can_fast_delete(self, objs, from_field=None):
+         """
+@@ -220,12 +237,24 @@ class Collector:
+                     sub_objs = self.related_objects(related, batch)
+                     if self.can_fast_delete(sub_objs, from_field=field):
+                         self.fast_deletes.append(sub_objs)
+-                    elif sub_objs:
+-                        field.remote_field.on_delete(self, field, sub_objs, self.using)
++                    else:
++                        if not (sub_objs.query.select_related or
++                                self._has_signal_listeners(sub_objs.model)):
++                            # Only the pk is needed for deletion; avoid fetching
++                            # non-referenced fields that may contain invalid data.
++                            sub_objs = sub_objs.only(sub_objs.model._meta.pk.attname)
++                        if sub_objs:
++                            field.remote_field.on_delete(self, field, sub_objs, self.using)
+             for field in model._meta.private_fields:
+                 if hasattr(field, 'bulk_related_objects'):
+                     # It's something like generic foreign key.
+                     sub_objs = field.bulk_related_objects(new_objs, self.using)
++                    if hasattr(sub_objs, 'model') and hasattr(sub_objs, '_raw_delete'):
++                        if not (sub_objs.query.select_related or
++                                self._has_signal_listeners(sub_objs.model)):
++                            # Only the pk is needed for deletion; avoid fetching
++                            # non-referenced fields that may contain invalid data.
++                            sub_objs = sub_objs.only(sub_objs.model._meta.pk.attname)
+                     self.collect(sub_objs, source=model, nullable=True)
+ 
+     def related_objects(self, related, objs):
+@@ -297,7 +326,7 @@ class Collector:
+             for model, instances_for_fieldvalues in self.field_updates.items():
+                 for (field, value), instances in instances_for_fieldvalues.items():
+                     query = sql.UpdateQuery(model)
+-                    query.update_batch([obj.pk for obj in instances],
++                    query.update_batch([getattr(obj, 'pk', obj) for obj in instances],
+                                        {field.name: value}, self.using)
+ 
+             # reverse instance collections
+@@ -321,7 +350,8 @@ class Collector:
+         for instances_for_fieldvalues in self.field_updates.values():
+             for (field, value), instances in instances_for_fieldvalues.items():
+                 for obj in instances:
+-                    setattr(obj, field.attname, value)
++                    if hasattr(obj, 'pk'):
++                        setattr(obj, field.attname, value)
+         for model, instances in self.data.items():
+             for instance in instances:
+                 setattr(instance, model._meta.pk.attname, None)

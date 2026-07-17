@@ -1,0 +1,44 @@
+diff --git a/astropy/io/ascii/html.py b/astropy/io/ascii/html.py
+index 266cf229c..59da77ef8 100644
+--- a/astropy/io/ascii/html.py
++++ b/astropy/io/ascii/html.py
+@@ -339,6 +339,19 @@ class HTML(core.BaseReader):
+         self.outputter = HTMLOutputter()
+         return super().read(table)
+ 
++    def _get_col_iter_str_vals(self, col, name=None):
++        """
++        Return an iterator of formatted, fill-value-replaced strings for ``col``.
++        """
++        if name is None:
++            name = col.info.name
++
++        formats = self.data.formats or {}
++        if name in formats:
++            col.info.format = formats[name]
++
++        return self.fill_values(col, col.info.iter_str_vals())
++
+     def write(self, table):
+         """
+         Return data in ``table`` converted to HTML as a list of strings.
+@@ -429,15 +442,16 @@ class HTML(core.BaseReader):
+                                 for i in range(span):
+                                     # Split up multicolumns into separate columns
+                                     new_col = Column([el[i] for el in col])
++                                    new_col.fill_values = getattr(col, 'fill_values', {})
+ 
+-                                    new_col_iter_str_vals = self.fill_values(
+-                                        col, new_col.info.iter_str_vals())
++                                    new_col_iter_str_vals = self._get_col_iter_str_vals(
++                                        new_col, col.info.name)
+                                     col_str_iters.append(new_col_iter_str_vals)
+                                     new_cols_escaped.append(col_escaped)
+                                     new_cols.append(new_col)
+                             else:
+ 
+-                                col_iter_str_vals = self.fill_values(col, col.info.iter_str_vals())
++                                col_iter_str_vals = self._get_col_iter_str_vals(col)
+                                 col_str_iters.append(col_iter_str_vals)
+ 
+                                 new_cols_escaped.append(col_escaped)

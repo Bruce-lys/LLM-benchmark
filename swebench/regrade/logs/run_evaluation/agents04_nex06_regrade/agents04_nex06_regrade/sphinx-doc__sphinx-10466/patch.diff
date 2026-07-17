@@ -1,0 +1,24 @@
+diff --git a/sphinx/builders/gettext.py b/sphinx/builders/gettext.py
+index e8bc547b7..807bccc21 100644
+--- a/sphinx/builders/gettext.py
++++ b/sphinx/builders/gettext.py
+@@ -57,8 +57,17 @@ class Catalog:
+ 
+     def __iter__(self) -> Generator[Message, None, None]:
+         for message in self.messages:
+-            positions = [(source, line) for source, line, uuid in self.metadata[message]]
+-            uuids = [uuid for source, line, uuid in self.metadata[message]]
++            positions: List[Tuple[str, int]] = []
++            uuids: List[str] = []
++            seen: Set[Tuple[str, int]] = set()
++            # Do not emit duplicate locations for the same source/line.
++            for source, line, uuid in self.metadata[message]:
++                origin = (source, line)
++                if origin in seen:
++                    continue
++                seen.add(origin)
++                positions.append(origin)
++                uuids.append(uuid)
+             yield Message(message, positions, uuids)
+ 
+ 

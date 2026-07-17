@@ -1,0 +1,57 @@
+diff --git a/django/contrib/staticfiles/storage.py b/django/contrib/staticfiles/storage.py
+index 494890cc23..9445b56ef3 100644
+--- a/django/contrib/staticfiles/storage.py
++++ b/django/contrib/staticfiles/storage.py
+@@ -226,21 +226,29 @@ class HashedFilesMixin:
+             path for path in paths
+             if matches_patterns(path, self._patterns)
+         ]
++
+         # Do a single pass first. Post-process all files once, then repeat for
+         # adjustable files.
+-        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
+-            yield name, hashed_name, processed
++        processed_paths = {}
++        substitutions = True
+ 
+-        paths = {path: paths[path] for path in adjustable_paths}
++        for i in range(self.max_post_process_passes + 1):
++            if i > 0 and not substitutions:
++                break
++            if i == 0:
++                paths_to_process = paths
++            else:
++                paths_to_process = {path: paths[path] for path in adjustable_paths}
+ 
+-        for i in range(self.max_post_process_passes):
+             substitutions = False
+-            for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
+-                yield name, hashed_name, processed
+-                substitutions = substitutions or subst
+-
+-            if not substitutions:
+-                break
++            for name, hashed_name, processed, subst in self._post_process(
++                paths_to_process, adjustable_paths, hashed_files,
++            ):
++                if isinstance(processed, Exception):
++                    yield name, hashed_name, processed
++                else:
++                    processed_paths[name] = (hashed_name, processed)
++                    substitutions = substitutions or subst
+ 
+         if substitutions:
+             yield 'All', None, RuntimeError('Max post-process passes exceeded.')
+@@ -248,6 +256,12 @@ class HashedFilesMixin:
+         # Store the processed paths
+         self.hashed_files.update(hashed_files)
+ 
++        # Yield processed files, once per file, with their final hashed name.
++        for name in paths:
++            if name in processed_paths:
++                hashed_name, processed = processed_paths[name]
++                yield name, hashed_name, processed
++
+     def _post_process(self, paths, adjustable_paths, hashed_files):
+         # Sort the files by directory level
+         def path_level(name):

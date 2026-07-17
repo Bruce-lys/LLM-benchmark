@@ -1,0 +1,143 @@
+diff --git a/astropy/coordinates/sky_coordinate.py b/astropy/coordinates/sky_coordinate.py
+index ab475f7d0..9216b9b58 100644
+--- a/astropy/coordinates/sky_coordinate.py
++++ b/astropy/coordinates/sky_coordinate.py
+@@ -1,4 +1,5 @@
+ import copy
++import threading
+ import operator
+ import re
+ import warnings
+@@ -34,6 +35,36 @@ from .sky_coordinate_parsers import (
+ __all__ = ["SkyCoord", "SkyCoordInfo"]
+ 
+ 
++_missing_attr_error_stack = threading.local()
++
++
++def _push_missing_attr_error(exc):
++    stack = getattr(_missing_attr_error_stack, "stack", None)
++    if stack is None:
++        stack = []
++        _missing_attr_error_stack.stack = stack
++    stack.append(exc)
++
++
++def _pop_missing_attr_error():
++    stack = getattr(_missing_attr_error_stack, "stack", None)
++    if stack:
++        return stack.pop()
++    return None
++
++
++class _MissingAttributeErrorDescriptor:
++    """Descriptor used to re-raise a stored AttributeError from a property."""
++
++    def __init__(self, exc):
++        self.exc = exc
++
++    def __get__(self, obj, objtype=None):
++        if obj is not None:
++            object.__delattr__(obj, "__getattr__")
++        raise self.exc
++
++
+ class SkyCoordInfo(MixinInfo):
+     """
+     Container for meta information like name, description, format.  This is
+@@ -866,39 +897,6 @@ class SkyCoord(ShapedLikeNDArray):
+             isinstance(self.frame.name, list) and string in self.frame.name
+         )
+ 
+-    def __getattr__(self, attr):
+-        """
+-        Overrides getattr to return coordinates that this can be transformed
+-        to, based on the alias attr in the primary transform graph.
+-        """
+-        if "_sky_coord_frame" in self.__dict__:
+-            if self._is_name(attr):
+-                return self  # Should this be a deepcopy of self?
+-
+-            # Anything in the set of all possible frame_attr_names is handled
+-            # here. If the attr is relevant for the current frame then delegate
+-            # to self.frame otherwise get it from self._<attr>.
+-            if attr in frame_transform_graph.frame_attributes:
+-                if attr in self.frame.frame_attributes:
+-                    return getattr(self.frame, attr)
+-                else:
+-                    return getattr(self, "_" + attr, None)
+-
+-            # Some attributes might not fall in the above category but still
+-            # are available through self._sky_coord_frame.
+-            if not attr.startswith("_") and hasattr(self._sky_coord_frame, attr):
+-                return getattr(self._sky_coord_frame, attr)
+-
+-            # Try to interpret as a new frame for transforming.
+-            frame_cls = frame_transform_graph.lookup_name(attr)
+-            if frame_cls is not None and self.frame.is_transformable_to(frame_cls):
+-                return self.transform_to(attr)
+-
+-        # Fail
+-        raise AttributeError(
+-            f"'{self.__class__.__name__}' object has no attribute '{attr}'"
+-        )
+-
+     def __setattr__(self, attr, val):
+         # This is to make anything available through __getattr__ immutable
+         if "_sky_coord_frame" in self.__dict__:
+@@ -988,6 +986,55 @@ class SkyCoord(ShapedLikeNDArray):
+ 
+         return f"<{clsnm} ({coonm}{frameattrs}){data}>"
+ 
++    def __getattr__(self, attr):
++        """
++        Overrides getattr to return coordinates that this can be transformed
++        to, based on the alias attr in the primary transform graph.
++        """
++        attr_obj = getattr(type(self), attr, None)
++        if isinstance(attr_obj, property):
++            missing_error = _pop_missing_attr_error()
++            if missing_error is not None:
++                object.__setattr__(
++                    self,
++                    "__getattr__",
++                    _MissingAttributeErrorDescriptor(missing_error),
++                )
++                raise missing_error
++            raise AttributeError(
++                f"'{self.__class__.__name__}' object has no attribute '{attr}'"
++            )
++
++        if "_sky_coord_frame" in self.__dict__:
++            if self._is_name(attr):
++                return self  # Should this be a deepcopy of self?
++
++            # Anything in the set of all possible frame_attr_names is handled
++            # here. If the attr is relevant for the current frame then delegate
++            # to self.frame otherwise get it from self._<attr>.
++            if attr in frame_transform_graph.frame_attributes:
++                if attr in self.frame.frame_attributes:
++                    return getattr(self.frame, attr)
++                else:
++                    return getattr(self, "_" + attr, None)
++
++            # Some attributes might not fall in the above category but still
++            # are available through self._sky_coord_frame.
++            if not attr.startswith("_") and hasattr(self._sky_coord_frame, attr):
++                return getattr(self._sky_coord_frame, attr)
++
++            # Try to interpret as a new frame for transforming.
++            frame_cls = frame_transform_graph.lookup_name(attr)
++            if frame_cls is not None and self.frame.is_transformable_to(frame_cls):
++                return self.transform_to(attr)
++
++        # Fail
++        exc = AttributeError(
++            f"'{self.__class__.__name__}' object has no attribute '{attr}'"
++        )
++        _push_missing_attr_error(exc)
++        raise exc
++
+     def to_string(self, style="decimal", **kwargs):
+         """
+         A string representation of the coordinates.

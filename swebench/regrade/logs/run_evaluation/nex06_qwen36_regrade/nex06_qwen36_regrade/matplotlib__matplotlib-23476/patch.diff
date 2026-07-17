@@ -1,0 +1,36 @@
+diff --git a/lib/matplotlib/backend_bases.py b/lib/matplotlib/backend_bases.py
+index 9ae2982c62..2856137892 100644
+--- a/lib/matplotlib/backend_bases.py
++++ b/lib/matplotlib/backend_bases.py
+@@ -1653,8 +1653,17 @@ class FigureCanvasBase:
+         self.toolbar = None  # NavigationToolbar2 will set me
+         self._is_idle_drawing = False
+         # We don't want to scale up the figure DPI more than once.
+-        figure._original_dpi = figure.dpi
+-        self._device_pixel_ratio = 1
++        original_dpi = getattr(figure, "_original_dpi", None)
++        if original_dpi is None:
++            original_dpi = figure.dpi
++            figure._original_dpi = original_dpi
++        self._device_pixel_ratio = getattr(figure, "_device_pixel_ratio", None)
++        if self._device_pixel_ratio is None:
++            if figure.dpi != original_dpi:
++                # Preserve a previously scaled-up DPI from legacy pickles.
++                self._device_pixel_ratio = figure.dpi / original_dpi
++            else:
++                self._device_pixel_ratio = 1
+         super().__init__()  # Typically the GUI widget init (if any).
+ 
+     callbacks = property(lambda self: self.figure._canvas_callbacks)
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index c55864243a..08a4b0188a 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -3018,6 +3018,7 @@ class Figure(FigureBase):
+         # The canvas cannot currently be pickled, but this has the benefit
+         # of meaning that a figure can be detached from one canvas, and
+         # re-attached to another.
++        state["_device_pixel_ratio"] = getattr(self.canvas, "device_pixel_ratio", 1)
+         state.pop("canvas")
+ 
+         # Set cached renderer to None -- it can't be pickled.

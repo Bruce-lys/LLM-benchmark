@@ -1,0 +1,58 @@
+diff --git a/requests/models.py b/requests/models.py
+index 9926045..ce837ac 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -182,15 +182,14 @@ class Request(RequestHooksMixin):
+         url=None,
+         headers=None,
+         files=None,
+-        data=dict(),
++        data=None,
+         params=dict(),
+         auth=None,
+         cookies=None,
+         hooks=None):
+ 
+ 
+-        # Default empty dicts for dict params.
+-        data = [] if data is None else data
++        # Default empty collections for dict/list params.
+         files = [] if files is None else files
+         headers = {} if headers is None else headers
+         params = {} if params is None else params
+@@ -348,9 +347,13 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         ])
+ 
+         try:
+-            length = str(super_len(data))
++            length = super_len(data)
+         except (TypeError, AttributeError):
+             length = False
++        if length is None:
++            length = False
++        else:
++            length = str(length)
+ 
+         if is_stream:
+             body = data
+@@ -359,7 +362,10 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+                 raise NotImplementedError('Streamed bodies and files are mutually exclusive.')
+ 
+             if length:
+-                self.headers['Content-Length'] = length
++                if length == '0':
++                    body = None
++                else:
++                    self.headers['Content-Length'] = length
+             else:
+                 self.headers['Transfer-Encoding'] = 'chunked'
+         # Check if file, fo, generator, iterator.
+@@ -386,6 +392,8 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         self.body = body
+ 
+     def prepare_content_length(self, body):
++        if body is None:
++            return
+         self.headers['Content-Length'] = '0'
+         if hasattr(body, 'seek') and hasattr(body, 'tell'):
+             body.seek(0, 2)

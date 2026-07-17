@@ -1,0 +1,42 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index cc65c043ab..c5890f89df 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -210,16 +210,26 @@ def sys_path_directories():
+             yield resolved_path
+ 
+ 
++def _get_xoptions_args():
++    """Return -X options from sys._xoptions as command-line arguments."""
++    xoptions = getattr(sys, '_xoptions', {})
++    return [
++        '-X%s' % key if value is True or value is None or value == '' else '-X%s=%s' % (key, value)
++        for key, value in xoptions.items()
++    ]
++
++
+ def get_child_arguments():
+     """
+     Return the executable. This contains a workaround for Windows if the
+     executable is reported to not have the .exe extension which can cause bugs
+-    on reloading.
++    on reloading. Includes -X and -W options from the parent process.
+     """
+     import __main__
+     py_script = Path(sys.argv[0])
+ 
+-    args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions]
++    xoptions_args = _get_xoptions_args()
++    args = [sys.executable] + xoptions_args + ['-W%s' % o for o in sys.warnoptions]
+     # __spec__ is set when the server was started with the `-m` option,
+     # see https://docs.python.org/3/reference/import.html#main-spec
+     # __spec__ may not exist, e.g. when running in a Conda env.
+@@ -237,7 +247,7 @@ def get_child_arguments():
+         exe_entrypoint = py_script.with_suffix('.exe')
+         if exe_entrypoint.exists():
+             # Should be executed directly, ignoring sys.executable.
+-            return [exe_entrypoint, *sys.argv[1:]]
++            return [exe_entrypoint, *xoptions_args, *sys.argv[1:]]
+         script_entrypoint = py_script.with_name('%s-script.py' % py_script.name)
+         if script_entrypoint.exists():
+             # Should be executed as usual.

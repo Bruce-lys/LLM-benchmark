@@ -1,0 +1,15 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 79d7e4f46..1b8965011 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -1191,6 +1191,10 @@ class PythonDomain(Domain):
+     def objects(self) -> Dict[str, ObjectEntry]:
+         return self.data.setdefault('objects', {})  # fullname -> ObjectEntry
+ 
++    def process_field_xref(self, pnode: pending_xref) -> None:
++        """Attach information about the current scope to a pending xref node."""
++        pnode.attributes.update(self.env.ref_context)
++
+     def note_object(self, name: str, objtype: str, node_id: str, location: Any = None) -> None:
+         """Note a python object for cross reference.
+ 

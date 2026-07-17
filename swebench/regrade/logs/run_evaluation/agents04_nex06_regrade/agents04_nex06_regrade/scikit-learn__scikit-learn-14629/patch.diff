@@ -1,0 +1,31 @@
+diff --git a/sklearn/model_selection/_validation.py b/sklearn/model_selection/_validation.py
+index 95669a212..ec4193f78 100644
+--- a/sklearn/model_selection/_validation.py
++++ b/sklearn/model_selection/_validation.py
+@@ -798,6 +798,17 @@ def cross_val_predict(estimator, X, y=None, groups=None, cv=None,
+         return predictions[inv_test_indices]
+ 
+ 
++def _get_classes(estimator, i_label=None):
++    if i_label is None:
++        return estimator.classes_
++    estimators = getattr(estimator, "estimators_", None)
++    if (isinstance(estimators, (list, tuple)) and
++            i_label < len(estimators) and
++            hasattr(estimators[i_label], "classes_")):
++        return estimators[i_label].classes_
++    return estimator.classes_[i_label]
++
++
+ def _fit_and_predict(estimator, X, y, train, test, verbose, fit_params,
+                      method):
+     """Fit estimator and predict values for a given dataset split.
+@@ -856,7 +867,7 @@ def _fit_and_predict(estimator, X, y, train, test, verbose, fit_params,
+     if method in ['decision_function', 'predict_proba', 'predict_log_proba']:
+         if isinstance(predictions, list):
+             predictions = [_enforce_prediction_order(
+-                estimator.classes_[i_label], predictions[i_label],
++                _get_classes(estimator, i_label), predictions[i_label],
+                 n_classes=len(set(y[:, i_label])), method=method)
+                 for i_label in range(len(predictions))]
+         else:

@@ -1,0 +1,112 @@
+diff --git a/src/_pytest/mark/expression.py b/src/_pytest/mark/expression.py
+index 04c73411a..c9676ba9a 100644
+--- a/src/_pytest/mark/expression.py
++++ b/src/_pytest/mark/expression.py
+@@ -39,6 +39,61 @@ __all__ = [
+ ]
+ 
+ 
++_MATCHERS_NAME = "MATCHERS"
++
++
++def _ast_str(value: str) -> ast.expr:
++    if hasattr(ast, "Constant"):
++        node = ast.Constant(value)
++    else:
++        node = ast.Str(value)
++    if hasattr(ast, "Index"):
++        return ast.Index(node)
++    return node
++
++
++def _ast_false() -> ast.expr:
++    if hasattr(ast, "Constant"):
++        return ast.Constant(False)
++    return ast.NameConstant(False)
++
++
++
++# All identifiers are represented as subscripts so that names like "True", "False",
++# and "None" do not get compiled as Python constants or invalid Name nodes.
++def _identifier_subscript(value: str) -> ast.Subscript:
++    return ast.Subscript(
++        value=ast.Name(_MATCHERS_NAME, ast.Load()),
++        slice=_ast_str(value),
++        ctx=ast.Load(),
++    )
++
++
++class MatcherAdapter(Mapping[str, bool]):
++    """Adapts a matcher function to a mapping as required by subscript indexing."""
++
++    def __init__(self, matcher: Callable[[str], bool]) -> None:
++        self.matcher = matcher
++
++    def __getitem__(self, key: str) -> bool:
++        return self.matcher(key)
++
++    def __iter__(self) -> Iterator[str]:
++        raise NotImplementedError()
++
++    def __len__(self) -> int:
++        raise NotImplementedError()
++
++
++class MatcherGlobals(dict):
++    """Dictionary of globals for eval()."""
++
++    def __init__(self, matcher: Callable[[str], bool]) -> None:
++        super().__init__(
++            {"__builtins__": {}, _MATCHERS_NAME: MatcherAdapter(matcher)}
++        )
++
++
+ class TokenType(enum.Enum):
+     LPAREN = "left parenthesis"
+     RPAREN = "right parenthesis"
+@@ -129,7 +184,7 @@ class Scanner:
+ 
+ def expression(s: Scanner) -> ast.Expression:
+     if s.accept(TokenType.EOF):
+-        ret = ast.NameConstant(False)  # type: ast.expr
++        ret = _ast_false()  # type: ast.expr
+     else:
+         ret = expr(s)
+         s.accept(TokenType.EOF, reject=True)
+@@ -161,26 +216,11 @@ def not_expr(s: Scanner) -> ast.expr:
+         return ret
+     ident = s.accept(TokenType.IDENT)
+     if ident:
+-        return ast.Name(ident.value, ast.Load())
++        value = ident.value
++        return _identifier_subscript(value)
+     s.reject((TokenType.NOT, TokenType.LPAREN, TokenType.IDENT))
+ 
+ 
+-class MatcherAdapter(Mapping[str, bool]):
+-    """Adapts a matcher function to a locals mapping as required by eval()."""
+-
+-    def __init__(self, matcher: Callable[[str], bool]) -> None:
+-        self.matcher = matcher
+-
+-    def __getitem__(self, key: str) -> bool:
+-        return self.matcher(key)
+-
+-    def __iter__(self) -> Iterator[str]:
+-        raise NotImplementedError()
+-
+-    def __len__(self) -> int:
+-        raise NotImplementedError()
+-
+-
+ class Expression:
+     """A compiled match expression as used by -k and -m.
+ 
+@@ -213,6 +253,6 @@ class Expression:
+         Returns whether the expression matches or not.
+         """
+         ret = eval(
+-            self.code, {"__builtins__": {}}, MatcherAdapter(matcher)
++            self.code, MatcherGlobals(matcher), {}
+         )  # type: bool
+         return ret

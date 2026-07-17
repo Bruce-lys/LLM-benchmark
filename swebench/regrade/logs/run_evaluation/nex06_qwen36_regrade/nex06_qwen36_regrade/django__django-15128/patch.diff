@@ -1,0 +1,104 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index aaf35ee37c..b3db3261f5 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -745,6 +745,12 @@ class Query(BaseExpression):
+             for model, values in seen.items():
+                 callback(target, model, values)
+ 
++    def _get_alias(self):
++        alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
++        while alias in self.alias_map:
++            alias = '%s%d' % (self.alias_prefix, int(alias[1:]) + 1)
++        return alias
++
+     def table_alias(self, table_name, create=False, filtered_relation=None):
+         """
+         Return a table alias for the given table_name and whether this is a
+@@ -761,11 +767,13 @@ class Query(BaseExpression):
+ 
+         # Create a new alias for this table.
+         if alias_list:
+-            alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
++            alias = self._get_alias()
+             alias_list.append(alias)
+         else:
+             # The first occurrence of a table uses the table name directly.
+             alias = filtered_relation.alias if filtered_relation is not None else table_name
++            if alias in self.alias_map:
++                alias = self._get_alias()
+             self.table_map[table_name] = [alias]
+         self.alias_refcount[alias] = 1
+         return alias, True
+@@ -846,7 +854,10 @@ class Query(BaseExpression):
+         relabelling any references to them in select columns and the where
+         clause.
+         """
+-        assert set(change_map).isdisjoint(change_map.values())
++        # change_map may contain chains (e.g. T4 -> T5, T5 -> T6), where a
++        # destination alias is also a source alias. The alias renaming loop
++        # below processes aliases in topological order to avoid overwriting
++        # data that is still needed.
+ 
+         # 1. Update references in "select" (normal columns plus aliases),
+         # "group by" and "where".
+@@ -859,23 +870,45 @@ class Query(BaseExpression):
+         }
+ 
+         # 2. Rename the alias in the internal table/alias datastructures.
+-        for old_alias, new_alias in change_map.items():
+-            if old_alias not in self.alias_map:
+-                continue
+-            alias_data = self.alias_map[old_alias].relabeled_clone(change_map)
+-            self.alias_map[new_alias] = alias_data
+-            self.alias_refcount[new_alias] = self.alias_refcount[old_alias]
+-            del self.alias_refcount[old_alias]
+-            del self.alias_map[old_alias]
+-
+-            table_aliases = self.table_map[alias_data.table_name]
+-            for pos, alias in enumerate(table_aliases):
+-                if alias == old_alias:
+-                    table_aliases[pos] = new_alias
++        # Iterate in topological order to support change_map chains (e.g. T4 ->
++        # T5, T5 -> T6), where a destination alias is also a source alias.
++        remaining_keys = set(change_map)
++        while remaining_keys:
++            moved = False
++            for old_alias, new_alias in change_map.items():
++                if old_alias not in remaining_keys:
++                    continue
++                if new_alias not in remaining_keys:
++                    if old_alias not in self.alias_map:
++                        remaining_keys.discard(old_alias)
++                    else:
++                        alias_data = self.alias_map[old_alias].relabeled_clone(change_map)
++                        self.alias_map[new_alias] = alias_data
++                        self.alias_refcount[new_alias] = self.alias_refcount[old_alias]
++                        del self.alias_refcount[old_alias]
++                        del self.alias_map[old_alias]
++
++                        table_aliases = self.table_map[alias_data.table_name]
++                        for pos, alias in enumerate(table_aliases):
++                            if alias == old_alias:
++                                table_aliases[pos] = new_alias
++                                break
++                    remaining_keys.discard(old_alias)
++                    moved = True
+                     break
++            if not moved:
++                raise AssertionError("Cycles in change_map are not allowed.")
++
++        # Resolve chains in change_map for external_aliases.
++        def get_final_alias(alias):
++            while alias in change_map:
++                alias = change_map[alias]
++            return alias
++
++        final_aliases = {alias: get_final_alias(alias) for alias in change_map}
+         self.external_aliases = {
+             # Table is aliased or it's being changed and thus is aliased.
+-            change_map.get(alias, alias): (aliased or alias in change_map)
++            final_aliases.get(alias, alias): (aliased or alias in final_aliases)
+             for alias, aliased in self.external_aliases.items()
+         }
+ 

@@ -1,0 +1,27 @@
+diff --git a/sympy/sets/sets.py b/sympy/sets/sets.py
+index 917717bb7..387c9abf6 100644
+--- a/sympy/sets/sets.py
++++ b/sympy/sets/sets.py
+@@ -999,9 +999,19 @@ def _complement(self, other):
+             return Union(a, b)
+ 
+         if isinstance(other, FiniteSet):
+-            nums = [m for m in other.args if m.is_number]
+-            if nums == []:
+-                return None
++            unk = []
++            not_true = []
++            for m in other.args:
++                c = self.contains(m)
++                if c is S.true:
++                    continue
++                elif c is S.false:
++                    not_true.append(m)
++                else:
++                    unk.append(m)
++            if not unk:
++                return FiniteSet(*not_true)
++            return Complement(FiniteSet(*(not_true + unk)), self, evaluate=False)
+ 
+         return Set._complement(self, other)
+ 

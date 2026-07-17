@@ -1,0 +1,40 @@
+diff --git a/sklearn/utils/_set_output.py b/sklearn/utils/_set_output.py
+index 335773c6a..b2ae11f29 100644
+--- a/sklearn/utils/_set_output.py
++++ b/sklearn/utils/_set_output.py
+@@ -15,9 +15,10 @@ def _wrap_in_pandas_container(
+ ):
+     """Create a Pandas DataFrame.
+ 
+-    If `data_to_wrap` is a DataFrame, then the `columns` and `index` will be changed
+-    inplace. If `data_to_wrap` is a ndarray, then a new DataFrame is created with
+-    `columns` and `index`.
++    If `data_to_wrap` is a DataFrame, then the `columns` will be changed inplace.
++    If the length of `data_to_wrap` matches the length of `index`, the `index` will
++    also be changed inplace. If `data_to_wrap` is a ndarray, then a new DataFrame
++    is created with `columns` and `index`.
+ 
+     Parameters
+     ----------
+@@ -52,13 +53,20 @@ def _wrap_in_pandas_container(
+ 
+     pd = check_pandas_support("Setting output container to 'pandas'")
+ 
++    try:
++        data_len = len(data_to_wrap)
++    except TypeError:
++        data_len = None
++
+     if isinstance(data_to_wrap, pd.DataFrame):
+         if columns is not None:
+             data_to_wrap.columns = columns
+-        if index is not None:
++        if index is not None and data_len == len(index):
+             data_to_wrap.index = index
+         return data_to_wrap
+ 
++    if index is not None and data_len != len(index):
++        index = None
+     return pd.DataFrame(data_to_wrap, index=index, columns=columns)
+ 
+ 

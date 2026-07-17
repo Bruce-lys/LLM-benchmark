@@ -1,0 +1,275 @@
+diff --git a/django/forms/formsets.py b/django/forms/formsets.py
+index 75b0646512..22a0bb5288 100644
+--- a/django/forms/formsets.py
++++ b/django/forms/formsets.py
+@@ -53,6 +53,7 @@ class BaseFormSet(RenderableFormMixin):
+     """
+     deletion_widget = CheckboxInput
+     ordering_widget = NumberInput
++    can_create = True
+     default_error_messages = {
+         'missing_management_form': _(
+             'ManagementForm data is missing or has been tampered with. Missing fields: '
+@@ -142,14 +143,23 @@ class BaseFormSet(RenderableFormMixin):
+     def total_form_count(self):
+         """Return the total number of forms in this FormSet."""
+         if self.is_bound:
+-            # return absolute_max if it is lower than the actual total form
+-            # count in the data; this is DoS protection to prevent clients
+-            # from forcing the server to instantiate arbitrary numbers of
+-            # forms
+-            return min(self.management_form.cleaned_data[TOTAL_FORM_COUNT], self.absolute_max)
++            if self.can_create:
++                # return absolute_max if it is lower than the actual total form
++                # count in the data; this is DoS protection to prevent clients
++                # from forcing the server to instantiate arbitrary numbers of
++                # forms
++                return min(self.management_form.cleaned_data[TOTAL_FORM_COUNT], self.absolute_max)
++            return min(
++                self.management_form.cleaned_data[TOTAL_FORM_COUNT],
++                self.initial_form_count(),
++                self.absolute_max,
++            )
+         else:
+             initial_forms = self.initial_form_count()
+-            total_forms = max(initial_forms, self.min_num) + self.extra
++            if self.can_create:
++                total_forms = max(initial_forms, self.min_num) + self.extra
++            else:
++                total_forms = initial_forms
+             # Allow all existing related objects/inlines to be displayed,
+             # but don't allow extra beyond max_num.
+             if initial_forms > self.max_num >= 0:
+@@ -388,14 +398,21 @@ class BaseFormSet(RenderableFormMixin):
+                 continue
+             self._errors.append(form_errors)
+         try:
+-            if (self.validate_max and
++            if ((self.validate_max and self.can_create and
+                     self.total_form_count() - len(self.deleted_forms) > self.max_num) or \
+-                    self.management_form.cleaned_data[TOTAL_FORM_COUNT] > self.absolute_max:
++                    self.management_form.cleaned_data[TOTAL_FORM_COUNT] > self.absolute_max):
+                 raise ValidationError(ngettext(
+                     "Please submit at most %d form.",
+                     "Please submit at most %d forms.", self.max_num) % self.max_num,
+                     code='too_many_forms',
+                 )
++            if (not self.can_create and
++                    self.management_form.cleaned_data[TOTAL_FORM_COUNT] > self.total_form_count()):
++                raise ValidationError(ngettext(
++                    "Please submit at most %d form.",
++                    "Please submit at most %d forms.", self.total_form_count()) % self.total_form_count(),
++                    code='too_many_forms',
++                )
+             if (self.validate_min and
+                     self.total_form_count() - len(self.deleted_forms) - empty_forms_count < self.min_num):
+                 raise ValidationError(ngettext(
+@@ -478,7 +495,7 @@ class BaseFormSet(RenderableFormMixin):
+ def formset_factory(form, formset=BaseFormSet, extra=1, can_order=False,
+                     can_delete=False, max_num=None, validate_max=False,
+                     min_num=None, validate_min=False, absolute_max=None,
+-                    can_delete_extra=True, renderer=None):
++                    can_delete_extra=True, renderer=None, can_create=True):
+     """Return a FormSet for the given form class."""
+     if min_num is None:
+         min_num = DEFAULT_MIN_NUM
+@@ -499,6 +516,7 @@ def formset_factory(form, formset=BaseFormSet, extra=1, can_order=False,
+         'can_order': can_order,
+         'can_delete': can_delete,
+         'can_delete_extra': can_delete_extra,
++        'can_create': can_create,
+         'min_num': min_num,
+         'max_num': max_num,
+         'absolute_max': absolute_max,
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 7effb202e3..551db503d6 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -582,7 +582,10 @@ class BaseModelFormSet(BaseFormSet):
+         """Return the number of forms that are required in this FormSet."""
+         if not self.is_bound:
+             return len(self.get_queryset())
+-        return super().initial_form_count()
++        initial_form_count = super().initial_form_count()
++        if not self.can_create and initial_form_count:
++            initial_form_count = min(initial_form_count, len(self.get_queryset()))
++        return initial_form_count
+ 
+     def _existing_object(self, pk):
+         if not hasattr(self, '_object_dict'):
+@@ -812,6 +815,9 @@ class BaseModelFormSet(BaseFormSet):
+         return saved_instances
+ 
+     def save_new_objects(self, commit=True):
++        if not self.can_create:
++            self.new_objects = []
++            return []
+         self.new_objects = []
+         for form in self.extra_forms:
+             if not form.has_changed():
+@@ -875,7 +881,8 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                          widgets=None, validate_max=False, localized_fields=None,
+                          labels=None, help_texts=None, error_messages=None,
+                          min_num=None, validate_min=False, field_classes=None,
+-                         absolute_max=None, can_delete_extra=True, renderer=None):
++                         absolute_max=None, can_delete_extra=True, renderer=None,
++                         can_create=True):
+     """Return a FormSet class for the given Django model class."""
+     meta = getattr(form, 'Meta', None)
+     if (getattr(meta, 'fields', fields) is None and
+@@ -894,7 +901,7 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                               can_order=can_order, can_delete=can_delete,
+                               validate_min=validate_min, validate_max=validate_max,
+                               absolute_max=absolute_max, can_delete_extra=can_delete_extra,
+-                              renderer=renderer)
++                              renderer=renderer, can_create=can_create)
+     FormSet.model = model
+     return FormSet
+ 
+@@ -1076,7 +1083,8 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+                           widgets=None, validate_max=False, localized_fields=None,
+                           labels=None, help_texts=None, error_messages=None,
+                           min_num=None, validate_min=False, field_classes=None,
+-                          absolute_max=None, can_delete_extra=True, renderer=None):
++                          absolute_max=None, can_delete_extra=True, renderer=None,
++                          can_create=True):
+     """
+     Return an ``InlineFormSet`` for the given kwargs.
+ 
+@@ -1109,6 +1117,7 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+         'absolute_max': absolute_max,
+         'can_delete_extra': can_delete_extra,
+         'renderer': renderer,
++        'can_create': can_create,
+     }
+     FormSet = modelformset_factory(model, **kwargs)
+     FormSet.fk = fk
+diff --git a/docs/ref/forms/formsets.txt b/docs/ref/forms/formsets.txt
+index 97be3fd03e..2518bb92e0 100644
+--- a/docs/ref/forms/formsets.txt
++++ b/docs/ref/forms/formsets.txt
+@@ -11,7 +11,7 @@ Formset API reference. For introductory material about formsets, see the
+ ``formset_factory``
+ ===================
+ 
+-.. function:: formset_factory(form, formset=BaseFormSet, extra=1, can_order=False, can_delete=False, max_num=None, validate_max=False, min_num=None, validate_min=False, absolute_max=None, can_delete_extra=True, renderer=None)
++.. function:: formset_factory(form, formset=BaseFormSet, extra=1, can_order=False, can_delete=False, max_num=None, validate_max=False, min_num=None, validate_min=False, absolute_max=None, can_delete_extra=True, renderer=None, can_create=True)
+ 
+     Returns a ``FormSet`` class for the given ``form`` class.
+ 
+@@ -20,3 +20,7 @@ Formset API reference. For introductory material about formsets, see the
+     .. versionchanged:: 4.0
+ 
+         The ``renderer`` argument was added.
++
++    .. versionchanged:: 4.1
++
++        The ``can_create`` argument was added.
+diff --git a/docs/ref/forms/models.txt b/docs/ref/forms/models.txt
+index c0f0757b3e..bb7fb9ad80 100644
+--- a/docs/ref/forms/models.txt
++++ b/docs/ref/forms/models.txt
+@@ -52,7 +52,7 @@ Model Form API reference. For introductory material about model forms, see the
+ ``modelformset_factory``
+ ========================
+ 
+-.. function:: modelformset_factory(model, form=ModelForm, formfield_callback=None, formset=BaseModelFormSet, extra=1, can_delete=False, can_order=False, max_num=None, fields=None, exclude=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None)
++.. function:: modelformset_factory(model, form=ModelForm, formfield_callback=None, formset=BaseModelFormSet, extra=1, can_delete=False, can_order=False, max_num=None, fields=None, exclude=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None, can_create=True)
+ 
+     Returns a ``FormSet`` class for the given ``model`` class.
+ 
+@@ -63,7 +63,7 @@ Model Form API reference. For introductory material about model forms, see the
+ 
+     Arguments ``formset``, ``extra``, ``can_delete``, ``can_order``,
+     ``max_num``, ``validate_max``, ``min_num``, ``validate_min``,
+-    ``absolute_max``, ``can_delete_extra``, and ``renderer`` are passed
++    ``absolute_max``, ``can_delete_extra``, ``renderer``, and ``can_create`` are passed
+     through to :func:`~django.forms.formsets.formset_factory`. See
+     :doc:`formsets </topics/forms/formsets>` for details.
+ 
+@@ -73,10 +73,14 @@ Model Form API reference. For introductory material about model forms, see the
+ 
+         The ``renderer`` argument was added.
+ 
++    .. versionchanged:: 4.1
++
++        The ``can_create`` argument was added.
++
+ ``inlineformset_factory``
+ =========================
+ 
+-.. function:: inlineformset_factory(parent_model, model, form=ModelForm, formset=BaseInlineFormSet, fk_name=None, fields=None, exclude=None, extra=3, can_order=False, can_delete=True, max_num=None, formfield_callback=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None)
++.. function:: inlineformset_factory(parent_model, model, form=ModelForm, formset=BaseInlineFormSet, fk_name=None, fields=None, exclude=None, extra=3, can_order=False, can_delete=True, max_num=None, formfield_callback=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None, can_create=True)
+ 
+     Returns an ``InlineFormSet`` using :func:`modelformset_factory` with
+     defaults of ``formset=``:class:`~django.forms.models.BaseInlineFormSet`,
+@@ -90,3 +94,7 @@ Model Form API reference. For introductory material about model forms, see the
+     .. versionchanged:: 4.0
+ 
+         The ``renderer`` argument was added.
++
++    .. versionchanged:: 4.1
++
++        The ``can_create`` argument was added.
+diff --git a/docs/releases/4.1.txt b/docs/releases/4.1.txt
+index f5e7a07bb3..fab53f768f 100644
+--- a/docs/releases/4.1.txt
++++ b/docs/releases/4.1.txt
+@@ -189,6 +189,13 @@ Forms
+   labels in ``<legend>`` tags via the new ``tag`` argument of
+   :meth:`~django.forms.BoundField.label_tag`.
+ 
++* New ``can_create`` arguments were added to
++  :func:`~django.forms.formsets.formset_factory`,
++  :func:`~django.forms.models.modelformset_factory`, and
++  :func:`~django.forms.models.inlineformset_factory`. When set to
++  ``False``, extra forms are not displayed and submissions containing extra
++  forms are rejected.
++
+ Generic Views
+ ~~~~~~~~~~~~~
+ 
+diff --git a/docs/topics/forms/formsets.txt b/docs/topics/forms/formsets.txt
+index a549a047cd..3fa4c1ec5a 100644
+--- a/docs/topics/forms/formsets.txt
++++ b/docs/topics/forms/formsets.txt
+@@ -680,6 +680,17 @@ Default: ``True``
+ While setting ``can_delete=True``, specifying ``can_delete_extra=False`` will
+ remove the option to delete extra forms.
+ 
++``can_create``
++--------------
++
++.. attribute:: BaseFormSet.can_create
++
++Default: ``True``
++
++Setting ``can_create=False`` will not display extra forms and will reject
++submissions containing extra forms. Extra forms are not rendered, even if
++``extra`` is greater than zero.
++
+ Adding additional fields to a formset
+ =====================================
+ 
+diff --git a/docs/topics/forms/modelforms.txt b/docs/topics/forms/modelforms.txt
+index cf79fc69c4..580f2aae0f 100644
+--- a/docs/topics/forms/modelforms.txt
++++ b/docs/topics/forms/modelforms.txt
+@@ -953,8 +953,15 @@ extra forms displayed.
+ 
+ Also, ``extra=0`` doesn't prevent creation of new model instances as you can
+ :ref:`add additional forms with JavaScript <understanding-the-managementform>`
+-or send additional POST data. Formsets :ticket:`don't yet provide functionality
+-<26142>` for an "edit only" view that prevents creation of new instances.
++or send additional POST data. To provide an "edit only" view that prevents
++creation of new instances, use ``can_create=False``:
++
++::
++
++    >>> AuthorFormSet = modelformset_factory(Author, fields=('name',), can_create=False)
++
++Extra forms are not displayed when ``can_create=False``, and submissions
++containing extra forms will be rejected with a "too many forms" error.
+ 
+ If the value of ``max_num`` is greater than the number of existing related
+ objects, up to ``extra`` additional blank forms will be added to the formset,

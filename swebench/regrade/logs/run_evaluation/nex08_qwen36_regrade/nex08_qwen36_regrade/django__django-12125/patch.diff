@@ -1,0 +1,78 @@
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index 7d226955d5..4f061420ec 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -74,9 +74,8 @@ class DecimalSerializer(BaseSerializer):
+ 
+ 
+ class DeconstructableSerializer(BaseSerializer):
+-    @staticmethod
+-    def serialize_deconstructed(path, args, kwargs):
+-        name, imports = DeconstructableSerializer._serialize_path(path)
++    def serialize_deconstructed(self, path, args, kwargs, module=None):
++        name, imports = DeconstructableSerializer._serialize_path(path, module)
+         strings = []
+         for arg in args:
+             arg_string, arg_imports = serializer_factory(arg).serialize()
+@@ -89,18 +88,30 @@ class DeconstructableSerializer(BaseSerializer):
+         return "%s(%s)" % (name, ", ".join(strings)), imports
+ 
+     @staticmethod
+-    def _serialize_path(path):
+-        module, name = path.rsplit(".", 1)
++    def _serialize_path(path, module=None):
++        # Use the value's module when it prefixes the path so nested classes
++        # import the containing module rather than the outer class.
++        if module and path.startswith(module + "."):
++            name = path[len(module) + 1:]
++        else:
++            module, name = path.rsplit(".", 1)
+         if module == "django.db.models":
+             imports = {"from django.db import models"}
+             name = "models.%s" % name
+         else:
+             imports = {"import %s" % module}
+-            name = path
++            name = "%s.%s" % (module, name)
+         return name, imports
+ 
+     def serialize(self):
+-        return self.serialize_deconstructed(*self.value.deconstruct())
++        value = self.value.deconstruct()
++        if len(value) == 3:
++            path, args, kwargs = value
++            module = getattr(self.value, "__module__", None)
++        else:
++            _, path, args, kwargs = value
++            module = getattr(self.value, "__module__", None)
++        return self.serialize_deconstructed(path, args, kwargs, module)
+ 
+ 
+ class DictionarySerializer(BaseSerializer):
+@@ -196,7 +207,9 @@ class IterableSerializer(BaseSerializer):
+ class ModelFieldSerializer(DeconstructableSerializer):
+     def serialize(self):
+         attr_name, path, args, kwargs = self.value.deconstruct()
+-        return self.serialize_deconstructed(path, args, kwargs)
++        return self.serialize_deconstructed(
++            path, args, kwargs, getattr(self.value, "__module__", None)
++        )
+ 
+ 
+ class ModelManagerSerializer(DeconstructableSerializer):
+@@ -267,9 +280,13 @@ class TypeSerializer(BaseSerializer):
+         if hasattr(self.value, "__module__"):
+             module = self.value.__module__
+             if module == builtins.__name__:
+-                return self.value.__name__, set()
++                return self.value.__qualname__, set()
+             else:
+-                return "%s.%s" % (module, self.value.__name__), {"import %s" % module}
++                name = (
++                    self.value.__qualname__ if "<locals>" not in self.value.__qualname__
++                    else self.value.__name__
++                )
++                return "%s.%s" % (module, name), {"import %s" % module}
+ 
+ 
+ class UUIDSerializer(BaseSerializer):

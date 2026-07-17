@@ -1,0 +1,46 @@
+diff --git a/sphinx/ext/napoleon/docstring.py b/sphinx/ext/napoleon/docstring.py
+index d8cb75a5f..532aa9762 100644
+--- a/sphinx/ext/napoleon/docstring.py
++++ b/sphinx/ext/napoleon/docstring.py
+@@ -43,7 +43,7 @@ _enumerated_list_regex = re.compile(
+     r'(\d+|#|[ivxlcdm]+|[IVXLCDM]+|[a-zA-Z])'
+     r'(?(paren)\)|\.)(\s+\S|\s*$)')
+ _token_regex = re.compile(
+-    r"(,\sor\s|\sor\s|\sof\s|:\s|\sto\s|,\sand\s|\sand\s|,\s"
++    r"(,\sor\s|\sor\s|\sof\s|:\s|\sto\s|,\sand\s|\sand\s|,\s|\s*\|\s*"
+     r"|[{]|[}]"
+     r'|"(?:\\"|[^"])*"'
+     r"|'(?:\\'|[^'])*')"
+@@ -58,13 +58,17 @@ def _convert_type_spec(_type: str, translations: Dict[str, str] = {}) -> str:
+     """Convert type specification to reference in reST."""
+     if _type in translations:
+         return translations[_type]
+-    else:
+-        if _type == 'None':
+-            return ':obj:`None`'
+-        else:
+-            return ':class:`%s`' % _type
++    elif '`' in _type:
++        return _type
++    elif _type == 'None':
++        return ':obj:`None`'
+ 
+-    return _type
++    type_parts = _type.split('|')
++    if len(type_parts) > 1:
++        return ' | '.join(_convert_type_spec(part.strip(), translations)
++                          for part in type_parts)
++
++    return ':class:`%s`' % _type
+ 
+ 
+ class GoogleDocstring:
+@@ -1000,6 +1004,8 @@ def _token_type(token: str, location: str = None) -> str:
+         # default is not a official keyword (yet) but supported by the
+         # reference implementation (numpydoc) and widely used
+         type_ = "control"
++    elif token == "|":
++        type_ = "delimiter"
+     elif _xref_regex.match(token):
+         type_ = "reference"
+     else:

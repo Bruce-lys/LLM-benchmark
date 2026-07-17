@@ -1,0 +1,200 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 9735ce10c8..0350f7a30c 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -545,11 +545,195 @@ class Query(BaseExpression):
+ 
+         return dict(zip(outer_query.annotation_select, result))
+ 
++    def _get_count_annotation_dependencies(self):
++        """
++        Return the annotation aliases needed to preserve the semantics of a
++        count() query.
++        """
++        needed = set()
++        annotation_by_id = {
++            id(annotation): alias for alias, annotation in self.annotations.items()
++        }
++
++        def iter_children(expr):
++            if isinstance(expr, Lookup):
++                yield from iter_children(expr.lhs)
++                yield from iter_children(expr.rhs)
++            elif isinstance(expr, Node):
++                for child in expr.children:
++                    yield from iter_children(child)
++            elif hasattr(expr, "get_source_expressions"):
++                for child in expr.get_source_expressions():
++                    yield from iter_children(child)
++
++        def visit(expr):
++            if isinstance(expr, Lookup):
++                visit(expr.lhs)
++                visit(expr.rhs)
++            elif isinstance(expr, Node):
++                for child in expr.children:
++                    visit(child)
++            elif isinstance(expr, F) and expr.name in self.annotations:
++                needed.add(expr.name)
++            elif isinstance(expr, Ref) and expr.refs in self.annotations:
++                needed.add(expr.refs)
++            elif id(expr) in annotation_by_id:
++                needed.add(annotation_by_id[id(expr)])
++            elif isinstance(expr, str) and expr in self.annotations:
++                needed.add(expr)
++            else:
++                for child in iter_children(expr):
++                    visit(child)
++
++        def walk(expr):
++            if isinstance(expr, Lookup):
++                visit(expr.lhs)
++                visit(expr.rhs)
++            elif isinstance(expr, Node):
++                for child in expr.children:
++                    walk(child)
++            else:
++                visit(expr)
++
++        for child in self.where.children:
++            walk(child)
++
++        for ordering in self.order_by:
++            if isinstance(ordering, str):
++                if ordering in self.annotations:
++                    needed.add(ordering)
++            else:
++                walk(ordering)
++
++        for select_expr in self.select:
++            walk(select_expr)
++
++        if self.group_by is not True and self.group_by:
++            for expr in self.group_by:
++                walk(expr)
++
++        if self.annotation_select_mask is not None:
++            needed.update(
++                alias for alias in self.annotation_select_mask if alias in self.annotations
++            )
++
++        changed = True
++        while changed:
++            changed = False
++            for alias in list(needed):
++                annotation = self.annotations.get(alias)
++                if annotation is None:
++                    continue
++                for child in iter_children(annotation):
++                    before = len(needed)
++                    visit(child)
++                    if len(needed) != before:
++                        changed = True
++        return needed
++
++    def _strip_unused_annotations_for_count(self):
++        """
++        Remove annotations that are not needed by a count() query.
++        """
++        if not self.annotations:
++            return
++        needed = self._get_count_annotation_dependencies()
++
++        refcounts = None
++
++        def add_col_refs(exprs):
++            for col in self._gen_cols(exprs):
++                refcounts[col.alias] += 1
++
++        def reset_refcounts():
++            nonlocal refcounts
++            refcounts = Counter()
++            base_alias = self.get_initial_alias()
++            refcounts[base_alias] = 1
++            # The count() query will clear ordering and, when there are no
++            # remaining annotations, the select clause. Exclude those from the
++            # reference count calculation to avoid keeping unnecessary joins.
++            if not (self.combinator or self.distinct_fields or self.is_sliced or
++                    self.distinct or self.extra or self.extra_select or
++                    self.extra_select_mask):
++                add_col_refs(self.where.children)
++                if self.group_by is not True and self.group_by:
++                    add_col_refs(self.group_by)
++                if self.annotations:
++                    add_col_refs(self.annotations.values())
++                    if self.select:
++                        add_col_refs(self.select)
++                self.reset_refcounts(refcounts)
++
++        original_mask = self.annotation_select_mask
++        self.annotations = {
++            alias: annotation
++            for alias, annotation in self.annotations.items()
++            if alias in needed
++        }
++
++        def iter_children(expr):
++            if isinstance(expr, Lookup):
++                yield from iter_children(expr.lhs)
++                yield from iter_children(expr.rhs)
++            elif isinstance(expr, Node):
++                for child in expr.children:
++                    yield from iter_children(child)
++            elif hasattr(expr, "get_source_expressions"):
++                for child in expr.get_source_expressions():
++                    yield from iter_children(child)
++
++        annotation_by_id = {
++            id(annotation): alias for alias, annotation in self.annotations.items()
++        }
++
++        def annotation_dependencies(alias):
++            dependencies = set()
++
++            def visit(expr):
++                if isinstance(expr, F) and expr.name in self.annotations:
++                    dependencies.add(expr.name)
++                elif isinstance(expr, Ref) and expr.refs in self.annotations:
++                    dependencies.add(expr.refs)
++                elif id(expr) in annotation_by_id:
++                    dependencies.add(annotation_by_id[id(expr)])
++                elif isinstance(expr, str) and expr in self.annotations:
++                    dependencies.add(expr)
++                else:
++                    for child in iter_children(expr):
++                        visit(child)
++
++            for child in iter_children(self.annotations[alias]):
++                visit(child)
++            return dependencies
++
++        # Only selected annotations and their dependencies must be in the mask.
++        # Annotations needed only for filters can stay masked.
++        if original_mask is not None:
++            mask = set(original_mask) & set(self.annotations)
++            if not mask:
++                self.set_annotation_mask(mask)
++            else:
++                changed = True
++                while changed:
++                    changed = False
++                    for alias in list(mask):
++                        for dependency in annotation_dependencies(alias):
++                            if dependency in self.annotations and dependency not in mask:
++                                mask.add(dependency)
++                                changed = True
++                mask &= set(self.annotations)
++                self.set_annotation_mask(mask)
++        else:
++            self.set_annotation_mask(None)
++        reset_refcounts()
++
+     def get_count(self, using):
+         """
+         Perform a COUNT() query using the current filter constraints.
+         """
+         obj = self.clone()
++        obj._strip_unused_annotations_for_count()
+         obj.add_annotation(Count("*"), alias="__count", is_summary=True)
+         return obj.get_aggregation(using, ["__count"])["__count"]
+ 

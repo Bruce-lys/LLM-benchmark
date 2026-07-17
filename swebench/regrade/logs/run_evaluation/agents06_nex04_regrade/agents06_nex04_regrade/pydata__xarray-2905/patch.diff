@@ -1,0 +1,39 @@
+diff --git a/xarray/core/variable.py b/xarray/core/variable.py
+index 45553eb9..6f4903b5 100644
+--- a/xarray/core/variable.py
++++ b/xarray/core/variable.py
+@@ -186,6 +186,15 @@ def _possibly_convert_objects(values):
+     return np.asarray(pd.Series(values.ravel())).reshape(values.shape)
+ 
+ 
++def _is_array_like(data):
++    return (
++        isinstance(data, (list, tuple))
++        or hasattr(data, "__array__")
++        or (hasattr(data, "ndim") and isinstance(data.ndim, numbers.Integral))
++        or (hasattr(data, "shape") and isinstance(data.shape, tuple))
++    )
++
++
+ def as_compatible_data(data, fastpath=False):
+     """Prepare and wrap data to put in a Variable.
+ 
+@@ -217,8 +226,16 @@ def as_compatible_data(data, fastpath=False):
+     if isinstance(data, timedelta):
+         data = np.timedelta64(getattr(data, "value", data), "ns")
+ 
+-    # we don't want nested self-described arrays
+-    data = getattr(data, "values", data)
++    # Preserve objects with scalar .values as object data; only extract
++    # array-like values to avoid coercing arbitrary objects.
++    if isinstance(data, pd.Series):
++        data = data.values
++    elif isinstance(data, pd.DataFrame):
++        data = data.values
++    elif isinstance(data, xr.DataArray):
++        data = data.data
++    elif hasattr(data, "values") and _is_array_like(data.values):
++        data = data.values
+ 
+     if isinstance(data, np.ma.MaskedArray):
+         mask = np.ma.getmaskarray(data)

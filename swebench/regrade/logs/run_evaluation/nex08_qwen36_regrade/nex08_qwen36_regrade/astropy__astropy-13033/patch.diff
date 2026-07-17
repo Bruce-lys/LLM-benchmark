@@ -1,0 +1,59 @@
+diff --git a/astropy/timeseries/core.py b/astropy/timeseries/core.py
+index c279f35f8..d0d827765 100644
+--- a/astropy/timeseries/core.py
++++ b/astropy/timeseries/core.py
+@@ -70,15 +70,48 @@ class BaseTimeSeries(QTable):
+ 
+             if not self._required_columns_relax and len(self.colnames) == 0:
+ 
+-                raise ValueError("{} object is invalid - expected '{}' "
+-                                 "as the first column{} but time series has no columns"
+-                                 .format(self.__class__.__name__, required_columns[0], plural))
++                if len(required_columns) == 1:
++                    raise ValueError("{} object is invalid - expected '{}' "
++                                     "as the first column{} but time series "
++                                     "has no columns"
++                                     .format(self.__class__.__name__,
++                                             required_columns[0],
++                                             plural))
++
++                raise ValueError("{} object is invalid - required columns {} "
++                                 "are missing (found no columns)".format(
++                                     self.__class__.__name__,
++                                     required_columns))
+ 
+             elif self.colnames[:len(required_columns)] != required_columns:
+ 
+-                raise ValueError("{} object is invalid - expected '{}' "
+-                                 "as the first column{} but found '{}'"
+-                                 .format(self.__class__.__name__, required_columns[0], plural, self.colnames[0]))
++                if len(required_columns) == 1:
++                    raise ValueError("{} object is invalid - expected '{}' "
++                                     "as the first column{} but found '{}'"
++                                     .format(self.__class__.__name__,
++                                             required_columns[0],
++                                             plural, self.colnames[0]))
++
++                if self.colnames:
++                    found_columns = repr(self.colnames)
++                else:
++                    found_columns = 'no columns'
++
++                missing_columns = [column for column in required_columns
++                                   if column not in self.colnames]
++
++                if set(required_columns).issubset(set(self.colnames)):
++                    raise ValueError("{} object is invalid - expected {} "
++                                     "as the first columns but found {}"
++                                     .format(self.__class__.__name__,
++                                             required_columns,
++                                             found_columns))
++                else:
++                    raise ValueError("{} object is invalid - required columns {} "
++                                     "are missing (found {})".format(
++                                         self.__class__.__name__,
++                                         missing_columns,
++                                         found_columns))
+ 
+             if (self._required_columns_relax
+                     and self._required_columns == self.colnames[:len(self._required_columns)]):

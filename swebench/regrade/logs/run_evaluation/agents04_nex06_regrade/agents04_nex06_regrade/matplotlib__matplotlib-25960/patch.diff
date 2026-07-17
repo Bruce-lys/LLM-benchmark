@@ -1,0 +1,64 @@
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index dab2bc4a5a..651bd24bb9 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -2274,12 +2274,53 @@ class SubFigure(FigureBase):
+             return
+         # need to figure out *where* this subplotspec is.
+         gs = self._subplotspec.get_gridspec()
+-        wr = np.asarray(gs.get_width_ratios())
+-        hr = np.asarray(gs.get_height_ratios())
+-        dx = wr[self._subplotspec.colspan].sum() / wr.sum()
+-        dy = hr[self._subplotspec.rowspan].sum() / hr.sum()
+-        x0 = wr[:self._subplotspec.colspan.start].sum() / wr.sum()
+-        y0 = 1 - hr[:self._subplotspec.rowspan.stop].sum() / hr.sum()
++        wr = np.asarray(gs.get_width_ratios(), dtype=float)
++        hr = np.asarray(gs.get_height_ratios(), dtype=float)
++
++        wspace = getattr(gs, "wspace", None)
++        hspace = getattr(gs, "hspace", None)
++        if wspace is None:
++            wspace = getattr(gs, "_wspace", None)
++        if hspace is None:
++            hspace = getattr(gs, "_hspace", None)
++        spacing_specified = wspace is not None or hspace is not None
++
++        if spacing_specified:
++            if wspace is None:
++                wspace = 0
++            if hspace is None:
++                hspace = 0
++
++            ncols = gs.ncols
++            nrows = gs.nrows
++            cell_w = 1 / (ncols + wspace * (ncols - 1))
++            sep_w = wspace * cell_w
++            norm = cell_w * ncols / wr.sum()
++            cell_widths = [r * norm for r in wr]
++            sep_widths = [0] + [sep_w] * (ncols - 1)
++            cell_ws = np.cumsum(
++                np.column_stack([sep_widths, cell_widths]).flat)
++
++            col = self._subplotspec.colspan
++            x0 = cell_ws[2 * col.start]
++            dx = cell_ws[2 * col.stop - 1] - cell_ws[2 * col.start]
++
++            cell_h = 1 / (nrows + hspace * (nrows - 1))
++            sep_h = hspace * cell_h
++            norm = cell_h * nrows / hr.sum()
++            cell_heights = [r * norm for r in hr]
++            sep_heights = [0] + [sep_h] * (nrows - 1)
++            cell_hs = np.cumsum(
++                np.column_stack([sep_heights, cell_heights]).flat)
++
++            row = self._subplotspec.rowspan
++            y0 = 1 - cell_hs[2 * row.stop - 1]
++            dy = cell_hs[2 * row.stop - 1] - cell_hs[2 * row.start]
++        else:
++            dx = wr[self._subplotspec.colspan].sum() / wr.sum()
++            dy = hr[self._subplotspec.rowspan].sum() / hr.sum()
++            x0 = wr[:self._subplotspec.colspan.start].sum() / wr.sum()
++            y0 = 1 - hr[:self._subplotspec.rowspan.stop].sum() / hr.sum()
+         if self.bbox_relative is None:
+             self.bbox_relative = Bbox.from_bounds(x0, y0, dx, dy)
+         else:

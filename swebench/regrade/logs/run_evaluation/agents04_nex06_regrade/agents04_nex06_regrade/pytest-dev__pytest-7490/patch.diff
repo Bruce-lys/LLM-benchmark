@@ -1,0 +1,19 @@
+diff --git a/src/_pytest/skipping.py b/src/_pytest/skipping.py
+index 335e10996..8fbb48c45 100644
+--- a/src/_pytest/skipping.py
++++ b/src/_pytest/skipping.py
+@@ -254,7 +254,13 @@ def pytest_runtest_call(item: Item) -> Generator[None, None, None]:
+         if xfailed and not xfailed.run:
+             xfail("[NOTRUN] " + xfailed.reason)
+ 
+-    yield
++    try:
++        yield
++    finally:
++        # The test run may have added an xfail mark dynamically.
++        xfailed = item._store.get(xfailed_key, None)
++        if xfailed is None:
++            item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
+ 
+ 
+ @hookimpl(hookwrapper=True)

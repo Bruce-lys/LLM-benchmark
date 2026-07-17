@@ -1,0 +1,143 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 7effb202e3..a1acd5475e 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -9,7 +9,9 @@ from django.core.exceptions import (
+ )
+ from django.forms.fields import ChoiceField, Field
+ from django.forms.forms import BaseForm, DeclarativeFieldsMetaclass
+-from django.forms.formsets import BaseFormSet, formset_factory
++from django.forms.formsets import (
++    BaseFormSet, INITIAL_FORM_COUNT, formset_factory,
++)
+ from django.forms.utils import ErrorList
+ from django.forms.widgets import (
+     HiddenInput, MultipleHiddenInput, RadioSelect, SelectMultiple,
+@@ -568,6 +570,7 @@ class BaseModelFormSet(BaseFormSet):
+     A ``FormSet`` for editing a queryset and/or adding new objects to it.
+     """
+     model = None
++    can_add = True
+ 
+     # Set of fields that must be unique among forms of this set.
+     unique_fields = set()
+@@ -576,6 +579,7 @@ class BaseModelFormSet(BaseFormSet):
+                  queryset=None, *, initial=None, **kwargs):
+         self.queryset = queryset
+         self.initial_extra = initial
++        self.can_add = kwargs.pop('can_add', self.can_add)
+         super().__init__(**{'data': data, 'files': files, 'auto_id': auto_id, 'prefix': prefix, **kwargs})
+ 
+     def initial_form_count(self):
+@@ -584,6 +588,23 @@ class BaseModelFormSet(BaseFormSet):
+             return len(self.get_queryset())
+         return super().initial_form_count()
+ 
++    def total_form_count(self):
++        """Return the total number of forms in this FormSet."""
++        if not self.can_add:
++            if self.is_bound:
++                return min(
++                    self.management_form.cleaned_data[INITIAL_FORM_COUNT],
++                    self.absolute_max,
++                )
++            initial_forms = self.initial_form_count()
++            total_forms = max(initial_forms, self.min_num)
++            if initial_forms > self.max_num >= 0:
++                total_forms = initial_forms
++            elif total_forms > self.max_num >= 0:
++                total_forms = self.max_num
++            return total_forms
++        return super().total_form_count()
++
+     def _existing_object(self, pk):
+         if not hasattr(self, '_object_dict'):
+             self._object_dict = {o.pk: o for o in self.get_queryset()}
+@@ -812,6 +833,8 @@ class BaseModelFormSet(BaseFormSet):
+         return saved_instances
+ 
+     def save_new_objects(self, commit=True):
++        if not self.can_add:
++            return []
+         self.new_objects = []
+         for form in self.extra_forms:
+             if not form.has_changed():
+@@ -875,7 +898,8 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                          widgets=None, validate_max=False, localized_fields=None,
+                          labels=None, help_texts=None, error_messages=None,
+                          min_num=None, validate_min=False, field_classes=None,
+-                         absolute_max=None, can_delete_extra=True, renderer=None):
++                         absolute_max=None, can_delete_extra=True, renderer=None,
++                         can_add=True):
+     """Return a FormSet class for the given Django model class."""
+     meta = getattr(form, 'Meta', None)
+     if (getattr(meta, 'fields', fields) is None and
+@@ -896,6 +920,7 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                               absolute_max=absolute_max, can_delete_extra=can_delete_extra,
+                               renderer=renderer)
+     FormSet.model = model
++    FormSet.can_add = can_add
+     return FormSet
+ 
+ 
+@@ -1076,7 +1101,8 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+                           widgets=None, validate_max=False, localized_fields=None,
+                           labels=None, help_texts=None, error_messages=None,
+                           min_num=None, validate_min=False, field_classes=None,
+-                          absolute_max=None, can_delete_extra=True, renderer=None):
++                          absolute_max=None, can_delete_extra=True, renderer=None,
++                          can_add=True):
+     """
+     Return an ``InlineFormSet`` for the given kwargs.
+ 
+@@ -1109,6 +1135,7 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+         'absolute_max': absolute_max,
+         'can_delete_extra': can_delete_extra,
+         'renderer': renderer,
++        'can_add': can_add,
+     }
+     FormSet = modelformset_factory(model, **kwargs)
+     FormSet.fk = fk
+diff --git a/docs/topics/forms/formsets.txt b/docs/topics/forms/formsets.txt
+index a549a047cd..c380ff1a6f 100644
+--- a/docs/topics/forms/formsets.txt
++++ b/docs/topics/forms/formsets.txt
+@@ -680,6 +680,23 @@ Default: ``True``
+ While setting ``can_delete=True``, specifying ``can_delete_extra=False`` will
+ remove the option to delete extra forms.
+ 
++``can_add``
++-----------
++
++.. attribute:: BaseModelFormSet.can_add
++
++Default: ``True``
++
++Set ``can_add`` to ``False`` to prevent a model formset from accepting new
++objects. When ``can_add`` is ``False``, the formset will only display and
++accept forms for existing objects from the queryset. Extra forms submitted in
++POST data are ignored, and ``save()`` will not create new instances for them.
++
++This is useful for creating an ``edit only`` view of model objects::
++
++    >>> from django.forms.models import modelformset_factory
++    >>> AuthorFormSet = modelformset_factory(Author, fields='__all__', can_add=False)
++
+ Adding additional fields to a formset
+ =====================================
+ 
+diff --git a/docs/topics/forms/modelforms.txt b/docs/topics/forms/modelforms.txt
+index cf79fc69c4..638b97bad4 100644
+--- a/docs/topics/forms/modelforms.txt
++++ b/docs/topics/forms/modelforms.txt
+@@ -888,6 +888,10 @@ the number of extra forms, the excess initial data is ignored. If the extra
+ forms with initial data aren't changed by the user, they won't be validated or
+ saved.
+ 
++To create an ``edit only`` formset that ignores any submitted extra forms,
++pass ``can_add=False`` to ``modelformset_factory()`` or
++``inlineformset_factory()``.
++
+ .. _saving-objects-in-the-formset:
+ 
+ Saving objects in the formset

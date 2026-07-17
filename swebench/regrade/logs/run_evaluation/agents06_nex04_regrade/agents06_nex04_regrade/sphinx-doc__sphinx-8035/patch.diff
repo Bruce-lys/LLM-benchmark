@@ -1,0 +1,132 @@
+diff --git a/CHANGES b/CHANGES
+index eadace6dc..634c896db 100644
+--- a/CHANGES
++++ b/CHANGES
+@@ -38,6 +38,8 @@ Features added
+ * #7052: add ``:noindexentry:`` to the Python, C, C++, and Javascript domains.
+   Update the documentation to better reflect the relationship between this option
+   and the ``:noindex:`` option.
++* #8009: autodoc: Allow ``:private-members:`` to take arguments specifying which
++  private members to document.
+ * #7899: C, add possibility of parsing of some pre-v3 style type directives and
+   roles and try to convert them to equivalent v3 directives/roles.
+   Set the new option :confval:`c_allow_pre_v3` to ``True`` to enable this.
+diff --git a/doc/usage/extensions/autodoc.rst b/doc/usage/extensions/autodoc.rst
+index 150b62c4d..0adebfa79 100644
+--- a/doc/usage/extensions/autodoc.rst
++++ b/doc/usage/extensions/autodoc.rst
+@@ -136,10 +136,20 @@ inserting them into the page source under a suitable :rst:dir:`py:module`,
+            :undoc-members:
+ 
+    * "Private" members (that is, those named like ``_private`` or ``__private``)
+-     will be included if the ``private-members`` flag option is given.
++     will be included if the ``private-members`` option is given. If the option takes
++     arguments, only listed private members will be included.
++
++     For example, to document only selected private members::
++
++        .. autoclass:: my.Class
++           :members:
++           :private-members: _foo, _bar
+ 
+      .. versionadded:: 1.1
+ 
++     .. versionchanged:: 3.2
++        The option can now take arguments, i.e. the private members to document.
++
+    * autodoc considers a member private if its docstring contains
+      ``:meta private:`` in its :ref:`info-field-lists`.
+      For example:
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 8c3509c3b..1dd1b41aa 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -80,6 +80,15 @@ def members_option(arg: Any) -> Union[object, List[str]]:
+     return [x.strip() for x in arg.split(',') if x.strip()]
+ 
+ 
++def private_members_option(arg: Any) -> Union[object, List[str]]:
++    """Used to convert the :private-members: option to auto directives."""
++    if arg is None or arg is True:
++        return ALL
++    elif arg is False:
++        return []
++    return [x.strip() for x in arg.split(',') if x.strip()]
++
++
+ def members_set_option(arg: Any) -> Union[object, Set[str]]:
+     """Used to convert the :members: option to auto directives."""
+     if arg is None:
+@@ -563,7 +572,7 @@ class Documenter:
+         Members are skipped if
+ 
+         - they are private (except if given explicitly or the private-members
+-          option is set)
++          option is set or listed)
+         - they are special methods (except if given explicitly or the
+           special-members option is set)
+         - they are undocumented (except if the undoc-members option is set)
+@@ -582,6 +591,15 @@ class Documenter:
+ 
+             return False
+ 
++        def is_private_member_allowed(membername: str) -> bool:
++            private_members = self.options.private_members
++            if private_members is ALL:
++                return True
++            elif isinstance(private_members, list) and membername in private_members:
++                return True
++            else:
++                return False
++
+         ret = []
+ 
+         # search for members in source code too
+@@ -649,14 +667,14 @@ class Documenter:
+             elif (namespace, membername) in attr_docs:
+                 if want_all and isprivate:
+                     # ignore members whose name starts with _ by default
+-                    keep = self.options.private_members
++                    keep = is_private_member_allowed(membername)
+                 else:
+                     # keep documented attributes
+                     keep = True
+                 isattr = True
+             elif want_all and isprivate:
+                 # ignore members whose name starts with _ by default
+-                keep = self.options.private_members and \
++                keep = is_private_member_allowed(membername) and \
+                     (has_doc or self.options.undoc_members)
+             else:
+                 if self.options.members is ALL and is_filtered_inherited_member(membername):
+@@ -701,6 +719,12 @@ class Documenter:
+             self.options.members is ALL
+         # find out which members are documentable
+         members_check_module, members = self.get_object_members(want_all)
++        if want_all and isinstance(self.options.private_members, list):
++            existing_members = {name for name, _ in members}
++            for name in self.options.private_members:
++                if name not in existing_members:
++                    logger.warning(__('missing private member %s in object %s') %
++                                   (name, self.fullname), type='autodoc')
+ 
+         # document non-skipped members
+         memberdocumenters = []  # type: List[Tuple[Documenter, bool]]
+@@ -859,7 +883,7 @@ class ModuleDocumenter(Documenter):
+         'show-inheritance': bool_option, 'synopsis': identity,
+         'platform': identity, 'deprecated': bool_option,
+         'member-order': member_order_option, 'exclude-members': members_set_option,
+-        'private-members': bool_option, 'special-members': members_option,
++        'private-members': private_members_option, 'special-members': members_option,
+         'imported-members': bool_option, 'ignore-module-all': bool_option
+     }  # type: Dict[str, Callable]
+ 
+@@ -1279,7 +1303,7 @@ class ClassDocumenter(DocstringSignatureMixin, ModuleLevelDocumenter):  # type:
+         'noindex': bool_option, 'inherited-members': inherited_members_option,
+         'show-inheritance': bool_option, 'member-order': member_order_option,
+         'exclude-members': members_set_option,
+-        'private-members': bool_option, 'special-members': members_option,
++        'private-members': private_members_option, 'special-members': members_option,
+     }  # type: Dict[str, Callable]
+ 
+     _signature_class = None  # type: Any

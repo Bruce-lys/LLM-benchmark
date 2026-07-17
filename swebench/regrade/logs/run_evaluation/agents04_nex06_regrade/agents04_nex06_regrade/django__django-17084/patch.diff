@@ -1,0 +1,42 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 13a6809dd8..1b0b2108a2 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -436,11 +436,15 @@ class Query(BaseExpression):
+             )
+             or having
+         )
++        has_existing_window = any(
++            getattr(annotation, "contains_over_clause", False)
++            for annotation in self.annotations.values()
++        )
+         # Decide if we need to use a subquery.
+         #
+-        # Existing aggregations would cause incorrect results as
+-        # get_aggregation() must produce just one result and thus must not use
+-        # GROUP BY.
++        # Existing aggregations or window functions would cause incorrect
++        # results as get_aggregation() must produce just one result and thus
++        # must not use GROUP BY or nest window functions inside aggregates.
+         #
+         # If the query has limit or distinct, or uses set operations, then
+         # those operations must be done in a subquery so that the query
+@@ -450,6 +454,7 @@ class Query(BaseExpression):
+             isinstance(self.group_by, tuple)
+             or self.is_sliced
+             or has_existing_aggregation
++            or has_existing_window
+             or refs_subquery
+             or qualify
+             or self.distinct
+@@ -472,7 +477,9 @@ class Query(BaseExpression):
+                 # aggregate annotations, then we must make sure the inner
+                 # query is grouped by the main model's primary key. However,
+                 # clearing the select clause can alter results if distinct is
+-                # used.
++                # used. Window annotations must not be grouped, as that would
++                # change their results, while aggregate annotations must be
++                # grouped to preserve their per-row semantics.
+                 if inner_query.default_cols and has_existing_aggregation:
+                     inner_query.group_by = (
+                         self.model._meta.pk.get_col(inner_query.get_initial_alias()),

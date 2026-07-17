@@ -1,0 +1,47 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 66f3396a6b..c73acf52d8 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -1031,18 +1031,34 @@ class ModelAdmin(BaseModelAdmin):
+         if search_fields and search_term:
+             orm_lookups = [construct_search(str(search_field))
+                            for search_field in search_fields]
++            or_queries = []
+             for bit in smart_split(search_term):
+                 if bit.startswith(('"', "'")) and bit[0] == bit[-1]:
+                     bit = unescape_string_literal(bit)
+-                or_queries = models.Q(
+-                    *((orm_lookup, bit) for orm_lookup in orm_lookups),
+-                    _connector=models.Q.OR,
++                or_queries.append(
++                    models.Q(
++                        *((orm_lookup, bit) for orm_lookup in orm_lookups),
++                        _connector=models.Q.OR,
++                    )
+                 )
+-                queryset = queryset.filter(or_queries)
+-            may_have_duplicates |= any(
+-                lookup_spawns_duplicates(self.opts, search_spec)
+-                for search_spec in orm_lookups
+-            )
++            if not or_queries:
++                pass
++            elif len(or_queries) == 1:
++                queryset = queryset.filter(or_queries[0])
++                may_have_duplicates = any(
++                    lookup_spawns_duplicates(self.opts, search_spec)
++                    for search_spec in orm_lookups
++                )
++            else:
++                # Avoid a join per search word while allowing each word to match
++                # a different related row on the same object.
++                search_qs = queryset
++                for or_query in or_queries:
++                    queryset = queryset.filter(
++                        models.Exists(
++                            search_qs.filter(or_query, pk=models.OuterRef('pk')),
++                        ),
++                    )
+         return queryset, may_have_duplicates
+ 
+     def get_preserved_filters(self, request):

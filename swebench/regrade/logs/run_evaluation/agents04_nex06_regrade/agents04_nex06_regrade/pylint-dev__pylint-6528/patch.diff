@@ -1,0 +1,142 @@
+diff --git a/pylint/lint/pylinter.py b/pylint/lint/pylinter.py
+index 53345a6b..2083a6be 100644
+--- a/pylint/lint/pylinter.py
++++ b/pylint/lint/pylinter.py
+@@ -13,6 +13,7 @@ import tokenize
+ import traceback
+ import warnings
+ from collections import defaultdict
++from re import Pattern
+ from collections.abc import Callable, Iterable, Iterator, Sequence
+ from io import TextIOWrapper
+ from typing import Any
+@@ -31,7 +32,7 @@ from pylint.constants import (
+ )
+ from pylint.lint.base_options import _make_linter_options
+ from pylint.lint.caching import load_results, save_results
+-from pylint.lint.expand_modules import expand_modules
++from pylint.lint.expand_modules import _is_in_ignore_list_re, expand_modules
+ from pylint.lint.message_state_handler import _MessageStateHandler
+ from pylint.lint.parallel import check_parallel
+ from pylint.lint.report_functions import (
+@@ -67,6 +68,34 @@ else:
+ MANAGER = astroid.MANAGER
+ 
+ 
++def _path_candidates(path: str) -> tuple[str, ...]:
++    # Recursive discovery can pass paths like "./dir/file.py"; ignore-paths
++    # patterns may be relative without the leading "./".
++    normalized_path = os.path.normpath(path)
++    return (
++        path,
++        normalized_path,
++        normalized_path[2:] if normalized_path.startswith("./") else normalized_path,
++        normalized_path[2:] if normalized_path.startswith(".\\") else normalized_path,
++    )
++
++
++def _is_ignored(
++    path: str,
++    ignore_list: Sequence[str],
++    ignore_list_re: Sequence[Pattern[str]],
++    ignore_list_paths_re: Sequence[Pattern[str]],
++) -> bool:
++    return (
++        os.path.basename(path) in ignore_list
++        or _is_in_ignore_list_re(os.path.basename(path), ignore_list_re)
++        or any(
++            _is_in_ignore_list_re(candidate, ignore_list_paths_re)
++            for candidate in _path_candidates(path)
++        )
++    )
++
++
+ class GetAstProtocol(Protocol):
+     def __call__(
+         self, filepath: str, modname: str, data: str | None = None
+@@ -560,12 +589,19 @@ class PyLinter(
+         """
+         # initialize msgs_state now that all messages have been registered into
+         # the store
++        self._ignore_paths = self.config.ignore_paths
++
+         for msg in self.msgs_store.messages:
+             if not msg.may_be_emitted():
+                 self._msgs_state[msg.msgid] = False
+ 
+     @staticmethod
+-    def _discover_files(files_or_modules: Sequence[str]) -> Iterator[str]:
++    def _discover_files(
++        files_or_modules: Sequence[str],
++        ignore_list: Sequence[str],
++        ignore_list_re: Sequence[Pattern[str]],
++        ignore_list_paths_re: Sequence[Pattern[str]],
++    ) -> Iterator[str]:
+         """Discover python modules and packages in sub-directory.
+ 
+         Returns iterator of paths to discovered modules and packages.
+@@ -574,11 +610,27 @@ class PyLinter(
+             if os.path.isdir(something) and not os.path.isfile(
+                 os.path.join(something, "__init__.py")
+             ):
++                if _is_in_ignore_list_re(something, ignore_list_paths_re):
++                    continue
+                 skip_subtrees: list[str] = []
+-                for root, _, files in os.walk(something):
++                for root, dirnames, files in os.walk(something):
+                     if any(root.startswith(s) for s in skip_subtrees):
+                         # Skip subtree of already discovered package.
+                         continue
++                    dirnames[:] = [
++                        dirname
++                        for dirname in dirnames
++                        if not _is_ignored(
++                            os.path.join(root, dirname),
++                            ignore_list,
++                            ignore_list_re,
++                            ignore_list_paths_re,
++                        )
++                    ]
++                    if _is_ignored(
++                        root, ignore_list, ignore_list_re, ignore_list_paths_re
++                    ):
++                        continue
+                     if "__init__.py" in files:
+                         skip_subtrees.append(root)
+                         yield root
+@@ -587,9 +639,18 @@ class PyLinter(
+                             os.path.join(root, file)
+                             for file in files
+                             if file.endswith(".py")
++                            and not _is_ignored(
++                                os.path.join(root, file),
++                                ignore_list,
++                                ignore_list_re,
++                                ignore_list_paths_re,
++                            )
+                         )
+             else:
+-                yield something
++                if not _is_ignored(
++                    something, ignore_list, ignore_list_re, ignore_list_paths_re
++                ):
++                    yield something
+ 
+     def check(self, files_or_modules: Sequence[str] | str) -> None:
+         """Main checking entry: check a list of files or modules from their name.
+@@ -605,7 +666,14 @@ class PyLinter(
+             )
+             files_or_modules = (files_or_modules,)  # type: ignore[assignment]
+         if self.config.recursive:
+-            files_or_modules = tuple(self._discover_files(files_or_modules))
++            files_or_modules = tuple(
++                self._discover_files(
++                    files_or_modules,
++                    self.config.ignore,
++                    self.config.ignore_patterns,
++                    self._ignore_paths,
++                )
++            )
+         if self.config.from_stdin:
+             if len(files_or_modules) != 1:
+                 raise exceptions.InvalidArgsError(

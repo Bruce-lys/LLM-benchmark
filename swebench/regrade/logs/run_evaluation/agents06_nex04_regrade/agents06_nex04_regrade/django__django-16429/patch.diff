@@ -1,0 +1,13 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..6382784e5b 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,8 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo if is_aware(d) else None,
++            fold=d.fold,
+         )
+     else:
+         pivot = d

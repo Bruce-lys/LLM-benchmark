@@ -1,0 +1,68 @@
+diff --git a/django/template/defaultfilters.py b/django/template/defaultfilters.py
+index 5289ef34a0..7402dca6c9 100644
+--- a/django/template/defaultfilters.py
++++ b/django/template/defaultfilters.py
+@@ -488,6 +488,15 @@ def safe(value):
+     return mark_safe(value)
+ 
+ 
++@register.filter(is_safe=True)
++def escapeseq(value):
++    """
++    Escape each element in a sequence, individually, after converting them to
++    strings. Return a list with the results.
++    """
++    return [conditional_escape(obj) for obj in value]
++
++
+ @register.filter(is_safe=True)
+ def safeseq(value):
+     """
+diff --git a/docs/ref/templates/builtins.txt b/docs/ref/templates/builtins.txt
+index 3aa20dfc71..5e4f46877d 100644
+--- a/docs/ref/templates/builtins.txt
++++ b/docs/ref/templates/builtins.txt
+@@ -1849,6 +1849,26 @@ For example:
+ If ``value`` is ``"testing\r\njavascript 'string\" <b>escaping</b>"``,
+ the output will be ``"testing\\u000D\\u000Ajavascript \\u0027string\\u0022 \\u003Cb\\u003Eescaping\\u003C/b\\u003E"``.
+ 
++.. templatefilter:: escapeseq
++
++``escapeseq``
++-------------
++
++Applies the :tfilter:`escape` filter to each element of a sequence. This is the
++sequence equivalent of :tfilter:`safe`, analogous to :tfilter:`safeseq`.
++Useful in conjunction with other filters that operate on sequences, such as
++:tfilter:`join`, when autoescaping is off. For example:
++
++.. code-block:: html+django
++
++    {% autoescape off %}
++    {{ some_list|escapeseq|join:", " }}
++    {% endautoescape %}
++
++You couldn't use the :tfilter:`escape` filter directly in this case, as it would
++first convert the variable into a string, rather than working with the
++individual elements of the sequence.
++
+ .. templatefilter:: filesizeformat
+ 
+ ``filesizeformat``
+diff --git a/docs/releases/5.0.txt b/docs/releases/5.0.txt
+index 611a7bd68b..df78b05c0f 100644
+--- a/docs/releases/5.0.txt
++++ b/docs/releases/5.0.txt
+@@ -37,6 +37,12 @@ compatible with Django 5.0.
+ What's new in Django 5.0
+ ========================
+ 
++New template filter ``escapeseq``
++---------------------------------
++
++A new :tfilter:`escapeseq` template filter applies the :tfilter:`escape`
++filter to each element of a sequence.
++
+ Facet filters in the admin
+ --------------------------
+ 

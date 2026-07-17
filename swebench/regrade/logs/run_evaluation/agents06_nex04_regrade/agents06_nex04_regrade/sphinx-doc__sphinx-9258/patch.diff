@@ -1,0 +1,48 @@
+diff --git a/sphinx/ext/napoleon/docstring.py b/sphinx/ext/napoleon/docstring.py
+index d8cb75a5f..919dfbe08 100644
+--- a/sphinx/ext/napoleon/docstring.py
++++ b/sphinx/ext/napoleon/docstring.py
+@@ -46,8 +46,9 @@ _token_regex = re.compile(
+     r"(,\sor\s|\sor\s|\sof\s|:\s|\sto\s|,\sand\s|\sand\s|,\s"
+     r"|[{]|[}]"
+     r'|"(?:\\"|[^"])*"'
+-    r"|'(?:\\'|[^'])*')"
+-)
++    r"|'(?:\\'|[^'])*'"
++    r"|(?::(?:[a-zA-Z0-9]+[\-_+:.])*[a-zA-Z0-9]+:)?`.+?`"
++    r"|\s*\|\s*)")
+ _default_regex = re.compile(
+     r"^default[^_0-9A-Za-z].*$",
+ )
+@@ -56,13 +57,18 @@ _SINGLETONS = ("None", "True", "False", "Ellipsis")
+ 
+ def _convert_type_spec(_type: str, translations: Dict[str, str] = {}) -> str:
+     """Convert type specification to reference in reST."""
++    _type = _type.strip()
+     if _type in translations:
+         return translations[_type]
++    if '|' in _type:
++        return ' | '.join(
++            _convert_type_spec(part, translations) for part in _type.split('|'))
++    if _xref_regex.fullmatch(_type):
++        return _type
++    if _type == 'None':
++        return ':obj:`None`'
+     else:
+-        if _type == 'None':
+-            return ':obj:`None`'
+-        else:
+-            return ':class:`%s`' % _type
++        return ':class:`%s`' % _type
+ 
+     return _type
+ 
+@@ -968,6 +974,8 @@ def _token_type(token: str, location: str = None) -> str:
+             (token.startswith("'") and token.endswith("'"))
+     ):
+         type_ = "literal"
++    elif token.strip() == "|":
++        type_ = "delimiter"
+     elif token.startswith("{"):
+         logger.warning(
+             __("invalid value set (missing closing brace): %s"),

@@ -1,0 +1,70 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 30616c0172..efc53deb4d 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -191,6 +191,8 @@ class MigrationAutodetector:
+         self.generate_altered_db_table()
+         self.generate_altered_order_with_respect_to()
+ 
++        self._add_dependencies_for_model_field_removals()
++
+         self._sort_migrations()
+         self._build_migration_list(graph)
+         self._optimize_migrations()
+@@ -334,6 +336,56 @@ class MigrationAutodetector:
+                     raise ValueError("Cannot resolve operation dependencies: %r" % self.generated_operations)
+             num_ops = new_num_ops
+ 
++    def _add_dependencies_for_model_field_removals(self):
++        """
++        Add dependencies so CreateModel operations for models that inherit
++        from a model whose field is being removed are ordered after the
++        removal. This avoids FieldError when the child model has a local
++        field with the same name as a field that still exists on the base
++        model in the intermediate migration state.
++        """
++        remove_field_keys = set()
++        for app_label, ops in self.generated_operations.items():
++            for op in ops:
++                if isinstance(op, operations.RemoveField):
++                    remove_field_keys.add((
++                        app_label, op.model_name_lower, op.name_lower,
++                    ))
++
++        for app_label, ops in self.generated_operations.items():
++            for operation in list(ops):
++                if not isinstance(operation, operations.CreateModel):
++                    continue
++                for base in operation.bases:
++                    if base is models.Model:
++                        continue
++                    if isinstance(base, str):
++                        if "." in base:
++                            base_app_label, base_model_name = (
++                                base.split(".", 1)
++                            )
++                            base_model_name = base_model_name.lower()
++                        else:
++                            base_app_label = app_label
++                            base_model_name = base.lower()
++                    elif hasattr(base, "_meta"):
++                        base_app_label = base._meta.app_label
++                        base_model_name = base._meta.model_name
++                    else:
++                        continue
++                    for field_name, _field in operation.fields:
++                        if (
++                            base_app_label,
++                            base_model_name,
++                            field_name.lower(),
++                        ) in remove_field_keys:
++                            operation._auto_deps.append((
++                                base_app_label,
++                                base_model_name,
++                                field_name,
++                                False,
++                            ))
++
+     def _sort_migrations(self):
+         """
+         Reorder to make things possible. Reordering may be needed so FKs work

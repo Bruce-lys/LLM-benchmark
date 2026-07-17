@@ -1,0 +1,71 @@
+diff --git a/sphinx/directives/code.py b/sphinx/directives/code.py
+index dc44ed314..342a0362d 100644
+--- a/sphinx/directives/code.py
++++ b/sphinx/directives/code.py
+@@ -1,7 +1,8 @@
++import re
+ import sys
+ import textwrap
+ from difflib import unified_diff
+-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
++from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+ 
+ from docutils import nodes
+ from docutils.nodes import Element, Node
+@@ -22,6 +23,25 @@ if TYPE_CHECKING:
+ logger = logging.getLogger(__name__)
+ 
+ 
++def _get_raw_option_value(block_text: str, option: str) -> Optional[str]:
++    """Return the raw value for a directive option.
++
++    Docutils strips indentation from extension option values.  For
++    ``literalinclude``'s ``:prepend:`` and ``:append:`` options, we want to
++    preserve leading whitespace so users can indent snippets.  The first
++    whitespace character after the option name is treated as the separator.
++    """
++    pattern = re.compile(r'^[ \t]*:%s:([ \t]*)(.*)$' % re.escape(option))
++    for line in block_text.splitlines():
++        match = pattern.match(line)
++        if match:
++            value = match.group(1) + match.group(2)
++            if value and value[0].isspace():
++                value = value[1:]
++            return value
++    return None
++
++
+ class Highlight(SphinxDirective):
+     """
+     Directive to set the highlighting language for code blocks, as well
+@@ -220,13 +240,15 @@ class LiteralIncludeReader:
+         if 'diff' in self.options:
+             lines = self.show_diff()
+         else:
++            # Dedent the included lines before adding prepend/append so those
++            # added lines are not affected.
+             filters = [self.pyobject_filter,
+                        self.start_filter,
+                        self.end_filter,
+                        self.lines_filter,
++                       self.dedent_filter,
+                        self.prepend_filter,
+-                       self.append_filter,
+-                       self.dedent_filter]
++                       self.append_filter]
+             lines = self.read_file(self.filename, location=location)
+             for func in filters:
+                 lines = func(lines, location=location)
+@@ -408,6 +430,12 @@ class LiteralInclude(SphinxDirective):
+ 
+         try:
+             location = self.state_machine.get_source_and_line(self.lineno)
++            if hasattr(self, 'block_text'):
++                for option in ('prepend', 'append'):
++                    value = _get_raw_option_value(self.block_text, option)
++                    if value is not None:
++                        self.options[option] = value
++
+             rel_filename, filename = self.env.relfn2path(self.arguments[0])
+             self.env.note_dependency(rel_filename)
+ 

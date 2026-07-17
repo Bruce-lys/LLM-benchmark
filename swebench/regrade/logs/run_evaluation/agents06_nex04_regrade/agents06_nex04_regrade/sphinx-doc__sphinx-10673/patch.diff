@@ -1,0 +1,185 @@
+diff --git a/sphinx/directives/other.py b/sphinx/directives/other.py
+index 35e16e623..1b7128dc8 100644
+--- a/sphinx/directives/other.py
++++ b/sphinx/directives/other.py
+@@ -12,6 +12,7 @@ from sphinx import addnodes
+ from sphinx.domains.changeset import VersionChange  # NOQA  # for compatibility
+ from sphinx.locale import _, __
+ from sphinx.util import docname_join, logging, url_re
++from sphinx.util.docnames import get_special_toctree_entry
+ from sphinx.util.docutils import SphinxDirective
+ from sphinx.util.matching import Matcher, patfilter
+ from sphinx.util.nodes import explicit_title_re
+@@ -114,30 +115,37 @@ class TocTree(SphinxDirective):
+                     if docname.endswith(suffix):
+                         docname = docname[:-len(suffix)]
+                         break
+-                # absolutize filenames
+-                docname = docname_join(self.env.docname, docname)
+                 if url_re.match(ref) or ref == 'self':
+                     toctree['entries'].append((title, ref))
+-                elif docname not in self.env.found_docs:
+-                    if excluded(self.env.doc2path(docname, False)):
+-                        message = __('toctree contains reference to excluded document %r')
+-                        subtype = 'excluded'
+-                    else:
+-                        message = __('toctree contains reference to nonexisting document %r')
+-                        subtype = 'not_readable'
+-
+-                    logger.warning(message, docname, type='toc', subtype=subtype,
+-                                   location=toctree)
+-                    self.env.note_reread()
+                 else:
+-                    if docname in all_docnames:
+-                        all_docnames.remove(docname)
+-                    else:
+-                        logger.warning(__('duplicated entry found in toctree: %s'), docname,
++                    # absolutize filenames
++                    docname = docname_join(self.env.docname, docname)
++                    # Recognize special toctree entries that do not correspond to
++                    # source documents but to generated index/search pages.
++                    special = get_special_toctree_entry(self.env, docname)
++                    if special is not None and docname not in self.env.found_docs:
++                        title = title or special[1]
++                        toctree['entries'].append((title, special[0]))
++                    elif docname not in self.env.found_docs:
++                        if excluded(self.env.doc2path(docname, False)):
++                            message = __('toctree contains reference to excluded document %r')
++                            subtype = 'excluded'
++                        else:
++                            message = __('toctree contains reference to nonexisting document %r')
++                            subtype = 'not_readable'
++
++                        logger.warning(message, docname, type='toc', subtype=subtype,
+                                        location=toctree)
+-
+-                    toctree['entries'].append((title, docname))
+-                    toctree['includefiles'].append(docname)
++                        self.env.note_reread()
++                    else:
++                        if docname in all_docnames:
++                            all_docnames.remove(docname)
++                        else:
++                            logger.warning(__('duplicated entry found in toctree: %s'), docname,
++                                           location=toctree)
++
++                        toctree['entries'].append((title, docname))
++                        toctree['includefiles'].append(docname)
+ 
+         # entries contains all entries (self references, external links etc.)
+         if 'reversed' in self.options:
+diff --git a/sphinx/environment/adapters/toctree.py b/sphinx/environment/adapters/toctree.py
+index 9678e3c7c..487c59bf2 100644
+--- a/sphinx/environment/adapters/toctree.py
++++ b/sphinx/environment/adapters/toctree.py
+@@ -8,6 +8,7 @@ from docutils.nodes import Element, Node
+ from sphinx import addnodes
+ from sphinx.locale import __
+ from sphinx.util import logging, url_re
++from sphinx.util.docnames import get_special_toctree_entry
+ from sphinx.util.matching import Matcher
+ from sphinx.util.nodes import clean_astext, process_only_nodes
+ 
+@@ -77,6 +78,14 @@ class TocTree:
+         included = Matcher(self.env.config.include_patterns)
+         excluded = Matcher(self.env.config.exclude_patterns)
+ 
++        def _make_toctree_entry(title: str, ref: str, internal: bool) -> Element:
++            reference = nodes.reference('', '', internal=internal,
++                                        refuri=ref, anchorname='',
++                                        *[nodes.Text(title)])
++            para = addnodes.compact_paragraph('', '', reference)
++            item = nodes.list_item('', para)
++            return nodes.bullet_list('', item)
++
+         def _toctree_add_classes(node: Element, depth: int) -> None:
+             """Add 'toctree-l%d' and 'current' classes to the toctree."""
+             for subnode in node.children:
+@@ -140,24 +149,30 @@ class TocTree:
+                         # don't show subitems
+                         toc = nodes.bullet_list('', item)
+                     else:
+-                        if ref in parents:
+-                            logger.warning(__('circular toctree references '
+-                                              'detected, ignoring: %s <- %s'),
+-                                           ref, ' <- '.join(parents),
+-                                           location=ref, type='toc', subtype='circular')
+-                            continue
+-                        refdoc = ref
+-                        toc = self.env.tocs[ref].deepcopy()
+-                        maxdepth = self.env.metadata[ref].get('tocdepth', 0)
+-                        if ref not in toctree_ancestors or (prune and maxdepth > 0):
+-                            self._toctree_prune(toc, 2, maxdepth, collapse)
+-                        process_only_nodes(toc, builder.tags)
+-                        if title and toc.children and len(toc.children) == 1:
+-                            child = toc.children[0]
+-                            for refnode in child.findall(nodes.reference):
+-                                if refnode['refuri'] == ref and \
+-                                   not refnode['anchorname']:
+-                                    refnode.children = [nodes.Text(title)]
++                        special = get_special_toctree_entry(self.env, ref)
++                        if special is not None and ref not in self.env.tocs:
++                            target_docname, special_title = special
++                            title = title or special_title
++                            toc = _make_toctree_entry(title, target_docname, True)
++                        else:
++                            if ref in parents:
++                                logger.warning(__('circular toctree references '
++                                                  'detected, ignoring: %s <- %s'),
++                                               ref, ' <- '.join(parents),
++                                               location=ref, type='toc', subtype='circular')
++                                continue
++                            refdoc = ref
++                            toc = self.env.tocs[ref].deepcopy()
++                            maxdepth = self.env.metadata[ref].get('tocdepth', 0)
++                            if ref not in toctree_ancestors or (prune and maxdepth > 0):
++                                self._toctree_prune(toc, 2, maxdepth, collapse)
++                            process_only_nodes(toc, builder.tags)
++                            if title and toc.children and len(toc.children) == 1:
++                                child = toc.children[0]
++                                for refnode in child.findall(nodes.reference):
++                                    if refnode['refuri'] == ref and \
++                                       not refnode['anchorname']:
++                                        refnode.children = [nodes.Text(title)]
+                     if not toc.children:
+                         # empty toc means: no titles will show up in the toctree
+                         logger.warning(__('toctree contains reference to document %r that '
+diff --git a/sphinx/util/docnames.py b/sphinx/util/docnames.py
+new file mode 100644
+index 000000000..8397f1eb7
+--- /dev/null
++++ b/sphinx/util/docnames.py
+@@ -0,0 +1,33 @@
++"""Utility functions for document names."""
++
++from typing import TYPE_CHECKING, Optional, Tuple
++
++from sphinx.errors import ExtensionError
++
++if TYPE_CHECKING:
++    from sphinx.environment import BuildEnvironment
++
++
++_SPECIAL_TOCTREE_DOCNAMES = frozenset({'genindex', 'py-modindex', 'search'})
++
++
++def get_special_toctree_entry(env: "BuildEnvironment", ref: str) -> Optional[Tuple[str, str]]:
++    """Return the target docname and title for a special toctree entry."""
++    try:
++        std = env.get_domain('std')
++    except ExtensionError:
++        return None
++
++    labels = getattr(std, 'labels', {})
++    anonlabels = getattr(std, 'anonlabels', {})
++    if ref in labels:
++        docname, _labelid, title = labels[ref]
++    elif ref in anonlabels:
++        docname, _labelid = anonlabels[ref]
++        title = ''
++    else:
++        return None
++
++    if docname not in _SPECIAL_TOCTREE_DOCNAMES:
++        return None
++    return docname, title

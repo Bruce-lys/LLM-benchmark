@@ -1,0 +1,113 @@
+diff --git a/django/db/models/fields/json.py b/django/db/models/fields/json.py
+index fafc1beee8..3951242558 100644
+--- a/django/db/models/fields/json.py
++++ b/django/db/models/fields/json.py
+@@ -3,8 +3,11 @@ import json
+ from django import forms
+ from django.core import checks, exceptions
+ from django.db import NotSupportedError, connections, router
++from django.utils.datastructures import OrderedSet
+ from django.db.models import lookups
+-from django.db.models.lookups import PostgresOperatorLookup, Transform
++from django.db.models.lookups import (
++    BuiltinLookup, FieldGetDbPrepValueIterableMixin, PostgresOperatorLookup, Transform,
++)
+ from django.utils.translation import gettext_lazy as _
+ 
+ from . import Field
+@@ -455,6 +458,87 @@ class KeyTransformIRegex(CaseInsensitiveMixin, KeyTransformTextLookupMixin, look
+     pass
+ 
+ 
++class KeyTransformIn(FieldGetDbPrepValueIterableMixin, BuiltinLookup):
++    lookup_name = 'in'
++
++    def as_sql(self, compiler, connection):
++        max_in_list_size = connection.ops.max_in_list_size()
++        if (
++            self.rhs_is_direct_value() and max_in_list_size and
++            len(self.rhs) > max_in_list_size
++        ):
++            return self.split_parameter_list_as_sql(compiler, connection)
++        return super().as_sql(compiler, connection)
++
++    def get_rhs_op(self, connection, rhs):
++        return 'IN %s' % rhs
++
++    def process_rhs(self, compiler, connection):
++        if not self.rhs_is_direct_value():
++            return super().process_rhs(compiler, connection)
++        try:
++            rhs = OrderedSet(self.rhs)
++            rhs.discard(None)
++        except TypeError:  # Unhashable items in self.rhs
++            rhs = [r for r in self.rhs if r is not None]
++        if not rhs:
++            raise exceptions.EmptyResultSet
++        sqls, sqls_params = FieldGetDbPrepValueIterableMixin.batch_process_rhs(
++            self, compiler, connection, rhs
++        )
++        return self._get_rhs(connection, '(' + ', '.join(sqls) + ')', sqls_params)
++
++    def split_parameter_list_as_sql(self, compiler, connection):
++        lhs, lhs_params = self.process_lhs(compiler, connection)
++        all_sqls, all_sqls_params = FieldGetDbPrepValueIterableMixin.batch_process_rhs(
++            self, compiler, connection
++        )
++        max_in_list_size = connection.ops.max_in_list_size()
++        in_clause_elements = ['(']
++        params = []
++        for offset in range(0, len(all_sqls_params), max_in_list_size):
++            if offset > 0:
++                in_clause_elements.append(' OR ')
++            in_clause_elements.append('%s IN (' % lhs)
++            params.extend(lhs_params)
++            sqls = all_sqls[offset: offset + max_in_list_size]
++            sqls_params = all_sqls_params[offset: offset + max_in_list_size]
++            rhs, rhs_params = self._get_rhs(
++                connection, '(' + ', '.join(sqls) + ')', sqls_params
++            )
++            in_clause_elements.append(rhs)
++            in_clause_elements.append(')')
++            params.extend(rhs_params)
++        in_clause_elements.append(')')
++        return ''.join(in_clause_elements), params
++
++    def _get_rhs(self, connection, rhs, rhs_params):
++        if connection.vendor == 'mysql':
++            return (
++                '(' + ', '.join(["JSON_EXTRACT(%s, '$')" for _ in rhs_params]) + ')',
++                rhs_params,
++            )
++        elif connection.vendor == 'oracle':
++            func = []
++            for value in rhs_params:
++                value = json.loads(value)
++                function = 'JSON_QUERY' if isinstance(value, (list, dict)) else 'JSON_VALUE'
++                func.append("%s('%s', '$.value')" % (
++                    function,
++                    json.dumps({'value': value}),
++                ))
++            return '(' + ', '.join(func) + ')', []
++        elif connection.vendor == 'sqlite':
++            return (
++                '(' + ', '.join(
++                    ["JSON_EXTRACT(%s, '$')" if value != 'null' else '%s'
++                     for value in rhs_params]
++                ) + ')',
++                rhs_params,
++            )
++        return rhs, rhs_params
++
++
+ class KeyTransformNumericLookupMixin:
+     def process_rhs(self, compiler, connection):
+         rhs, rhs_params = super().process_rhs(compiler, connection)
+@@ -494,6 +578,7 @@ KeyTransform.register_lookup(KeyTransformLt)
+ KeyTransform.register_lookup(KeyTransformLte)
+ KeyTransform.register_lookup(KeyTransformGt)
+ KeyTransform.register_lookup(KeyTransformGte)
++KeyTransform.register_lookup(KeyTransformIn)
+ 
+ 
+ class KeyTransformFactory:

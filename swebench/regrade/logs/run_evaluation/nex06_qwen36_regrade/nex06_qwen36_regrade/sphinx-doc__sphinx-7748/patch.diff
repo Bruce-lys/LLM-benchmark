@@ -1,0 +1,140 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index f8e4be999..9508dd2fb 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -1044,32 +1044,49 @@ class DocstringSignatureMixin:
+                           RemovedInSphinx40Warning, stacklevel=2)
+         docstrings = self.get_doc()
+         self._new_docstrings = docstrings[:]
+-        result = None
++        signatures = []
++        if self.objpath is None:
++            return None
++        valid_names = [self.objpath[-1]]  # type: ignore
++        if isinstance(self, ClassDocumenter):
++            valid_names.append('__init__')
++            if hasattr(self.object, '__mro__'):
++                valid_names.extend(cls.__name__ for cls in self.object.__mro__)
++
+         for i, doclines in enumerate(docstrings):
+-            # no lines in docstring, no match
+             if not doclines:
+                 continue
+-            # match first line of docstring against signature RE
+-            match = py_ext_sig_re.match(doclines[0])
+-            if not match:
+-                continue
+-            exmod, path, base, args, retann = match.groups()
+-            # the base name must match ours
+-            valid_names = [self.objpath[-1]]  # type: ignore
+-            if isinstance(self, ClassDocumenter):
+-                valid_names.append('__init__')
+-                if hasattr(self.object, '__mro__'):
+-                    valid_names.extend(cls.__name__ for cls in self.object.__mro__)
+-            if base not in valid_names:
+-                continue
+-            # re-prepare docstring to ignore more leading indentation
+-            tab_width = self.directive.state.document.settings.tab_width  # type: ignore
+-            self._new_docstrings[i] = prepare_docstring('\n'.join(doclines[1:]),
+-                                                        tabsize=tab_width)
+-            result = args, retann
+-            # don't look any further
+-            break
+-        return result
++
++            j = 0
++            while j < len(doclines):
++                match = py_ext_sig_re.match(doclines[j])
++                if not match:
++                    break
++                exmod, path, base, args, retann = match.groups()
++                if base not in valid_names:
++                    break
++                signatures.append((args, retann))
++                j += 1
++
++            if signatures:
++                tab_width = self.directive.state.document.settings.tab_width  # type: ignore
++                self._new_docstrings[i] = prepare_docstring('\n'.join(doclines[j:]),
++                                                            tabsize=tab_width)
++                break
++
++        if signatures:
++            self.signatures = signatures
++            return signatures[0]
++        return None
++
++    def _format_signature_lines(self) -> str:
++        lines = []
++        for i, (args, retann) in enumerate(self.signatures):
++            line = "(%s)" % args if args else "()"
++            if retann:
++                line += " -> %s" % retann
++            lines.append(line)
++        return "\n".join(lines)
+ 
+     def get_doc(self, encoding: str = None, ignore: int = None) -> List[List[str]]:
+         if encoding is not None:
+@@ -1088,6 +1105,8 @@ class DocstringSignatureMixin:
+             result = self._find_signature()
+             if result is not None:
+                 self.args, self.retann = result
++                if len(getattr(self, 'signatures', [])) > 1:
++                    return self._format_signature_lines()
+         return super().format_signature(**kwargs)  # type: ignore
+ 
+ 
+diff --git a/tests/roots/test-ext-autodoc/target/__init__.py b/tests/roots/test-ext-autodoc/target/__init__.py
+index b6684ee85..247831cc1 100644
+--- a/tests/roots/test-ext-autodoc/target/__init__.py
++++ b/tests/roots/test-ext-autodoc/target/__init__.py
+@@ -129,6 +129,14 @@ First line of docstring
+             indented line
+         """
+ 
++    def meth_overloaded(self):
++        """DocstringSig.meth_overloaded(int x)
++        DocstringSig.meth_overloaded(str x)
++        DocstringSig.meth_overloaded(float x)
++        Description of the method.
++        """
++        pass
++
+     @property
+     def prop1(self):
+         """DocstringSig.prop1(self)
+diff --git a/tests/test_ext_autodoc_configs.py b/tests/test_ext_autodoc_configs.py
+index 22558885b..205732400 100644
+--- a/tests/test_ext_autodoc_configs.py
++++ b/tests/test_ext_autodoc_configs.py
+@@ -259,6 +259,14 @@ def test_autodoc_docstring_signature(app):
+         '          indented line',
+         '',
+         '',
++        '   .. py:method:: DocstringSig.meth_overloaded(int x)',
++        '                  DocstringSig.meth_overloaded(str x)',
++        '                  DocstringSig.meth_overloaded(float x)',
++        '      :module: target',
++        '',
++        '      Description of the method.',
++        '',
++        '',
+         '   .. py:method:: DocstringSig.prop1',
+         '      :module: target',
+         '      :property:',
+@@ -303,6 +311,15 @@ def test_autodoc_docstring_signature(app):
+         '          indented line',
+         '',
+         '',
++        '   .. py:method:: DocstringSig.meth_overloaded()',
++        '      :module: target',
++        '',
++        '      DocstringSig.meth_overloaded(int x)',
++        '      DocstringSig.meth_overloaded(str x)',
++        '      DocstringSig.meth_overloaded(float x)',
++        '      Description of the method.',
++        '',
++        '',
+         '   .. py:method:: DocstringSig.prop1',
+         '      :module: target',
+         '      :property:',

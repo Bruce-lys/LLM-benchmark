@@ -1,0 +1,55 @@
+diff --git a/xarray/core/rolling.py b/xarray/core/rolling.py
+index aef290f6..6684efb5 100644
+--- a/xarray/core/rolling.py
++++ b/xarray/core/rolling.py
+@@ -270,15 +270,43 @@ class DataArrayRolling(Rolling["DataArray"]):
+     def __iter__(self) -> Iterator[tuple[RollingKey, DataArray]]:
+         if self.ndim > 1:
+             raise ValueError("__iter__ is only supported for 1d-rolling")
+-        stops = np.arange(1, len(self.window_labels) + 1)
+-        starts = stops - int(self.window[0])
+-        starts[: int(self.window[0])] = 0
+-        for (label, start, stop) in zip(self.window_labels, starts, stops):
+-            window = self.obj.isel({self.dim[0]: slice(start, stop)})
+ 
+-            counts = window.count(dim=self.dim[0])
+-            window = window.where(counts >= self.min_periods)
++        dim = self.dim[0]
++        center = self.center[0]
++        if center:
++            start_offset = self.window[0] // 2
++            stop_offset = self.window[0] - 1 - start_offset
++        else:
++            start_offset = self.window[0] - 1
++            stop_offset = 0
+ 
++        window_dim = utils.get_temp_dimname(
++            self.obj.dims, f"_rolling_dim_{dim}"
++        )
++        windows = self.construct(window_dim)
++        counts = windows.notnull().sum(dim=window_dim)
++
++        for i, label in enumerate(self.window_labels):
++            start = i - start_offset
++            stop = i + stop_offset + 1
++
++            window = windows.isel({dim: i}).rename({window_dim: dim})
++            coord_values = np.asarray(self.obj[dim].values)
++            coord_fill_value = dtypes.get_fill_value(coord_values.dtype)
++            coord_dtype = np.result_type(coord_values.dtype, coord_fill_value)
++            coord = np.full(self.window[0], coord_fill_value, dtype=coord_dtype)
++            coord_start = max(start, 0)
++            coord_stop = min(stop, len(coord_values))
++            in_start = max(0, -start)
++            in_stop = in_start + coord_stop - coord_start
++            if in_start < in_stop:
++                coord[in_start:in_stop] = coord_values[coord_start:coord_stop]
++            window = window.assign_coords({dim: coord})
++
++            mask = counts.isel({dim: i})
++            if dim in mask.coords:
++                mask = mask.drop_vars(dim)
++            window = window.where(mask >= self.min_periods)
+             yield (label, window)
+ 
+     def construct(

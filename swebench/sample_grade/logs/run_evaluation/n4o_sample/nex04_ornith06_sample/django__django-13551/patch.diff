@@ -1,0 +1,47 @@
+diff --git a/django/contrib/auth/base_user.py b/django/contrib/auth/base_user.py
+index 3a4a64ee19..55148f4ade 100644
+--- a/django/contrib/auth/base_user.py
++++ b/django/contrib/auth/base_user.py
+@@ -140,6 +140,26 @@ class AbstractBaseUser(models.Model):
+             algorithm=settings.DEFAULT_HASHING_ALGORITHM,
+         ).hexdigest()
+ 
++    def get_password_reset_token_hash_value(self):
++        """
++        Hash the user's primary key and some user state that's sure to change
++        after a password reset to produce a token that is invalidated when it's
++        used:
++        1. The password field will change upon a password reset (even if the
++           same password is chosen, due to password salting).
++        2. The last_login field will usually be updated very shortly after
++           a password reset.
++        3. The email field will change if the user changes their email address.
++        Failing those things, settings.PASSWORD_RESET_TIMEOUT eventually
++        invalidates the token.
++        """
++        # Truncate microseconds so that tokens are consistent even if the
++        # database doesn't support microseconds.
++        login_timestamp = '' if self.last_login is None else self.last_login.replace(microsecond=0, tzinfo=None)
++        email_field = self.__class__.get_email_field_name()
++        email = getattr(self, email_field, '') or ''
++        return str(self.pk) + self.password + str(login_timestamp) + email
++
+     @classmethod
+     def get_email_field_name(cls):
+         try:
+diff --git a/django/contrib/auth/tokens.py b/django/contrib/auth/tokens.py
+index 93e2d71af2..412f9665f7 100644
+--- a/django/contrib/auth/tokens.py
++++ b/django/contrib/auth/tokens.py
+@@ -91,10 +91,7 @@ class PasswordResetTokenGenerator:
+         Running this data through salted_hmac() prevents password cracking
+         attempts using the reset token, provided the secret isn't compromised.
+         """
+-        # Truncate microseconds so that tokens are consistent even if the
+-        # database doesn't support microseconds.
+-        login_timestamp = '' if user.last_login is None else user.last_login.replace(microsecond=0, tzinfo=None)
+-        return str(user.pk) + user.password + str(login_timestamp) + str(timestamp)
++        return user.get_password_reset_token_hash_value() + str(timestamp)
+ 
+     def _num_seconds(self, dt):
+         return int((dt - datetime(2001, 1, 1)).total_seconds())

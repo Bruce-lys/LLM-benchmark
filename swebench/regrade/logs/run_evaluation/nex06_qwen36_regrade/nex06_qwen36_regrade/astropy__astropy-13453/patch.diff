@@ -1,0 +1,74 @@
+diff --git a/astropy/io/ascii/html.py b/astropy/io/ascii/html.py
+index 266cf229c..d5be4eed8 100644
+--- a/astropy/io/ascii/html.py
++++ b/astropy/io/ascii/html.py
+@@ -349,11 +349,13 @@ class HTML(core.BaseReader):
+         cols = list(table.columns.values())
+ 
+         self.data.header.cols = cols
++        self.data.cols = cols
+ 
+         if isinstance(self.data.fill_values, tuple):
+             self.data.fill_values = [self.data.fill_values]
+ 
+         self.data._set_fill_values(cols)
++        self.data._set_col_formats()
+ 
+         lines = []
+ 
+@@ -429,6 +431,7 @@ class HTML(core.BaseReader):
+                                 for i in range(span):
+                                     # Split up multicolumns into separate columns
+                                     new_col = Column([el[i] for el in col])
++                                    new_col.info.format = col.info.format
+ 
+                                     new_col_iter_str_vals = self.fill_values(
+                                         col, new_col.info.iter_str_vals())
+diff --git a/astropy/io/ascii/tests/test_html.py b/astropy/io/ascii/tests/test_html.py
+index 0515efa06..0ead7e2b8 100644
+--- a/astropy/io/ascii/tests/test_html.py
++++ b/astropy/io/ascii/tests/test_html.py
+@@ -534,6 +534,43 @@ def test_write_no_multicols():
+         expected.strip()
+ 
+ 
++def test_write_table_html_formats():
++    """
++    Test that passing formats should format the columns in HTML output.
++    """
++    t = Table([(1.23875234858e-24, 3.2348748432e-15), (2, 4)],
++              names=("a", "b"))
++    out = StringIO()
++    t.write(out, format="html", formats={"a": lambda x: f"{x:.2e}"})
++    expected = """\
++<html>
++ <head>
++  <meta charset="utf-8"/>
++  <meta content="text/html;charset=UTF-8" http-equiv="Content-type"/>
++ </head>
++ <body>
++  <table>
++   <thead>
++    <tr>
++     <th>a</th>
++     <th>b</th>
++    </tr>
++   </thead>
++   <tr>
++    <td>1.24e-24</td>
++    <td>2</td>
++   </tr>
++   <tr>
++    <td>3.23e-15</td>
++    <td>4</td>
++   </tr>
++  </table>
++ </body>
++</html>
++    """
++    assert out.getvalue().strip() == expected.strip()
++
++
+ @pytest.mark.skipif('not HAS_BS4')
+ def test_multicolumn_read():
+     """

@@ -1,0 +1,19 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 76265f5be..bd8ee3dc6 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -726,6 +726,14 @@ class Documenter:
+                 # hack for ClassDocumenter to inject docstring via ObjectMember
+                 doc = obj.docstring
+ 
++            attr_doc = attr_docs.get((namespace, membername))
++            has_obj_docstring = isinstance(obj, ObjectMember) and obj.docstring
++            if attr_doc and not has_obj_docstring:
++                # consider variable comments as docstrings.
++                attr_docstring = '\n'.join(attr_doc)
++                if attr_docstring.strip():
++                    doc = attr_docstring
++
+             has_doc = bool(doc)
+ 
+             metadata = extract_metadata(doc)

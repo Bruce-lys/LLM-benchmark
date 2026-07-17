@@ -1,0 +1,51 @@
+diff --git a/django/db/models/fields/json.py b/django/db/models/fields/json.py
+index fdca700c9d..74b6e1a335 100644
+--- a/django/db/models/fields/json.py
++++ b/django/db/models/fields/json.py
+@@ -126,7 +126,13 @@ class JSONField(CheckFieldDefaultMixin, Field):
+         )
+ 
+ 
+-def compile_json_path(key_transforms, include_root=True):
++def compile_json_path(key_transforms, include_root=True, *, array_index=True):
++    """
++    Build a JSONPath from a sequence of key transforms.
++
++    If array_index is True, integer-like keys are treated as array indexes;
++    otherwise they are treated as object member names.
++    """
+     path = ["$"] if include_root else []
+     for key_transform in key_transforms:
+         try:
+@@ -135,7 +141,11 @@ def compile_json_path(key_transforms, include_root=True):
+             path.append(".")
+             path.append(json.dumps(key_transform))
+         else:
+-            path.append("[%s]" % num)
++            if array_index:
++                path.append("[%s]" % num)
++            else:
++                path.append(".")
++                path.append(json.dumps(key_transform))
+     return "".join(path)
+ 
+ 
+@@ -193,11 +203,17 @@ class HasKeyLookup(PostgresOperatorLookup):
+                 *_, rhs_key_transforms = key.preprocess_lhs(compiler, connection)
+             else:
+                 rhs_key_transforms = [key]
++            # For has_key lookups, the right-hand side is an object member
++            # name, so numeric strings must not be treated as array indices.
+             rhs_params.append(
+                 "%s%s"
+                 % (
+                     lhs_json_path,
+-                    compile_json_path(rhs_key_transforms, include_root=False),
++                    compile_json_path(
++                        rhs_key_transforms,
++                        include_root=False,
++                        array_index=False,
++                    ),
+                 )
+             )
+         # Add condition for each key.

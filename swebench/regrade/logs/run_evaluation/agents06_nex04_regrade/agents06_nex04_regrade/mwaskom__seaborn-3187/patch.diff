@@ -1,0 +1,26 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..77a3ba47 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -378,7 +378,20 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+-            labels = axis.major.formatter.format_ticks(locs)
++
++            formatter = axis.major.formatter
++            if isinstance(formatter, ScalarFormatter):
++                # ScalarFormatter uses offset/scientific notation on axes, but
++                # legend labels need to show the actual values.
++                formatter = copy(formatter)
++                formatter.set_axis(axis)
++                formatter.set_useOffset(False)
++                if hasattr(formatter, "set_scientific"):
++                    formatter.set_scientific(False)
++                elif hasattr(formatter, "_scientific"):
++                    formatter._scientific = False
++
++            labels = formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
+ 
+         return new

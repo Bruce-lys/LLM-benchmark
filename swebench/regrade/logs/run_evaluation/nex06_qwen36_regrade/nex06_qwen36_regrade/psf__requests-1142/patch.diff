@@ -1,0 +1,55 @@
+diff --git a/requests/models.py b/requests/models.py
+index 9926045..d0b0df9 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -348,9 +348,13 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         ])
+ 
+         try:
+-            length = str(super_len(data))
++            length = super_len(data)
+         except (TypeError, AttributeError):
+             length = False
++        if length is not None:
++            length = str(length)
++        else:
++            length = False
+ 
+         if is_stream:
+             body = data
+@@ -359,9 +363,15 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+                 raise NotImplementedError('Streamed bodies and files are mutually exclusive.')
+ 
+             if length:
+-                self.headers['Content-Length'] = length
++                if self.method in ('GET', 'HEAD') and length == '0':
++                    body = None
++                else:
++                    self.headers['Content-Length'] = length
+             else:
+-                self.headers['Transfer-Encoding'] = 'chunked'
++                if self.method in ('GET', 'HEAD') and not body:
++                    body = None
++                else:
++                    self.headers['Transfer-Encoding'] = 'chunked'
+         # Check if file, fo, generator, iterator.
+         # If not, run through normal process.
+ 
+@@ -386,12 +396,15 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+         self.body = body
+ 
+     def prepare_content_length(self, body):
+-        self.headers['Content-Length'] = '0'
++        if body is None:
++            return
++        if self.method in ('GET', 'HEAD') and not body:
++            return
+         if hasattr(body, 'seek') and hasattr(body, 'tell'):
+             body.seek(0, 2)
+             self.headers['Content-Length'] = str(body.tell())
+             body.seek(0, 0)
+-        elif body is not None:
++        else:
+             self.headers['Content-Length'] = str(len(body))
+ 
+     def prepare_auth(self, auth):

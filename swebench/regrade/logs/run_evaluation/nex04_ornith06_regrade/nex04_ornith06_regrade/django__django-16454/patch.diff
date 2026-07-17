@@ -1,0 +1,46 @@
+diff --git a/django/core/management/base.py b/django/core/management/base.py
+index abc6f79a15..96edb5bc52 100644
+--- a/django/core/management/base.py
++++ b/django/core/management/base.py
+@@ -57,6 +57,41 @@ class CommandParser(ArgumentParser):
+         self.called_from_command_line = called_from_command_line
+         super().__init__(**kwargs)
+ 
++    def add_subparsers(self, **kwargs):
++        kwargs.setdefault(
++            "parser_class", type(self)
++        )
++        parser_class = kwargs["parser_class"]
++
++        parent_missing_args_message = self.missing_args_message
++        parent_called_from_command_line = self.called_from_command_line
++
++        if isinstance(parser_class, type):
++            class CommandParserSubclass(parser_class):
++                def __init__(self, **kwargs):
++                    kwargs.setdefault(
++                        "missing_args_message", parent_missing_args_message
++                    )
++                    kwargs.setdefault(
++                        "called_from_command_line", parent_called_from_command_line
++                    )
++                    super().__init__(**kwargs)
++
++            kwargs["parser_class"] = CommandParserSubclass
++        else:
++            def command_parser_subclass(**kwargs):
++                kwargs.setdefault(
++                    "missing_args_message", parent_missing_args_message
++                )
++                kwargs.setdefault(
++                    "called_from_command_line", parent_called_from_command_line
++                )
++                return parser_class(**kwargs)
++
++            kwargs["parser_class"] = command_parser_subclass
++
++        return super().add_subparsers(**kwargs)
++
+     def parse_args(self, args=None, namespace=None):
+         # Catch missing argument for a better error message
+         if self.missing_args_message and not (

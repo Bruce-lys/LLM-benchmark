@@ -1,0 +1,33 @@
+diff --git a/django/utils/http.py b/django/utils/http.py
+index 572cfb4347..3159bec5b5 100644
+--- a/django/utils/http.py
++++ b/django/utils/http.py
+@@ -175,16 +175,23 @@ def parse_http_date(date):
+         raise ValueError("%r is not in a valid HTTP date format" % date)
+     try:
+         year = int(m.group('year'))
+-        if year < 100:
+-            if year < 70:
+-                year += 2000
+-            else:
+-                year += 1900
+         month = MONTHS.index(m.group('mon').lower()) + 1
+         day = int(m.group('day'))
+         hour = int(m.group('hour'))
+         min = int(m.group('min'))
+         sec = int(m.group('sec'))
++        if year < 100:
++            # RFC 7231: future RFC850 dates over 50 years use the past year.
++            now = datetime.datetime.now(datetime.timezone.utc)
++            candidate = datetime.datetime(year + 2000, month, day, hour, min, sec)
++            try:
++                future = now.replace(year=now.year + 50)
++            except ValueError:
++                future = now.replace(year=now.year + 50, day=28)
++            if candidate.replace(tzinfo=datetime.timezone.utc) > future:
++                year += 1900
++            else:
++                year += 2000
+         result = datetime.datetime(year, month, day, hour, min, sec)
+         return calendar.timegm(result.utctimetuple())
+     except Exception as exc:

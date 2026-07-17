@@ -1,0 +1,67 @@
+diff --git a/sympy/polys/polytools.py b/sympy/polys/polytools.py
+index c9e77a901f..d1d37b4940 100644
+--- a/sympy/polys/polytools.py
++++ b/sympy/polys/polytools.py
+@@ -5890,6 +5890,50 @@ def key(obj):
+     return sorted(factors, key=key)
+ 
+ 
++def _merge_factors(factors):
++    """Merge factors with the same factor. """
++    merged = []
++
++    for factor, exp in factors:
++        for i, (f, k) in enumerate(merged):
++            if f == factor:
++                merged[i] = (f, k + exp)
++                break
++        else:
++            merged.append((factor, exp))
++
++    return merged
++
++
++def _sqf_list_factors(factors):
++    """Group square-free factors with the same multiplicity greater than one. """
++    factors = _merge_factors(factors)
++    groups = {}
++
++    for factor, exp in factors:
++        if exp != 1:
++            groups.setdefault(exp, []).append(factor)
++        else:
++            groups.setdefault(exp, []).append((factor, exp))
++
++    result = []
++
++    for exp, items in groups.items():
++        if exp == 1:
++            result.extend(items)
++        elif len(items) == 1:
++            result.append((items[0], exp))
++        else:
++            factor = items[0]
++
++            for g in items[1:]:
++                factor = factor * g
++
++            result.append((factor, exp))
++
++    return result
++
++
+ def _factors_product(factors):
+     """Multiply a list of ``(expr, exp)`` pairs. """
+     return Mul(*[f.as_expr()**k for f, k in factors])
+@@ -5950,6 +5994,11 @@ def _symbolic_factor_list(expr, opt, method):
+ 
+                 factors.append((_factors_product(other), exp))
+ 
++    if method == 'sqf':
++        factors = _sqf_list_factors(factors)
++    else:
++        factors = _merge_factors(factors)
++
+     return coeff, factors
+ 
+ 

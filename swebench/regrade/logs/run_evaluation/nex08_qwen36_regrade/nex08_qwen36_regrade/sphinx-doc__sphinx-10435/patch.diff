@@ -1,0 +1,30 @@
+diff --git a/sphinx/writers/latex.py b/sphinx/writers/latex.py
+index e0c7d56f8..ccc325237 100644
+--- a/sphinx/writers/latex.py
++++ b/sphinx/writers/latex.py
+@@ -1707,12 +1707,19 @@ class LaTeXTranslator(SphinxTranslator):
+         opts = self.config.highlight_options.get(lang, {})
+         hlcode = self.highlighter.highlight_block(
+             node.astext(), lang, opts=opts, location=node)
+-        # TODO: Use nowrap option once LaTeX formatter supports it
+-        # https://github.com/pygments/pygments/pull/1343
+-        hlcode = hlcode.replace(r'\begin{Verbatim}[commandchars=\\\{\}]',
+-                                r'\sphinxcode{\sphinxupquote{')
+-        # get consistent trailer
+-        hlcode = hlcode.rstrip()[:-14]  # strip \end{Verbatim}
++        # Pygments' LaTeX formatter emits a Verbatim environment.  For inline
++        # code, we keep only the highlighted code, preserving the code's own
++        # whitespace while removing the formatter's extra newlines.
++        begin = r'\begin{Verbatim}[commandchars=\\\{\}]'
++        end = r'\end{Verbatim}'
++        inline_begin = r'\sphinxcode{\sphinxupquote{'
++        hlcode = hlcode.replace(begin, inline_begin, 1)
++        if end in hlcode:
++            hlcode = hlcode.replace(end, '', 1)
++            if hlcode.startswith(inline_begin + '\n'):
++                hlcode = inline_begin + hlcode[len(inline_begin) + 1:]
++            if hlcode.endswith('\n'):
++                hlcode = hlcode[:-1]
+         self.body.append(hlcode)
+         self.body.append('}}')
+         raise nodes.SkipNode

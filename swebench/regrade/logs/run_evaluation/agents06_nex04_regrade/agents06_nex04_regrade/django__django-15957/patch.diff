@@ -1,0 +1,107 @@
+diff --git a/django/db/models/fields/related_descriptors.py b/django/db/models/fields/related_descriptors.py
+index b192df4fbf..2e60008757 100644
+--- a/django/db/models/fields/related_descriptors.py
++++ b/django/db/models/fields/related_descriptors.py
+@@ -72,6 +72,38 @@ from django.db.models.utils import resolve_callables
+ from django.utils.functional import cached_property
+ 
+ 
++def _get_prefetch_queryset_with_filters(
++    queryset, filters, *, sticky=False, transform=None
++):
++    """
++    Apply filters to a queryset before slicing, preserving any slice limits.
++    QuerySet.filter() cannot be applied after a slice has been taken.
++    """
++    if queryset is None:
++        return None
++    if not queryset.query.is_sliced:
++        queryset = queryset._next_is_sticky() if sticky else queryset
++        filtered_queryset = queryset.filter(**filters)
++        if transform:
++            filtered_queryset = transform(filtered_queryset)
++        return filtered_queryset
++
++    low_mark = queryset.query.low_mark
++    high_mark = queryset.query.high_mark
++    unsliced_queryset = queryset._chain()
++    if sticky:
++        unsliced_queryset._next_is_sticky()
++    unsliced_queryset.query.clear_limits()
++    filtered_queryset = unsliced_queryset.filter(**filters)
++    if transform:
++        filtered_queryset = transform(filtered_queryset)
++    if high_mark is None:
++        filtered_queryset.query.set_limits(low_mark, None)
++    else:
++        filtered_queryset.query.set_limits(low_mark, high_mark - low_mark)
++    return filtered_queryset
++
++
+ class ForeignKeyDeferredAttribute(DeferredAttribute):
+     def __set__(self, instance, value):
+         if instance.__dict__.get(self.field.attname) != value and self.field.is_cached(
+@@ -145,7 +177,7 @@ class ForwardManyToOneDescriptor:
+             }
+         else:
+             query = {"%s__in" % self.field.related_query_name(): instances}
+-        queryset = queryset.filter(**query)
++        queryset = _get_prefetch_queryset_with_filters(queryset, query)
+ 
+         # Since we're going to assign directly in the cache,
+         # we must manage the reverse relation cache manually.
+@@ -719,7 +751,7 @@ def create_reverse_many_to_one_manager(superclass, rel):
+             instance_attr = self.field.get_foreign_related_value
+             instances_dict = {instance_attr(inst): inst for inst in instances}
+             query = {"%s__in" % self.field.name: instances}
+-            queryset = queryset.filter(**query)
++            queryset = _get_prefetch_queryset_with_filters(queryset, query)
+ 
+             # Since we just bypassed this class' get_queryset(), we must manage
+             # the reverse relation manually.
+@@ -1052,26 +1084,30 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+             queryset = queryset.using(queryset._db or self._db)
+ 
+             query = {"%s__in" % self.query_field_name: instances}
+-            queryset = queryset._next_is_sticky().filter(**query)
+-
+-            # M2M: need to annotate the query in order to get the primary model
+-            # that the secondary model was actually related to. We know that
+-            # there will already be a join on the join table, so we can just add
+-            # the select.
+ 
+             # For non-autocreated 'through' models, can't assume we are
+             # dealing with PK values.
+             fk = self.through._meta.get_field(self.source_field_name)
+-            join_table = fk.model._meta.db_table
+             connection = connections[queryset.db]
+-            qn = connection.ops.quote_name
+-            queryset = queryset.extra(
+-                select={
+-                    "_prefetch_related_val_%s"
+-                    % f.attname: "%s.%s"
+-                    % (qn(join_table), qn(f.column))
+-                    for f in fk.local_related_fields
+-                }
++
++            def annotate(queryset):
++                # M2M: need to annotate the query in order to get the primary model
++                # that the secondary model was actually related to. We know that
++                # there will already be a join on the join table, so we can just add
++                # the select.
++                join_table = fk.model._meta.db_table
++                qn = connection.ops.quote_name
++                return queryset.extra(
++                    select={
++                        "_prefetch_related_val_%s"
++                        % f.attname: "%s.%s"
++                        % (qn(join_table), qn(f.column))
++                        for f in fk.local_related_fields
++                    }
++                )
++
++            queryset = _get_prefetch_queryset_with_filters(
++                queryset, query, sticky=True, transform=annotate
+             )
+             return (
+                 queryset,

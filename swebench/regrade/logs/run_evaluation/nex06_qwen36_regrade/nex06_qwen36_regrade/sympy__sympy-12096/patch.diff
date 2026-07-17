@@ -1,0 +1,24 @@
+diff --git a/sympy/core/function.py b/sympy/core/function.py
+index 1b8005e1d..4177d0008 100644
+--- a/sympy/core/function.py
++++ b/sympy/core/function.py
+@@ -507,7 +507,18 @@ def _eval_evalf(self, prec):
+             func = getattr(mpmath, fname)
+         except (AttributeError, KeyError):
+             try:
+-                return Float(self._imp_(*self.args), prec)
++                result = self._imp_(*self.args)
++                if result is self or (hasattr(result, 'has') and result.has(self)):
++                    return None
++                if isinstance(result, Expr) and result.free_symbols:
++                    return None
++                try:
++                    v = result._eval_evalf(prec)
++                except (AttributeError, TypeError, ValueError):
++                    v = None
++                if v is not None:
++                    return v
++                return Float(result, prec)
+             except (AttributeError, TypeError, ValueError):
+                 return
+ 

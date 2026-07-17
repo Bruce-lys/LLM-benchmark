@@ -1,0 +1,44 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 13a6809dd8..885b426626 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -394,6 +394,31 @@ class Query(BaseExpression):
+             alias = None
+         return target.get_col(alias, field)
+ 
++    def _annotation_references_over_clause(self, ref, seen=None):
++        """
++        Return True if an annotation contains a window function or references
++        another annotation that contains one.
++        """
++        if seen is None:
++            seen = set()
++        if ref in seen:
++            return False
++        seen.add(ref)
++        annotation = self.annotations.get(ref)
++        if annotation is None:
++            return False
++        if isinstance(annotation, Ref):
++            refs = annotation.get_refs()
++            if len(refs) != 1:
++                return False
++            return self._annotation_references_over_clause(next(iter(refs)), seen)
++        if annotation.contains_over_clause:
++            return True
++        return any(
++            self._annotation_references_over_clause(child_ref, seen.copy())
++            for child_ref in annotation.get_refs()
++        )
++
+     def get_aggregation(self, using, aggregate_exprs):
+         """
+         Return the dictionary with the values of the existing aggregations.
+@@ -417,6 +442,7 @@ class Query(BaseExpression):
+             self.append_annotation_mask([alias])
+             refs_subquery |= any(
+                 getattr(self.annotations[ref], "subquery", False)
++                or self._annotation_references_over_clause(ref)
+                 for ref in aggregate.get_refs()
+             )
+             aggregate = aggregate.replace_expressions(replacements)

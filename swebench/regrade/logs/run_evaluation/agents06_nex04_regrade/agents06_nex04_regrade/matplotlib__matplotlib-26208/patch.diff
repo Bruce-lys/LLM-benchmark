@@ -1,0 +1,48 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 5203e3232c..467717221b 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -2458,8 +2458,6 @@ class _AxesBase(martist.Artist):
+         visible_only : bool, default: False
+             Whether to exclude invisible artists.
+         """
+-        # Collections are deliberately not supported (yet); see
+-        # the TODO note in artists.py.
+         self.dataLim.ignore(True)
+         self.dataLim.set_points(mtransforms.Bbox.null().get_points())
+         self.ignore_existing_data_limits = True
+@@ -2472,6 +2470,12 @@ class _AxesBase(martist.Artist):
+                     self._update_patch_limits(artist)
+                 elif isinstance(artist, mimage.AxesImage):
+                     self._update_image_limits(artist)
++                elif isinstance(artist, mcoll.Collection):
++                    datalim = artist.get_datalim(self.transData)
++                    points = datalim.get_points()
++                    if not np.isinf(datalim.minpos).all():
++                        points = np.concatenate([points, [datalim.minpos]])
++                    self.update_datalim(points)
+ 
+     def update_datalim(self, xys, updatex=True, updatey=True):
+         """
+diff --git a/lib/matplotlib/tests/test_axes.py b/lib/matplotlib/tests/test_axes.py
+index 4f01752819..3e8c8faa21 100644
+--- a/lib/matplotlib/tests/test_axes.py
++++ b/lib/matplotlib/tests/test_axes.py
+@@ -7123,6 +7123,17 @@ def test_minorticks_on(xscale, yscale):
+     ax.minorticks_on()
+ 
+ 
++def test_twinx_stackplot_data_limits_not_reset():
++    fig, ax1 = plt.subplots()
++    x = ["16 May", "17 May"]
++    y = [-22.717708333333402, 26.584999999999937]
++    ax1.stackplot(x, y)
++    ax2 = ax1.twinx()
++    ax2.plot(x, [-0.08501399999999998, -2.9833019999999966])
++
++    assert_allclose(ax1.dataLim.intervalx, [0, 1])
++    assert_allclose(ax1.dataLim.intervaly, y)
++
+ def test_twinx_knows_limits():
+     fig, ax = plt.subplots()
+ 

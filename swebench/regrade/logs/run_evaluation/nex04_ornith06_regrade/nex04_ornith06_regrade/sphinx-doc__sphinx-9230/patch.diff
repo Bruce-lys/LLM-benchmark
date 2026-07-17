@@ -1,0 +1,62 @@
+diff --git a/sphinx/util/docfields.py b/sphinx/util/docfields.py
+index 3a3367ebe..6f34d7d46 100644
+--- a/sphinx/util/docfields.py
++++ b/sphinx/util/docfields.py
+@@ -22,6 +22,48 @@ if TYPE_CHECKING:
+     from sphinx.directive import ObjectDescription
+ 
+ 
++def _split_type_name(fieldarg: str) -> Tuple[str, str]:
++    """Split type and name, respecting nested parentheses, brackets, and braces."""
++    depth = 0
++    in_string = None
++    i = 0
++    while i < len(fieldarg):
++        c = fieldarg[i]
++        if in_string:
++            if c == '\\':
++                i += 2
++                continue
++            elif c == in_string:
++                in_string = None
++        else:
++            if c in ('"', "'"):
++                in_string = c
++            elif c in '([{':
++                depth += 1
++            elif c in ')]}':
++                depth -= 1
++            elif c.isspace() and depth == 0:
++                # Check if this is part of an " or " keyword
++                # If so, consider it part of the type, not the split point
++                after = fieldarg[i + 1:].lstrip()
++                if after.startswith('or') and (len(after) == 2 or after[2].isspace()):
++                    # Skip "or" and following whitespace
++                    i += 1  # skip the initial whitespace
++                    i += 2  # skip 'o' and 'r'
++                    while i < len(fieldarg) and fieldarg[i].isspace():
++                        i += 1
++                    continue
++                # Found the split point
++                argtype = fieldarg[:i]
++                rest = fieldarg[i + 1:]
++                # rest might have more parts, but we want just the name
++                parts = rest.split(None, 1)
++                argname = parts[0]
++                return argtype, argname
++        i += 1
++    raise ValueError("Cannot split into type and name")
++
++
+ def _is_single_paragraph(node: nodes.field_body) -> bool:
+     """True if the node only contains one paragraph (and system messages)."""
+     if len(node) == 0:
+@@ -298,7 +340,7 @@ class DocFieldTransformer:
+             # also support syntax like ``:param type name:``
+             if typedesc.is_typed:
+                 try:
+-                    argtype, argname = fieldarg.split(None, 1)
++                    argtype, argname = _split_type_name(fieldarg)
+                 except ValueError:
+                     pass
+                 else:

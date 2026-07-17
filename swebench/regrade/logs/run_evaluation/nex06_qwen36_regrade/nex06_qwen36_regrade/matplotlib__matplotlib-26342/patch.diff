@@ -1,0 +1,45 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 3f84250b64..d65f47a613 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -986,6 +986,28 @@ class ContourSet(ContourLabeler, mcoll.Collection):
+             self._transform = self._transform._as_mpl_transform(self.axes)
+         return self._transform
+ 
++    def set_paths(self, paths):
++        """
++        Set the paths of this contour set.
++
++        Parameters
++        ----------
++        paths : list of `.path.Path`
++            The paths that make up the contour lines or filled regions.
++        """
++        self._paths = paths
++        self.stale = True
++        if hasattr(self, "_old_style_split_collections"):
++            if len(paths) != len(self._old_style_split_collections):
++                for col in self._old_style_split_collections:
++                    if hasattr(col, "_remove_method"):
++                        col._remove_method(col)
++                del self._old_style_split_collections
++                self.collections
++            else:
++                for path, coll in zip(paths, self._old_style_split_collections):
++                    coll.set_paths([path])
++
+     def __getstate__(self):
+         state = self.__dict__.copy()
+         # the C object _contour_generator cannot currently be pickled. This
+diff --git a/lib/matplotlib/contour.pyi b/lib/matplotlib/contour.pyi
+index c7179637a1..ef661da412 100644
+--- a/lib/matplotlib/contour.pyi
++++ b/lib/matplotlib/contour.pyi
+@@ -151,6 +151,7 @@ class ContourSet(ContourLabeler, Collection):
+         clip_path: Patch | Path | TransformedPath | TransformedPatchPath | None = ...,
+         **kwargs
+     ) -> None: ...
++    def set_paths(self, paths: Sequence[Path]) -> None: ...
+     def legend_elements(
+         self, variable_name: str = ..., str_format: Callable[[float], str] = ...
+     ) -> tuple[list[Artist], list[str]]: ...

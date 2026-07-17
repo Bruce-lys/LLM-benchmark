@@ -1,0 +1,49 @@
+diff --git a/xarray/core/rolling.py b/xarray/core/rolling.py
+index aef290f6..86b55d94 100644
+--- a/xarray/core/rolling.py
++++ b/xarray/core/rolling.py
+@@ -270,16 +270,37 @@ class DataArrayRolling(Rolling["DataArray"]):
+     def __iter__(self) -> Iterator[tuple[RollingKey, DataArray]]:
+         if self.ndim > 1:
+             raise ValueError("__iter__ is only supported for 1d-rolling")
+-        stops = np.arange(1, len(self.window_labels) + 1)
+-        starts = stops - int(self.window[0])
+-        starts[: int(self.window[0])] = 0
++
++        dim = self.dim[0]
++        window = int(self.window[0])
++        center = self.center[0]
++
++        # Determine padding to match the behavior of rolling_window
++        if center:
++            pad_start = window // 2
++            pad_end = window - 1 - pad_start
++        else:
++            pad_start = window - 1
++            pad_end = 0
++
++        # Promote dtype so that the padding can hold NaN/NaT for integer
++        # and datetime arrays, matching the behavior of rolling_window.
++        dtype, fill_value = dtypes.maybe_promote(self.obj.dtype)
++        obj = self.obj.astype(dtype, copy=False).pad(
++            {dim: (pad_start, pad_end)},
++            mode="constant",
++            constant_values=fill_value,
++        )
++
++        starts = np.arange(len(self.window_labels))
++        stops = starts + window
+         for (label, start, stop) in zip(self.window_labels, starts, stops):
+-            window = self.obj.isel({self.dim[0]: slice(start, stop)})
++            window_da = obj.isel({dim: slice(start, stop)})
+ 
+-            counts = window.count(dim=self.dim[0])
+-            window = window.where(counts >= self.min_periods)
++            counts = window_da.count(dim=dim)
++            window_da = window_da.where(counts >= self.min_periods)
+ 
+-            yield (label, window)
++            yield (label, window_da)
+ 
+     def construct(
+         self,

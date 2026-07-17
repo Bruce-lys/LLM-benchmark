@@ -1,0 +1,33 @@
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 6ea18dd22f..62b61a67e1 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -324,6 +324,9 @@ class LocalePrefixPattern:
+         language_prefix = self.language_prefix
+         if path.startswith(language_prefix):
+             return path[len(language_prefix):], (), {}
++        # Check if the path starts with the language prefix, ignoring case.
++        if path.lower().startswith(language_prefix.lower()):
++            return path[len(language_prefix):], (), {}
+         return None
+ 
+     def check(self):
+diff --git a/django/utils/translation/trans_real.py b/django/utils/translation/trans_real.py
+index 7dcc77b46c..e2906d1220 100644
+--- a/django/utils/translation/trans_real.py
++++ b/django/utils/translation/trans_real.py
+@@ -505,6 +505,14 @@ def get_language_from_path(path, strict=False):
+     If `strict` is False (the default), look for a country-specific variant
+     when neither the language code nor its generic variant is found.
+     """
++    # First, check if the path starts with a supported language code.
++    # This handles BCP 47 language codes with script and/or region subtags.
++    for lang_code in sorted(get_languages().keys(), key=len, reverse=True):
++        if path.startswith(f'/{lang_code}/') or path == f'/{lang_code}':
++            try:
++                return get_supported_language_variant(lang_code, strict=strict)
++            except LookupError:
++                pass
+     regex_match = language_code_prefix_re.match(path)
+     if not regex_match:
+         return None

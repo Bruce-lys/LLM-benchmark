@@ -1,0 +1,129 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 9735ce10c8..97fb352f02 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -545,11 +545,124 @@ class Query(BaseExpression):
+ 
+         return dict(zip(outer_query.annotation_select, result))
+ 
++    def _get_annotation_refs(self, exprs, seen_refs=None, seen_exprs=None):
++        if seen_refs is None:
++            seen_refs = set()
++        if seen_exprs is None:
++            seen_exprs = set()
++        for expr in exprs:
++            if expr is None or id(expr) in seen_exprs:
++                continue
++            seen_exprs.add(id(expr))
++            if isinstance(expr, Ref):
++                alias = expr.refs
++                if alias in self.annotations and alias not in seen_refs:
++                    seen_refs.add(alias)
++                    yield alias
++                for source in expr.get_source_expressions():
++                    yield from self._get_annotation_refs(
++                        [source], seen_refs, seen_exprs
++                    )
++            elif isinstance(expr, F):
++                name = getattr(expr, "name", None)
++                if name in self.annotations:
++                    yield name
++            elif hasattr(expr, "get_source_expressions"):
++                for source in expr.get_source_expressions():
++                    yield from self._get_annotation_refs(
++                        [source], seen_refs, seen_exprs
++                    )
++
++    def _annotation_refs_from_filter(self):
++        if self.where is None:
++            return set()
++        return set(self._get_annotation_refs([self.where]))
++
++    def _annotation_refs_from_ordering(self):
++        refs = set()
++        for item in (*self.extra_order_by, *self.order_by):
++            if isinstance(item, str):
++                if item == "?":
++                    continue
++                if item.startswith("-"):
++                    item = item[1:]
++                if item in self.annotations:
++                    refs.add(item)
++            else:
++                refs.update(self._get_annotation_refs([item]))
++        return refs
++
++    def _annotation_refs_from_values(self):
++        if not self.values_select:
++            return set()
++        if self.annotation_select_mask is None:
++            return set(self.annotations)
++        return set(self.annotation_select_mask)
++
++    def _get_needed_annotation_names(self):
++        needed = self._annotation_refs_from_filter()
++        needed.update(self._annotation_refs_from_ordering())
++        needed.update(self._annotation_refs_from_values())
++        needed.intersection_update(self.annotations)
++
++        queue = list(needed)
++        seen = set(needed)
++        for alias in queue:
++            annotation = self.annotations.get(alias)
++            if annotation is None:
++                continue
++            for ref in self._get_annotation_refs([annotation]):
++                if ref not in seen:
++                    seen.add(ref)
++                    queue.append(ref)
++        return seen
++
++    def _annotation_col_aliases(self, exprs, seen_exprs=None):
++        if seen_exprs is None:
++            seen_exprs = set()
++        for expr in exprs:
++            if expr is None or id(expr) in seen_exprs:
++                continue
++            seen_exprs.add(id(expr))
++            if isinstance(expr, (F, Ref)):
++                continue
++            if isinstance(expr, Col):
++                yield expr
++            elif callable(getattr(expr, "get_external_cols", None)):
++                yield from expr.get_external_cols()
++            elif hasattr(expr, "get_source_expressions"):
++                for source in expr.get_source_expressions():
++                    yield from self._annotation_col_aliases(
++                        [source], seen_exprs
++                    )
++
++    def _unref_annotation_cols(self, annotations):
++        base_alias = self.base_table
++        for annotation in annotations.values():
++            for col in self._annotation_col_aliases([annotation]):
++                alias = getattr(col, "alias", None)
++                if alias and alias != base_alias:
++                    self.alias_refcount[alias] = max(
++                        0, self.alias_refcount.get(alias, 0) - 1
++                    )
++
++    def _remove_unneeded_annotations(self):
++        if not self.annotations:
++            return
++        needed = self._get_needed_annotation_names()
++        removed = {
++            alias: self.annotations[alias]
++            for alias in set(self.annotations) - needed
++        }
++        self._unref_annotation_cols(removed)
++        self.set_annotation_mask(needed or set())
++
+     def get_count(self, using):
+         """
+         Perform a COUNT() query using the current filter constraints.
+         """
+         obj = self.clone()
++        obj._remove_unneeded_annotations()
+         obj.add_annotation(Count("*"), alias="__count", is_summary=True)
+         return obj.get_aggregation(using, ["__count"])["__count"]
+ 

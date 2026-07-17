@@ -1,0 +1,15 @@
+diff --git a/lib/matplotlib/colors.py b/lib/matplotlib/colors.py
+index 2d3072da04..05778bab35 100644
+--- a/lib/matplotlib/colors.py
++++ b/lib/matplotlib/colors.py
+@@ -714,6 +714,10 @@ class Colormap:
+             mask_bad = np.isnan(xa)
+         if not xa.dtype.isnative:
+             xa = xa.byteswap().newbyteorder()  # Native byteorder is faster.
++        if xa.dtype.kind in "iu" and np.iinfo(xa.dtype).max < self._i_over:
++            # Sentinel indices can exceed the range of integer input arrays,
++            # so use a signed integer dtype before assigning them.
++            xa = xa.astype(np.intp, copy=False)
+         if xa.dtype.kind == "f":
+             with np.errstate(invalid="ignore"):
+                 xa *= self.N

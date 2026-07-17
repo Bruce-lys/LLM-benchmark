@@ -1,0 +1,21 @@
+diff --git a/sympy/polys/polytools.py b/sympy/polys/polytools.py
+index d5ac051f6..71dfb9672 100644
+--- a/sympy/polys/polytools.py
++++ b/sympy/polys/polytools.py
+@@ -106,6 +106,7 @@ class Poly(Expr):
+ 
+     is_commutative = True
+     is_Poly = True
++    _op_priority = 10.01
+ 
+     def __new__(cls, rep, *gens, **args):
+         """Create a new polynomial instance out of something useful. """
+@@ -4055,7 +4056,7 @@ def __rmul__(f, g):
+             except PolynomialError:
+                 return g*f.as_expr()
+ 
+-        return g.mul(f)
++        return f.mul(g)
+ 
+     @_sympifyit('n', NotImplemented)
+     def __pow__(f, n):

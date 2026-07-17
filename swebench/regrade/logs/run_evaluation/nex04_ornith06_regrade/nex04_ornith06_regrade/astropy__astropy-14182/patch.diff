@@ -1,0 +1,33 @@
+diff --git a/astropy/io/ascii/rst.py b/astropy/io/ascii/rst.py
+index abdeba8ef..03264d1b9 100644
+--- a/astropy/io/ascii/rst.py
++++ b/astropy/io/ascii/rst.py
+@@ -57,10 +57,24 @@ class RST(FixedWidth):
+     data_class = SimpleRSTData
+     header_class = SimpleRSTHeader
+ 
+-    def __init__(self):
+-        super().__init__(delimiter_pad=None, bookend=False)
++    def __init__(self, header_rows=None):
++        if header_rows is None:
++            header_rows = ["name"]
++        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+ 
+     def write(self, lines):
+         lines = super().write(lines)
+-        lines = [lines[1]] + lines + [lines[1]]
+-        return lines
++        # Locate the position line which is after all header rows
++        n_header_rows = len(self.data.header_rows)
++        position_line = lines[n_header_rows]
++        # Build output: position_line, header_rows with position_line between each,
++        # then position_line (already at lines[n_header_rows]), then data, then
++        # position_line at bottom.
++        new_lines = [position_line]
++        for i in range(n_header_rows):
++            new_lines.append(lines[i])
++            new_lines.append(position_line)
++        # Add data lines (skip the position line at lines[n_header_rows])
++        new_lines.extend(lines[n_header_rows + 1 :])
++        new_lines.append(position_line)
++        return new_lines

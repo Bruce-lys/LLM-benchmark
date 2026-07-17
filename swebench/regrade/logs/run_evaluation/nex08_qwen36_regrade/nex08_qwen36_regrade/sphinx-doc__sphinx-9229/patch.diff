@@ -1,0 +1,183 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 1f4c98284..1c223ec62 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -10,6 +10,7 @@
+     :license: BSD, see LICENSE for details.
+ """
+ 
++import ast
+ import re
+ import warnings
+ from inspect import Parameter, Signature
+@@ -1772,6 +1773,7 @@ class DataDocumenterMixinBase:
+     parent: Any = None
+     object: Any = None
+     objpath: List[str] = None
++    analyzer: ModuleAnalyzer = None
+ 
+     def should_suppress_directive_header(self) -> bool:
+         """Check directive header should be suppressed."""
+@@ -1785,6 +1787,96 @@ class DataDocumenterMixinBase:
+         """Update docstring for the NewType object."""
+         pass
+ 
++    def _get_docstring_from_source(self) -> Optional[List[str]]:
++        """Get PEP 257 docstring from the source code if any."""
++        if self.analyzer is None or self.analyzer.srcname is None or not self.objpath:
++            return None
++
++        source = self.analyzer.code
++        try:
++            tree = ast.parse(source, filename=self.analyzer.srcname)
++        except SyntaxError:
++            return None
++
++        parents = {}
++        for parent in ast.walk(tree):
++            for child in ast.iter_child_nodes(parent):
++                parents[child] = parent
++
++        for node in ast.walk(tree):
++            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
++                continue
++            if not self._matches_assign_target(node):
++                continue
++            if not self._is_in_correct_scope(node, parents):
++                continue
++            parent = parents.get(node)
++            if parent is None:
++                continue
++            body = getattr(parent, 'body', None)
++            if body is None:
++                continue
++            try:
++                index = body.index(node)
++            except ValueError:
++                continue
++            if index + 1 < len(body):
++                docstring_node = body[index + 1]
++                if isinstance(docstring_node, ast.Expr):
++                    value = docstring_node.value
++                    ast_constant = getattr(ast, 'Constant', None)
++                    if ((ast_constant and isinstance(value, ast_constant) or
++                         isinstance(value, ast.Str)) and isinstance(value.s, str)):
++                        return [value.s, '']
++        return None
++
++    def _matches_assign_target(self, node: ast.AST) -> bool:
++        if not self.objpath:
++            return False
++
++        attrname = self.objpath[-1]
++        targets = node.targets if isinstance(node, ast.Assign) else [node.target]  # type: ignore
++        for target in targets:
++            if self._target_name(target) == attrname:
++                return True
++        return False
++
++    def _target_name(self, target: ast.expr) -> Optional[str]:
++        if isinstance(target, ast.Name):
++            return target.id
++        elif isinstance(target, ast.Attribute):
++            return target.attr
++        elif isinstance(target, (ast.Tuple, ast.List)):
++            for elt in target.elts:
++                name = self._target_name(elt)
++                if name:
++                    return name
++        return None
++
++    def _is_in_correct_scope(self, node: ast.AST, parents: Dict[ast.AST, ast.AST]) -> bool:
++        parent = parents.get(node)
++        if self.objpath and len(self.objpath) == 1:
++            # module-level object: assignment must not be nested in a class/function
++            while parent:
++                if isinstance(parent, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
++                    return False
++                parent = parents.get(parent)
++            return True
++        elif len(self.objpath) >= 2:
++            # class-level object: assignment must be inside the matching class
++            while parent:
++                if isinstance(parent, ast.ClassDef):
++                    return parent.name == self.objpath[-2]
++                parent = parents.get(parent)
++        return False
++
++    def _has_docstring(self) -> bool:
++        docstring = self.get_attr(self.object, '__doc__', None)
++        if docstring:
++            return True
++        else:
++            return self._get_docstring_from_source() is not None
++
+ 
+ class GenericAliasMixin(DataDocumenterMixinBase):
+     """
+@@ -1797,7 +1889,7 @@ class GenericAliasMixin(DataDocumenterMixinBase):
+                 super().should_suppress_directive_header())
+ 
+     def update_content(self, more_content: StringList) -> None:
+-        if inspect.isgenericalias(self.object):
++        if inspect.isgenericalias(self.object) and not self._has_docstring():
+             more_content.append(_('alias of %s') % restify(self.object), '')
+             more_content.append('', '')
+ 
+@@ -1815,7 +1907,7 @@ class NewTypeMixin(DataDocumenterMixinBase):
+                 super().should_suppress_directive_header())
+ 
+     def update_content(self, more_content: StringList) -> None:
+-        if inspect.isNewType(self.object):
++        if inspect.isNewType(self.object) and not self._has_docstring():
+             supertype = restify(self.object.__supertype__)
+             more_content.append(_('alias of %s') % supertype, '')
+             more_content.append('', '')
+@@ -1843,12 +1935,23 @@ class TypeVarMixin(DataDocumenterMixinBase):
+             if self.object.__doc__ != TypeVar.__doc__:
+                 return super().get_doc()  # type: ignore
+             else:
+-                return []
++                docstring = self._get_docstring_from_source()
++                if docstring:
++                    return docstring
++                else:
++                    return []
+         else:
+             return super().get_doc()  # type: ignore
+ 
+-    def update_content(self, more_content: StringList) -> None:
++    def _has_docstring(self) -> bool:
+         if isinstance(self.object, TypeVar):
++            return self.object.__doc__ != TypeVar.__doc__ or \
++                self._get_docstring_from_source() is not None
++        else:
++            return super()._has_docstring()
++
++    def update_content(self, more_content: StringList) -> None:
++        if isinstance(self.object, TypeVar) and not self._has_docstring():
+             attrs = [repr(self.object.__name__)]
+             for constraint in self.object.__constraints__:
+                 attrs.append(stringify_typehint(constraint))
+@@ -2008,10 +2111,6 @@ class DataDocumenter(GenericAliasMixin, NewTypeMixin, TypeVarMixin,
+ 
+     def add_content(self, more_content: Optional[StringList], no_docstring: bool = False
+                     ) -> None:
+-        # Disable analyzing variable comment on Documenter.add_content() to control it on
+-        # DataDocumenter.add_content()
+-        self.analyzer = None
+-
+         if not more_content:
+             more_content = StringList()
+ 
+@@ -2589,10 +2688,6 @@ class AttributeDocumenter(GenericAliasMixin, NewTypeMixin, SlotsMixin,  # type:
+ 
+     def add_content(self, more_content: Optional[StringList], no_docstring: bool = False
+                     ) -> None:
+-        # Disable analyzing attribute comment on Documenter.add_content() to control it on
+-        # AttributeDocumenter.add_content()
+-        self.analyzer = None
+-
+         if more_content is None:
+             more_content = StringList()
+         self.update_content(more_content)

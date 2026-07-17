@@ -1,0 +1,59 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 4f805e0177..204f057005 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -20,6 +20,7 @@ import matplotlib.colors as mcolors
+ import matplotlib.font_manager as font_manager
+ import matplotlib.image as mimage
+ import matplotlib.lines as mlines
++import matplotlib.path as mpath
+ import matplotlib.patches as mpatches
+ from matplotlib.rcsetup import cycler, validate_axisbelow
+ import matplotlib.spines as mspines
+@@ -2431,14 +2432,39 @@ class _AxesBase(martist.Artist):
+                 ((not patch.get_width()) and (not patch.get_height()))):
+             return
+         p = patch.get_path()
+-        # Get all vertices on the path
+-        # Loop through each segment to get extrema for Bezier curve sections
++        # Get all vertices on the path.  For Bezier curves, only include
++        # points on the curve itself, not the control points.
+         vertices = []
+-        for curve, code in p.iter_bezier():
+-            # Get distance along the curve of any extrema
+-            _, dzeros = curve.axis_aligned_extrema()
+-            # Calculate vertices of start, end and any extrema in between
+-            vertices.append(curve([0, *dzeros, 1]))
++        prev = None
++        first_vert = None
++        for vertex, code in p.iter_segments(simplify=False, snap=False):
++            if code == mpath.Path.MOVETO:
++                vertices.append(vertex)
++                first_vert = vertex
++                prev = vertex
++            elif code == mpath.Path.LINETO:
++                vertices.append(vertex)
++                prev = vertex
++            elif code == mpath.Path.CLOSEPOLY:
++                if first_vert is not None:
++                    vertices.append(first_vert)
++                prev = first_vert
++            elif code == mpath.Path.STOP:
++                break
++            elif code == mpath.Path.CURVE3:
++                bez = mpath.BezierSegment(
++                    np.concatenate((prev, vertex)).reshape((-1, 2)))
++                _, dzeros = bez.axis_aligned_extrema()
++                vertices.append(bez([0, *dzeros, 1]))
++                prev = vertex[-2:]
++            elif code == mpath.Path.CURVE4:
++                bez = mpath.BezierSegment(
++                    np.concatenate((prev, vertex)).reshape((-1, 2)))
++                _, dzeros = bez.axis_aligned_extrema()
++                vertices.append(bez([0, *dzeros, 1]))
++                prev = vertex[-2:]
++            else:
++                raise ValueError(f"Invalid Path.code_type: {code}")
+ 
+         if len(vertices):
+             vertices = np.row_stack(vertices)

@@ -1,0 +1,64 @@
+diff --git a/django/db/migrations/operations/models.py b/django/db/migrations/operations/models.py
+index 967a91fdc8..50d3ace510 100644
+--- a/django/db/migrations/operations/models.py
++++ b/django/db/migrations/operations/models.py
+@@ -807,6 +807,9 @@ class IndexOperation(Operation):
+     def model_name_lower(self):
+         return self.model_name.lower()
+ 
++    def references_model(self, name, app_label):
++        return name.lower() == self.model_name_lower
++
+ 
+ class AddIndex(IndexOperation):
+     """Add an index on a model."""
+@@ -857,6 +860,21 @@ class AddIndex(IndexOperation):
+             self.model_name,
+         )
+ 
++    def references_field(self, model_name, name, app_label):
++        return self.references_model(model_name, app_label)
++
++    def reduce(self, operation, app_label):
++        if (
++            isinstance(operation, RemoveIndex)
++            and self.model_name_lower == operation.model_name_lower
++            and self.index.name == operation.name
++        ):
++            return []
++        return (
++            super().reduce(operation, app_label)
++            or not operation.references_model(self.model_name, app_label)
++        )
++
+     @property
+     def migration_name_fragment(self):
+         return "%s_%s" % (self.model_name_lower, self.index.name.lower())
+@@ -897,6 +915,15 @@ class RemoveIndex(IndexOperation):
+             kwargs,
+         )
+ 
++    def references_field(self, model_name, name, app_label):
++        return self.references_model(model_name, app_label)
++
++    def reduce(self, operation, app_label):
++        return (
++            super().reduce(operation, app_label)
++            or not operation.references_model(self.model_name, app_label)
++        )
++
+     def describe(self):
+         return "Remove index %s from %s" % (self.name, self.model_name)
+ 
+@@ -1051,7 +1078,10 @@ class RenameIndex(IndexOperation):
+                     old_fields=self.old_fields,
+                 )
+             ]
+-        return super().reduce(operation, app_label)
++        return (
++            super().reduce(operation, app_label)
++            or not operation.references_model(self.model_name, app_label)
++        )
+ 
+ 
+ class AddConstraint(IndexOperation):

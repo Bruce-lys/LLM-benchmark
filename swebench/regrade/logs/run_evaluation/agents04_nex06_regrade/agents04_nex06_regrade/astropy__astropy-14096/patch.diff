@@ -1,0 +1,92 @@
+diff --git a/astropy/coordinates/sky_coordinate.py b/astropy/coordinates/sky_coordinate.py
+index ab475f7d0..8b92c68ac 100644
+--- a/astropy/coordinates/sky_coordinate.py
++++ b/astropy/coordinates/sky_coordinate.py
+@@ -866,41 +866,49 @@ class SkyCoord(ShapedLikeNDArray):
+             isinstance(self.frame.name, list) and string in self.frame.name
+         )
+ 
+-    def __getattr__(self, attr):
+-        """
+-        Overrides getattr to return coordinates that this can be transformed
+-        to, based on the alias attr in the primary transform graph.
+-        """
+-        if "_sky_coord_frame" in self.__dict__:
+-            if self._is_name(attr):
++    def __getattribute__(self, name):
++        try:
++            return object.__getattribute__(self, name)
++        except AttributeError:
++            # _sky_coord_frame is set during initialization, but __getattribute__
++            # can be invoked before it exists.  If so, let the original error
++            # propagate instead of trying to resolve dynamic attributes.
++            try:
++                sky_coord_frame = object.__getattribute__(self, "_sky_coord_frame")
++            except AttributeError:
++                raise
++
++            # This mirrors the dynamic attribute handling from the old
++            # __getattr__ implementation.  It is placed here so that
++            # AttributeError messages raised by properties or other descriptors
++            # are not rewritten to the name being accessed from the property.
++            if self._is_name(name):
+                 return self  # Should this be a deepcopy of self?
+ 
+             # Anything in the set of all possible frame_attr_names is handled
+             # here. If the attr is relevant for the current frame then delegate
+             # to self.frame otherwise get it from self._<attr>.
+-            if attr in frame_transform_graph.frame_attributes:
+-                if attr in self.frame.frame_attributes:
+-                    return getattr(self.frame, attr)
++            if name in frame_transform_graph.frame_attributes:
++                if name in self.frame.frame_attributes:
++                    return getattr(self.frame, name)
+                 else:
+-                    return getattr(self, "_" + attr, None)
++                    return getattr(self, "_" + name, None)
+ 
+             # Some attributes might not fall in the above category but still
+             # are available through self._sky_coord_frame.
+-            if not attr.startswith("_") and hasattr(self._sky_coord_frame, attr):
+-                return getattr(self._sky_coord_frame, attr)
++            if not name.startswith("_") and hasattr(sky_coord_frame, name):
++                return getattr(sky_coord_frame, name)
+ 
+             # Try to interpret as a new frame for transforming.
+-            frame_cls = frame_transform_graph.lookup_name(attr)
++            frame_cls = frame_transform_graph.lookup_name(name)
+             if frame_cls is not None and self.frame.is_transformable_to(frame_cls):
+-                return self.transform_to(attr)
++                return self.transform_to(name)
+ 
+-        # Fail
+-        raise AttributeError(
+-            f"'{self.__class__.__name__}' object has no attribute '{attr}'"
+-        )
++            # Fail
++            raise
+ 
+     def __setattr__(self, attr, val):
+-        # This is to make anything available through __getattr__ immutable
++        # This is to make anything available through __getattribute__ immutable
+         if "_sky_coord_frame" in self.__dict__:
+             if self._is_name(attr):
+                 raise AttributeError(f"'{attr}' is immutable")
+@@ -915,7 +923,7 @@ class SkyCoord(ShapedLikeNDArray):
+ 
+         if attr in frame_transform_graph.frame_attributes:
+             # All possible frame attributes can be set, but only via a private
+-            # variable.  See __getattr__ above.
++            # variable.  See __getattribute__ above.
+             super().__setattr__("_" + attr, val)
+             # Validate it
+             frame_transform_graph.frame_attributes[attr].__get__(self)
+@@ -942,7 +950,7 @@ class SkyCoord(ShapedLikeNDArray):
+ 
+         if attr in frame_transform_graph.frame_attributes:
+             # All possible frame attributes can be deleted, but need to remove
+-            # the corresponding private variable.  See __getattr__ above.
++            # the corresponding private variable.  See __getattribute__ above.
+             super().__delattr__("_" + attr)
+             # Also remove it from the set of extra attributes
+             self._extra_frameattr_names -= {attr}

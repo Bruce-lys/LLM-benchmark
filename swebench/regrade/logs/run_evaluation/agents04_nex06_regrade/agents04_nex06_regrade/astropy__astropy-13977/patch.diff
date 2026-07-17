@@ -1,0 +1,19 @@
+diff --git a/astropy/units/quantity.py b/astropy/units/quantity.py
+index b98abfafb..d1a672902 100644
+--- a/astropy/units/quantity.py
++++ b/astropy/units/quantity.py
+@@ -666,6 +666,14 @@ class Quantity(np.ndarray):
+         # Same for inputs, but here also convert if necessary.
+         arrays = []
+         for input_, converter in zip(inputs, converters):
++            # Non-Quantity objects with units should get a chance to
++            # handle the operation via their reflected ufunc.
++            if (
++                converter is not None
++                and not isinstance(input_, Quantity)
++                and hasattr(input_, "unit")
++            ):
++                return NotImplemented
+             input_ = getattr(input_, "value", input_)
+             arrays.append(converter(input_) if converter else input_)
+ 

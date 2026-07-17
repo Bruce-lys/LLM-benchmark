@@ -1,0 +1,30 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 13a6809dd8..295415195e 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -436,6 +436,17 @@ class Query(BaseExpression):
+             )
+             or having
+         )
++        # Window expressions aren't aggregates, but aggregate() queries that
++        # reference annotations containing window functions must be wrapped in
++        # a subquery because SQL doesn't allow aggregate() calls over
++        # window() calls.
++        has_existing_window = any(
++            getattr(annotation, "contains_over_clause", False)
++            for annotation in self.annotations.values()
++        ) or any(
++            getattr(aggregate, "contains_over_clause", False)
++            for aggregate in aggregates.values()
++        )
+         # Decide if we need to use a subquery.
+         #
+         # Existing aggregations would cause incorrect results as
+@@ -454,6 +465,7 @@ class Query(BaseExpression):
+             or qualify
+             or self.distinct
+             or self.combinator
++            or has_existing_window
+         ):
+             from django.db.models.sql.subqueries import AggregateQuery
+ 

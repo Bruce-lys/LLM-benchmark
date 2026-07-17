@@ -1,0 +1,30 @@
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 247e3680c0..f79c6d377f 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -64,10 +64,24 @@ class ResolverMatch:
+ 
+ 
+ @functools.lru_cache(maxsize=None)
++def _get_resolver(urlconf):
++    return URLResolver(RegexPattern(r'^/'), urlconf)
++
++
+ def get_resolver(urlconf=None):
+     if urlconf is None:
+         urlconf = settings.ROOT_URLCONF
+-    return URLResolver(RegexPattern(r'^/'), urlconf)
++    return _get_resolver(urlconf)
++
++
++# The lru_cache on get_resolver was replaced by the private cached function
++# above so that get_resolver(None) and get_resolver(settings.ROOT_URLCONF) use
++# the same cache entry. The cache control attributes are copied for compatibility
++# with callers that access get_resolver.cache_clear().
++for _name in ('cache_clear', 'cache_info'):
++    setattr(get_resolver, _name, getattr(_get_resolver, _name))
++if hasattr(_get_resolver, 'cache_parameters'):
++    setattr(get_resolver, 'cache_parameters', _get_resolver.cache_parameters)
+ 
+ 
+ @functools.lru_cache(maxsize=None)

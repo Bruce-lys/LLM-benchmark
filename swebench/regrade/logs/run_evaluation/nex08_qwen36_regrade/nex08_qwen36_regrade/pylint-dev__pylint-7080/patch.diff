@@ -1,0 +1,99 @@
+diff --git a/pylint/config/argument.py b/pylint/config/argument.py
+index 3c295151..2e66636d 100644
+--- a/pylint/config/argument.py
++++ b/pylint/config/argument.py
+@@ -107,18 +107,17 @@ def _regexp_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     return patterns
+ 
+ 
++def _regexp_paths_csv(value: str) -> Pattern[str]:
++    return re.compile(
++        str(pathlib.PureWindowsPath(value)).replace("\\", "\\\\")
++        + "|"
++        + pathlib.PureWindowsPath(value).as_posix()
++    )
++
++
+ def _regexp_paths_csv_transfomer(value: str) -> Sequence[Pattern[str]]:
+     """Transforms a comma separated list of regular expressions paths."""
+-    patterns: list[Pattern[str]] = []
+-    for pattern in _csv_transformer(value):
+-        patterns.append(
+-            re.compile(
+-                str(pathlib.PureWindowsPath(pattern)).replace("\\", "\\\\")
+-                + "|"
+-                + pathlib.PureWindowsPath(pattern).as_posix()
+-            )
+-        )
+-    return patterns
++    return [_regexp_paths_csv(pattern) for pattern in _csv_transformer(value)]
+ 
+ 
+ _TYPE_TRANSFORMERS: dict[str, Callable[[str], _ArgumentTypes]] = {
+diff --git a/pylint/config/option.py b/pylint/config/option.py
+index 5043fe76..fca0369d 100644
+--- a/pylint/config/option.py
++++ b/pylint/config/option.py
+@@ -31,21 +31,26 @@ def _regexp_csv_validator(_, name, value):
+     return [_regexp_validator(_, name, val) for val in _csv_validator(_, name, value)]
+ 
+ 
++def _regexp_paths_csv(value: str, flags: int = 0) -> Pattern[str]:
++    return re.compile(
++        str(pathlib.PureWindowsPath(value)).replace("\\", "\\\\")
++        + "|"
++        + pathlib.PureWindowsPath(value).as_posix(),
++        flags,
++    )
++
++
+ def _regexp_paths_csv_validator(
+     _, name: str, value: str | list[Pattern[str]]
+ ) -> list[Pattern[str]]:
+     if isinstance(value, list):
+-        return value
+-    patterns = []
+-    for val in _csv_validator(_, name, value):
+-        patterns.append(
+-            re.compile(
+-                str(pathlib.PureWindowsPath(val)).replace("\\", "\\\\")
+-                + "|"
+-                + pathlib.PureWindowsPath(val).as_posix()
+-            )
+-        )
+-    return patterns
++        return [
++            _regexp_paths_csv(pattern.pattern, pattern.flags)
++            if hasattr(pattern, "pattern")
++            else _regexp_paths_csv(pattern)
++            for pattern in value
++        ]
++    return [_regexp_paths_csv(val) for val in _csv_validator(_, name, value)]
+ 
+ 
+ def _choice_validator(choices, name, value):
+diff --git a/pylint/lint/pylinter.py b/pylint/lint/pylinter.py
+index e2bbf061..93f7e993 100644
+--- a/pylint/lint/pylinter.py
++++ b/pylint/lint/pylinter.py
+@@ -597,11 +597,20 @@ class PyLinter(
+                         # Skip subtree of already discovered package.
+                         continue
+ 
++                    # Match ignore-paths patterns against the root itself and
++                    # against the root with a trailing separator. Patterns like
++                    # "^src/gen/.*$" match files under "src/gen" but not
++                    # the package root "src/gen" itself.
+                     if _is_ignored_file(
+                         root,
+                         self.config.ignore,
+                         self.config.ignore_patterns,
+                         self.config.ignore_paths,
++                    ) or _is_ignored_file(
++                        os.path.join(root, ""),
++                        self.config.ignore,
++                        self.config.ignore_patterns,
++                        self.config.ignore_paths,
+                     ):
+                         skip_subtrees.append(root)
+                         continue

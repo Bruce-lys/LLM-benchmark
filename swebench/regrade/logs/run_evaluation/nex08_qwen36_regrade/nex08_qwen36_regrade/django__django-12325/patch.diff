@@ -1,0 +1,38 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 8ea6c05ef9..71076b743a 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -193,6 +193,7 @@ class ModelBase(type):
+ 
+         # Collect the parent links for multi-table inheritance.
+         parent_links = {}
++        local_parent_links = {}
+         for base in reversed([new_class] + parents):
+             # Conceptually equivalent to `if base is Model`.
+             if not hasattr(base, '_meta'):
+@@ -204,7 +205,12 @@ class ModelBase(type):
+             for field in base._meta.local_fields:
+                 if isinstance(field, OneToOneField):
+                     related = resolve_relation(new_class, field.remote_field.model)
+-                    parent_links[make_model_tuple(related)] = field
++                    key = make_model_tuple(related)
++                    # Prefer an explicit parent_link over a non-parent link.
++                    if field.remote_field.parent_link or key not in parent_links:
++                        parent_links[key] = field
++                        if base is new_class:
++                            local_parent_links[key] = field
+ 
+         # Track fields inherited from base models.
+         inherited_attributes = set()
+@@ -284,6 +290,11 @@ class ModelBase(type):
+                                     base_parents[parent] = new_field
+ 
+                 # Pass any non-abstract parent classes onto child.
++                for parent, parent_link in base_parents.items():
++                    related = make_model_tuple(parent)
++                    if (related in local_parent_links and
++                            local_parent_links[related].remote_field.parent_link):
++                        base_parents[parent] = local_parent_links[related]
+                 new_class._meta.parents.update(base_parents)
+ 
+             # Inherit private fields (like GenericForeignKey) from the parent

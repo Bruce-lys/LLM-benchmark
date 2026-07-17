@@ -1,0 +1,99 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index b48d0df9c0..b8054a02da 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -189,6 +189,7 @@ class QuerySet:
+         self._db = using
+         self._hints = hints or {}
+         self._query = query or sql.Query(self.model)
++        self.model = model or self._query.model
+         self._result_cache = None
+         self._sticky_filter = False
+         self._for_write = False
+@@ -199,6 +200,21 @@ class QuerySet:
+         self._fields = None
+         self._defer_next_filter = False
+         self._deferred_filter = None
++        self._set_iterable_from_query()
++
++    def _set_iterable_from_query(self):
++        if ((self._query.values_select or self._query.values_select_is_values_list or
++                self._query.values_select_is_values) and self._iterable_class is ModelIterable and
++                self._fields is None):
++            if self._query.values_select_is_flat:
++                self._iterable_class = FlatValuesListIterable
++            elif self._query.values_select_is_named:
++                self._iterable_class = NamedValuesListIterable
++            elif self._query.values_select_is_values_list:
++                self._iterable_class = ValuesListIterable
++            elif self._query.values_select_is_values:
++                self._iterable_class = ValuesIterable
++            self._fields = self._query.values_select
+ 
+     @property
+     def query(self):
+@@ -211,6 +227,7 @@ class QuerySet:
+     @query.setter
+     def query(self, value):
+         self._query = value
++        self._set_iterable_from_query()
+ 
+     def as_manager(cls):
+         # Address the circular dependency between `Queryset` and `Manager`.
+@@ -828,6 +845,10 @@ class QuerySet:
+     def values(self, *fields, **expressions):
+         fields += tuple(expressions)
+         clone = self._values(*fields, **expressions)
++        clone.query.values_select_is_values_list = False
++        clone.query.values_select_is_values = True
++        clone.query.values_select_is_named = False
++        clone.query.values_select_is_flat = False
+         clone._iterable_class = ValuesIterable
+         return clone
+ 
+@@ -855,6 +876,10 @@ class QuerySet:
+                 _fields.append(field)
+ 
+         clone = self._values(*_fields, **expressions)
++        clone.query.values_select_is_values_list = True
++        clone.query.values_select_is_values = False
++        clone.query.values_select_is_named = named
++        clone.query.values_select_is_flat = flat
+         clone._iterable_class = (
+             NamedValuesListIterable if named
+             else FlatValuesListIterable if flat
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 4648daf395..45167c7f67 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -198,6 +198,10 @@ class Query(BaseExpression):
+         # Holds the selects defined by a call to values() or values_list()
+         # excluding annotation_select and extra_select.
+         self.values_select = ()
++        self.values_select_is_named = False
++        self.values_select_is_flat = False
++        self.values_select_is_values_list = False
++        self.values_select_is_values = False
+ 
+         # SQL annotation-related attributes
+         self.annotations = {}  # Maps alias -> Annotation Expression
+@@ -2177,7 +2181,7 @@ class Query(BaseExpression):
+             self.extra_select_mask = set(names)
+         self._extra_select_cache = None
+ 
+-    def set_values(self, fields):
++    def set_values(self, fields, *, named=False, flat=False, is_values_list=False, is_values=False):
+         self.select_related = False
+         self.clear_deferred_loading()
+         self.clear_select_fields()
+@@ -2222,6 +2226,10 @@ class Query(BaseExpression):
+             self.group_by = tuple(group_by)
+ 
+         self.values_select = tuple(field_names)
++        self.values_select_is_named = named
++        self.values_select_is_flat = flat
++        self.values_select_is_values_list = is_values_list
++        self.values_select_is_values = is_values
+         self.add_fields(field_names, True)
+ 
+     @property

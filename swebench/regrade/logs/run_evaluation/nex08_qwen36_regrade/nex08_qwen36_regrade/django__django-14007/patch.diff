@@ -1,0 +1,49 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index f02199d97c..96b0a098dc 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1107,6 +1107,15 @@ class SQLCompiler:
+                     converters[i] = (backend_converters + field_converters, expression)
+         return converters
+ 
++    def get_field_converters(self, expressions):
++        converters = {}
++        for i, expression in enumerate(expressions):
++            if expression:
++                field_converters = expression.get_db_converters(self.connection)
++                if field_converters:
++                    converters[i] = (field_converters, expression)
++        return converters
++
+     def apply_converters(self, rows, converters):
+         connection = self.connection
+         converters = list(converters.items())
+@@ -1411,14 +1420,24 @@ class SQLInsertCompiler(SQLCompiler):
+                 cursor.execute(sql, params)
+             if not self.returning_fields:
+                 return []
++            converters = self.get_field_converters(self.returning_fields)
+             if self.connection.features.can_return_rows_from_bulk_insert and len(self.query.objs) > 1:
+-                return self.connection.ops.fetch_returned_insert_rows(cursor)
++                rows = self.connection.ops.fetch_returned_insert_rows(cursor)
++                if converters:
++                    rows = self.apply_converters(rows, converters)
++                return [tuple(row) for row in rows]
+             if self.connection.features.can_return_columns_from_insert:
+                 assert len(self.query.objs) == 1
+-                return [self.connection.ops.fetch_returned_insert_columns(cursor, self.returning_params)]
+-            return [(self.connection.ops.last_insert_id(
++                row = self.connection.ops.fetch_returned_insert_columns(cursor, self.returning_params)
++                if converters:
++                    row = next(self.apply_converters([row], converters))
++                return [row]
++            row = (self.connection.ops.last_insert_id(
+                 cursor, self.query.get_meta().db_table, self.query.get_meta().pk.column
+-            ),)]
++            ),)
++            if converters:
++                row = next(self.apply_converters([row], converters))
++            return [row]
+ 
+ 
+ class SQLDeleteCompiler(SQLCompiler):

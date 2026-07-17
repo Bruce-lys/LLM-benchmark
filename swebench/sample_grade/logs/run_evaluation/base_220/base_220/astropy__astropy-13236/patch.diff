@@ -1,0 +1,21 @@
+diff --git a/astropy/table/table.py b/astropy/table/table.py
+index 5afe2127a..ce8e8542a 100644
+--- a/astropy/table/table.py
++++ b/astropy/table/table.py
+@@ -1240,9 +1240,15 @@ class Table:
+                                 'did not return a valid mixin column')
+ 
+         # Structured ndarray gets viewed as a mixin unless already a valid
+-        # mixin class
++        # mixin class.  In the future this will be deprecated and the
++        # structured array will be added as a Column.
+         if (not isinstance(data, Column) and not data_is_mixin
+                 and isinstance(data, np.ndarray) and len(data.dtype) > 1):
++            warnings.warn(
++                "Structured arrays are deprecated and will be added as Column instead "
++                "of NdarrayMixin in a future release. To silence this warning, wrap the "
++                "data in Column explicitly: `Column(data)`.",
++                FutureWarning, stacklevel=2)
+             data = data.view(NdarrayMixin)
+             data_is_mixin = True
+ 

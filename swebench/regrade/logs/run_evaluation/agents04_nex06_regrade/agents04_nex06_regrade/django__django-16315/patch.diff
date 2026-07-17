@@ -1,0 +1,52 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 0562a71dd1..ad38581f14 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -6,7 +6,7 @@ from itertools import chain
+ 
+ from django.core.exceptions import EmptyResultSet, FieldError, FullResultSet
+ from django.db import DatabaseError, NotSupportedError
+-from django.db.models.constants import LOOKUP_SEP
++from django.db.models.constants import LOOKUP_SEP, OnConflict
+ from django.db.models.expressions import F, OrderBy, RawSQL, Ref, Value
+ from django.db.models.functions import Cast, Random
+ from django.db.models.lookups import Lookup
+@@ -1610,6 +1610,19 @@ class SQLInsertCompiler(SQLCompiler):
+ 
+         return sql, params
+ 
++    def _get_field_columns(self, fields):
++        if not fields:
++            return []
++        result = []
++        for field in fields:
++            if hasattr(field, "column"):
++                result.append(field.column)
++            elif field == "pk":
++                result.append(self.query.model._meta.pk.column)
++            else:
++                result.append(self.query.model._meta.get_field(field).column)
++        return result
++
+     def prepare_value(self, field, value):
+         """
+         Prepare a value to be used in a query by resolving it if it is an
+@@ -1722,11 +1735,16 @@ class SQLInsertCompiler(SQLCompiler):
+ 
+         placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)
+ 
++        update_fields = self.query.update_fields
++        unique_fields = self.query.unique_fields
++        if self.query.on_conflict == OnConflict.UPDATE:
++            update_fields = self._get_field_columns(update_fields)
++            unique_fields = self._get_field_columns(unique_fields)
+         on_conflict_suffix_sql = self.connection.ops.on_conflict_suffix_sql(
+             fields,
+             self.query.on_conflict,
+-            self.query.update_fields,
+-            self.query.unique_fields,
++            update_fields,
++            unique_fields,
+         )
+         if (
+             self.returning_fields

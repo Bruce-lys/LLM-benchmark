@@ -1,0 +1,17 @@
+diff --git a/sympy/printing/pycode.py b/sympy/printing/pycode.py
+index 3a72ab606c..b0f9c632f3 100644
+--- a/sympy/printing/pycode.py
++++ b/sympy/printing/pycode.py
+@@ -234,6 +234,12 @@ def _print_Mod(self, expr):
+         PREC = precedence(expr)
+         return ('{} % {}'.format(*map(lambda x: self.parenthesize(x, PREC), expr.args)))
+ 
++    def _print_Min(self, expr):
++        return 'min({})'.format(', '.join(self._print(arg) for arg in expr.args))
++
++    def _print_Max(self, expr):
++        return 'max({})'.format(', '.join(self._print(arg) for arg in expr.args))
++
+     def _print_Piecewise(self, expr):
+         result = []
+         i = 0

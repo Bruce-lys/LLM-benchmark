@@ -1,0 +1,32 @@
+diff --git a/requests/models.py b/requests/models.py
+index 3f6a4f9..0b305d3 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -327,9 +327,11 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+     def prepare_method(self, method):
+         """Prepares the given HTTP method."""
+-        self.method = method
+-        if self.method is not None:
+-            self.method = self.method.upper()
++        if method is not None:
++            method = to_native_string(method)
++            self.method = method.upper()
++        else:
++            self.method = None
+ 
+     def prepare_url(self, url, params):
+         """Prepares the given HTTP URL."""
+diff --git a/requests/sessions.py b/requests/sessions.py
+index d701ff2..adcfbac 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -425,7 +425,7 @@ class Session(SessionRedirectMixin):
+             If Tuple, ('cert', 'key') pair.
+         """
+ 
+-        method = builtin_str(method)
++        method = to_native_string(method)
+ 
+         # Create the Request.
+         req = Request(

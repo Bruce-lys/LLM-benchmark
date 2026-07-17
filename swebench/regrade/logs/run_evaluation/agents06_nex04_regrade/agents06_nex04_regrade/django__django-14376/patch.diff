@@ -1,0 +1,30 @@
+diff --git a/django/db/backends/mysql/base.py b/django/db/backends/mysql/base.py
+index 2c62182d31..e72f5d6917 100644
+--- a/django/db/backends/mysql/base.py
++++ b/django/db/backends/mysql/base.py
+@@ -200,9 +200,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
+         if settings_dict['USER']:
+             kwargs['user'] = settings_dict['USER']
+         if settings_dict['NAME']:
+-            kwargs['db'] = settings_dict['NAME']
++            kwargs['database'] = settings_dict['NAME']
+         if settings_dict['PASSWORD']:
+-            kwargs['passwd'] = settings_dict['PASSWORD']
++            kwargs['password'] = settings_dict['PASSWORD']
+         if settings_dict['HOST'].startswith('/'):
+             kwargs['unix_socket'] = settings_dict['HOST']
+         elif settings_dict['HOST']:
+@@ -212,8 +212,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
+         # We need the number of potentially affected rows after an
+         # "UPDATE", not the number of changed rows.
+         kwargs['client_flag'] = CLIENT.FOUND_ROWS
+-        # Validate the transaction isolation level, if specified.
+         options = settings_dict['OPTIONS'].copy()
++        # Translate deprecated mysqlclient option names.
++        for source, target in (('db', 'database'), ('passwd', 'password')):
++            if source in options:
++                options[target] = options.pop(source)
++        # Validate the transaction isolation level, if specified.
+         isolation_level = options.pop('isolation_level', 'read committed')
+         if isolation_level:
+             isolation_level = isolation_level.lower()

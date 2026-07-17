@@ -1,0 +1,68 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index b48d0df9c0..db945ba130 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -33,6 +33,11 @@ MAX_GET_RESULTS = 21
+ # The maximum number of items to display in a QuerySet.__repr__
+ REPR_OUTPUT_SIZE = 20
+ 
++VALUE_ITERABLE = 'values'
++FLAT_VALUES_LIST_ITERABLE = 'flat_values_list'
++VALUES_LIST_ITERABLE = 'values_list'
++NAMED_VALUES_LIST_ITERABLE = 'named_values_list'
++
+ 
+ class BaseIterable:
+     def __init__(self, queryset, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE):
+@@ -211,6 +216,15 @@ class QuerySet:
+     @query.setter
+     def query(self, value):
+         self._query = value
++        iterable_class = getattr(value, '_iterable_class', None)
++        if iterable_class == VALUE_ITERABLE:
++            self._iterable_class = ValuesIterable
++        elif iterable_class == FLAT_VALUES_LIST_ITERABLE:
++            self._iterable_class = FlatValuesListIterable
++        elif iterable_class == VALUES_LIST_ITERABLE:
++            self._iterable_class = ValuesListIterable
++        elif iterable_class == NAMED_VALUES_LIST_ITERABLE:
++            self._iterable_class = NamedValuesListIterable
+ 
+     def as_manager(cls):
+         # Address the circular dependency between `Queryset` and `Manager`.
+@@ -828,6 +842,7 @@ class QuerySet:
+     def values(self, *fields, **expressions):
+         fields += tuple(expressions)
+         clone = self._values(*fields, **expressions)
++        clone.query._iterable_class = VALUE_ITERABLE
+         clone._iterable_class = ValuesIterable
+         return clone
+ 
+@@ -855,6 +870,13 @@ class QuerySet:
+                 _fields.append(field)
+ 
+         clone = self._values(*_fields, **expressions)
++        if named:
++            iterable_class = NAMED_VALUES_LIST_ITERABLE
++        elif flat:
++            iterable_class = FLAT_VALUES_LIST_ITERABLE
++        else:
++            iterable_class = VALUES_LIST_ITERABLE
++        clone.query._iterable_class = iterable_class
+         clone._iterable_class = (
+             NamedValuesListIterable if named
+             else FlatValuesListIterable if flat
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 4648daf395..544e96c807 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -164,6 +164,9 @@ class Query(BaseExpression):
+         self.used_aliases = set()
+         self.filter_is_sticky = False
+         self.subquery = False
++        # Marks queries produced by QuerySet.values()/values_list() so that
++        # QuerySet.query setter can restore the correct iterable class.
++        self._iterable_class = None
+ 
+         # SQL-related attributes
+         # Select and related select clauses are expressions to use in the

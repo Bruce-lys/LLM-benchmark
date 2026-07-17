@@ -1,0 +1,94 @@
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index d88cda6e20..b218c4544b 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -166,9 +166,12 @@ class FunctionTypeSerializer(BaseSerializer):
+         if getattr(self.value, "__self__", None) and isinstance(
+             self.value.__self__, type
+         ):
+-            klass = self.value.__self__
+-            module = klass.__module__
+-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {
++            module = self.value.__self__.__module__
++            if "<" in self.value.__qualname__:
++                raise ValueError(
++                    "Could not find function %s in %s\n" % (self.value.__name__, module)
++                )
++            return "%s.%s" % (module, self.value.__qualname__), {
+                 "import %s" % module
+             }
+         # Further error checking
+diff --git a/tests/migrations/test_writer.py b/tests/migrations/test_writer.py
+index bef8f64061..8375798a6a 100644
+--- a/tests/migrations/test_writer.py
++++ b/tests/migrations/test_writer.py
+@@ -52,6 +52,16 @@ class TestModel1:
+     thing = models.FileField(upload_to=upload_to)
+ 
+ 
++class NestedClassDefaultContainer:
++    class Capability(models.TextChoices):
++        BASIC = ("BASIC", "Basic")
++        PROFESSIONAL = ("PROFESSIONAL", "Professional")
++
++        @classmethod
++        def default(cls):
++            return [cls.BASIC]
++
++
+ class TextEnum(enum.Enum):
+     A = "a-value"
+     B = "value-b"
+@@ -739,6 +749,29 @@ class WriterTests(SimpleTestCase):
+         """An unbound method used within a class body can be serialized."""
+         self.serialize_round_trip(TestModel1.thing)
+ 
++    def test_serialize_nested_classmethod_default(self):
++        """A classmethod default defined in a nested class can be serialized."""
++        self.assertSerializedResultEqual(
++            NestedClassDefaultContainer.Capability.default,
++            (
++                "migrations.test_writer.NestedClassDefaultContainer.Capability.default",
++                {"import migrations.test_writer"},
++            ),
++        )
++        self.serialize_round_trip(NestedClassDefaultContainer.Capability.default)
++
++        field = models.CharField(
++            default=NestedClassDefaultContainer.Capability.default
++        )
++        string, imports = MigrationWriter.serialize(field)
++        self.assertEqual(
++            string,
++            "models.CharField(default="
++            "migrations.test_writer.NestedClassDefaultContainer.Capability.default)",
++        )
++        self.assertIn("import migrations.test_writer", imports)
++        self.serialize_round_trip(field)
++
+     def test_serialize_local_function_reference(self):
+         """A reference in a local scope can't be serialized."""
+ 
+@@ -753,6 +786,22 @@ class WriterTests(SimpleTestCase):
+         ):
+             self.serialize_round_trip(TestModel2.thing)
+ 
++    def test_serialize_local_classmethod_reference(self):
++        """A classmethod reference in a local scope can't be serialized."""
++
++        def outer():
++            class TestModel3:
++                @classmethod
++                def default(cls):
++                    return []
++
++            return TestModel3.default
++
++        with self.assertRaisesMessage(
++            ValueError, "Could not find function default in migrations.test_writer"
++        ):
++            self.serialize_round_trip(outer())
++
+     def test_serialize_managers(self):
+         self.assertSerializedEqual(models.Manager())
+         self.assertSerializedResultEqual(

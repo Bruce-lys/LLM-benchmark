@@ -1,0 +1,13 @@
+diff --git a/lib/matplotlib/text.py b/lib/matplotlib/text.py
+index d4922fc517..78f851ae94 100644
+--- a/lib/matplotlib/text.py
++++ b/lib/matplotlib/text.py
+@@ -1456,6 +1456,8 @@ class _AnnotationBase:
+                  xycoords='data',
+                  annotation_clip=None):
+ 
++        if isinstance(xy, (list, np.ndarray)):
++            xy = xy.copy()
+         self.xy = xy
+         self.xycoords = xycoords
+         self.set_annotation_clip(annotation_clip)

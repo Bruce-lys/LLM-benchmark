@@ -1,0 +1,37 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 3f84250b64..8ff777a465 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -1048,6 +1048,20 @@ class ContourSet(ContourLabeler, mcoll.Collection):
+ 
+         return artists, labels
+ 
++    def set_paths(self, paths):
++        """
++        Set the `~.path.Path` instances for the contours.
++
++        Parameters
++        ----------
++        paths : list of `~.path.Path`
++            The paths that will make up the `.ContourSet`.
++        """
++        self._paths = paths
++        self.stale = True
++        if hasattr(self, "_old_style_split_collections"):
++            delattr(self, "_old_style_split_collections")
++
+     def _process_args(self, *args, **kwargs):
+         """
+         Process *args* and *kwargs*; override in derived classes.
+diff --git a/lib/matplotlib/contour.pyi b/lib/matplotlib/contour.pyi
+index c7179637a1..ef661da412 100644
+--- a/lib/matplotlib/contour.pyi
++++ b/lib/matplotlib/contour.pyi
+@@ -151,6 +151,7 @@ class ContourSet(ContourLabeler, Collection):
+         clip_path: Patch | Path | TransformedPath | TransformedPatchPath | None = ...,
+         **kwargs
+     ) -> None: ...
++    def set_paths(self, paths: Sequence[Path]) -> None: ...
+     def legend_elements(
+         self, variable_name: str = ..., str_format: Callable[[float], str] = ...
+     ) -> tuple[list[Artist], list[str]]: ...

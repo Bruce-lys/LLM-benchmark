@@ -1,0 +1,48 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index b8efb9f881..788fb23e74 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -216,16 +216,36 @@ def get_child_arguments():
+     executable is reported to not have the .exe extension which can cause bugs
+     on reloading.
+     """
+-    import django.__main__
+-    django_main_path = Path(django.__main__.__file__)
+     py_script = Path(sys.argv[0])
+ 
+     args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions]
+-    if py_script == django_main_path:
+-        # The server was started with `python -m django runserver`.
+-        args += ['-m', 'django']
+-        args += sys.argv[1:]
+-    elif not py_script.exists():
++    main_module = sys.modules.get('__main__')
++    main_spec = getattr(main_module, '__spec__', None)
++    main_spec_parent = getattr(main_spec, 'parent', None)
++    if (main_spec is not None and main_spec_parent and
++            main_spec.name == '%s.%s' % (main_spec_parent, '__main__')):
++        # The server was started with `python -m django` or `python -m other`.
++        main_spec_origin = getattr(main_spec, 'origin', None)
++        if main_spec_origin is not None and py_script == Path(main_spec_origin):
++            args += ['-m', main_spec_parent]
++            args += sys.argv[1:]
++            return args
++    try:
++        import django.__main__
++    except ImportError:
++        pass
++    else:
++        try:
++            django_main_path = Path(django.__main__.__file__)
++        except AttributeError:
++            pass
++        else:
++            if py_script == django_main_path:
++                # The server was started with `python -m django`.
++                args += ['-m', 'django']
++                args += sys.argv[1:]
++                return args
++    if not py_script.exists():
+         # sys.argv[0] may not exist for several reasons on Windows.
+         # It may exist with a .exe extension or have a -script.py suffix.
+         exe_entrypoint = py_script.with_suffix('.exe')

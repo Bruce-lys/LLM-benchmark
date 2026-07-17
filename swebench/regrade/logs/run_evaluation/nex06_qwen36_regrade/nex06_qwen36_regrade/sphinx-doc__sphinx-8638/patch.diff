@@ -1,0 +1,89 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 000e2e8d3..71eb02a51 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -1144,36 +1144,60 @@ class PythonDomain(Domain):
+             else:
+                 objtypes = self.objtypes_for_role(type)
+             if objtypes is not None:
+-                if modname and classname:
+-                    fullname = modname + '.' + classname + '.' + name
+-                    if fullname in self.objects and self.objects[fullname].objtype in objtypes:
+-                        newname = fullname
+-                if not newname:
+-                    if modname and modname + '.' + name in self.objects and \
+-                       self.objects[modname + '.' + name].objtype in objtypes:
+-                        newname = modname + '.' + name
+-                    elif name in self.objects and self.objects[name].objtype in objtypes:
+-                        newname = name
++                if classname and type in ('obj', 'attr'):
++                    # In a class context, only look for class-qualified objects.
++                    # This prevents :ivar: from resolving to module-level data.
++                    if modname:
++                        fullname = modname + '.' + classname + '.' + name
++                        if fullname in self.objects and \
++                                self.objects[fullname].objtype in objtypes:
++                            return [(fullname, self.objects[fullname])]
++                        if name == classname or name.startswith(classname + '.'):
++                            fullname = modname + '.' + name
++                            if fullname in self.objects and \
++                                    self.objects[fullname].objtype in objtypes:
++                                return [(fullname, self.objects[fullname])]
+                     else:
+-                        # "fuzzy" searching mode
+-                        searchname = '.' + name
+-                        matches = [(oname, self.objects[oname]) for oname in self.objects
+-                                   if oname.endswith(searchname) and
+-                                   self.objects[oname].objtype in objtypes]
++                        fullname = classname + '.' + name
++                        if fullname in self.objects and \
++                                self.objects[fullname].objtype in objtypes:
++                            return [(fullname, self.objects[fullname])]
++                        if name == classname or name.startswith(classname + '.'):
++                            if name in self.objects and \
++                                    self.objects[name].objtype in objtypes:
++                                return [(name, self.objects[name])]
++                    return []
++                if modname and modname + '.' + name in self.objects and \
++                   self.objects[modname + '.' + name].objtype in objtypes:
++                    newname = modname + '.' + name
++                elif name in self.objects and self.objects[name].objtype in objtypes:
++                    newname = name
++                else:
++                    # "fuzzy" searching mode
++                    searchname = '.' + name
++                    matches = [(oname, self.objects[oname]) for oname in self.objects
++                               if oname.endswith(searchname) and
++                               self.objects[oname].objtype in objtypes]
+         else:
+             # NOTE: searching for exact match, object type is not considered
+-            if name in self.objects:
+-                newname = name
+-            elif type == 'mod':
++            if type == 'mod':
+                 # only exact matches allowed for modules
++                if modname and modname + '.' + name in self.objects:
++                    newname = modname + '.' + name
+                 return []
+-            elif classname and classname + '.' + name in self.objects:
+-                newname = classname + '.' + name
+-            elif modname and modname + '.' + name in self.objects:
++            if classname:
++                if modname:
++                    fullname = modname + '.' + classname + '.' + name
++                else:
++                    fullname = classname + '.' + name
++                if fullname in self.objects:
++                    newname = fullname
++            elif name in self.objects:
++                newname = name
++            if newname is None and modname and modname + '.' + name in self.objects:
+                 newname = modname + '.' + name
+-            elif modname and classname and \
+-                    modname + '.' + classname + '.' + name in self.objects:
+-                newname = modname + '.' + classname + '.' + name
++            if newname is None and name in self.objects:
++                newname = name
+         if newname is not None:
+             matches.append((newname, self.objects[newname]))
+         return matches

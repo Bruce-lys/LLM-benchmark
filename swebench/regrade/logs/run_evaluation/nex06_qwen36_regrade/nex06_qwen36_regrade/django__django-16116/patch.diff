@@ -1,0 +1,33 @@
+diff --git a/django/core/management/commands/makemigrations.py b/django/core/management/commands/makemigrations.py
+index 2e97d9064b..68014b6bdb 100644
+--- a/django/core/management/commands/makemigrations.py
++++ b/django/core/management/commands/makemigrations.py
+@@ -70,7 +70,10 @@ class Command(BaseCommand):
+             "--check",
+             action="store_true",
+             dest="check_changes",
+-            help="Exit with a non-zero status if model changes are missing migrations.",
++            help=(
++                "Exit with a non-zero status if model changes are missing "
++                "migrations and do not write migrations."
++            ),
+         )
+         parser.add_argument(
+             "--scriptable",
+@@ -111,6 +114,7 @@ class Command(BaseCommand):
+             raise CommandError("The migration name must be a valid Python identifier.")
+         self.include_header = options["include_header"]
+         check_changes = options["check_changes"]
++        self.dry_run = self.dry_run or check_changes
+         self.scriptable = options["scriptable"]
+         self.update = options["update"]
+         # If logs and prompts are diverted to stderr, remove the ERROR style.
+@@ -224,6 +228,8 @@ class Command(BaseCommand):
+                 migration_name=self.migration_name,
+             )
+             self.write_migration_files(changes)
++            if check_changes:
++                sys.exit(1)
+             return
+ 
+         # Detect changes

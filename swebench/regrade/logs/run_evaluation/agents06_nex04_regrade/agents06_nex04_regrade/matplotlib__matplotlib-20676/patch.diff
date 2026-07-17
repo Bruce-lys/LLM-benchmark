@@ -1,0 +1,33 @@
+diff --git a/lib/matplotlib/widgets.py b/lib/matplotlib/widgets.py
+index a199e45d4..574d914e8 100644
+--- a/lib/matplotlib/widgets.py
++++ b/lib/matplotlib/widgets.py
+@@ -2366,10 +2366,26 @@ class ToolLineHandles:
+             line_props = {}
+         line_props.update({'visible': False, 'animated': useblit})
+ 
+-        line_fun = ax.axvline if self.direction == 'horizontal' else ax.axhline
+         self._line_props = line_props
+ 
+-        self.artists = [line_fun(p, **line_props) for p in positions]
++        if self.direction == 'horizontal':
++            transform = ax.get_xaxis_transform()
++        else:
++            transform = ax.get_yaxis_transform()
++
++        def get_line_data(p):
++            if self.direction == 'horizontal':
++                return ([p, p], [0, 1])
++            return ([0, 1], [p, p])
++
++        # Avoid requesting autoscaling when the initial handle position is
++        # outside the current data limits (e.g. when using axvline at x=0).
++        self.artists = [
++            Line2D(*get_line_data(p), transform=transform, **line_props)
++            for p in positions
++        ]
++        for line in self.artists:
++            ax.add_line(line)
+ 
+     @property
+     def positions(self):

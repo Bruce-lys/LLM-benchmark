@@ -1,0 +1,65 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index 90d90119d0..b398c0bfd5 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -1302,7 +1302,7 @@ class Window(Expression):
+         connection.ops.check_expression_support(self)
+         if not connection.features.supports_over_clause:
+             raise NotSupportedError('This backend does not support window expressions.')
+-        expr_sql, params = compiler.compile(self.source_expression)
++        expr_sql, params = compiler.compile_window_source(self.source_expression)
+         window_sql, window_params = [], []
+ 
+         if self.partition_by is not None:
+@@ -1332,6 +1332,15 @@ class Window(Expression):
+             'window': ''.join(window_sql).strip()
+         }, params
+ 
++    def as_sqlite(self, compiler, connection):
++        sql, params = self.as_sql(compiler, connection)
++        try:
++            if self.output_field.get_internal_type() == 'DecimalField':
++                sql = 'CAST(%s AS NUMERIC)' % sql
++        except FieldError:
++            pass
++        return sql, params
++
+     def __str__(self):
+         return '{} OVER ({}{}{})'.format(
+             str(self.source_expression),
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 2fedef62fc..42b8b1ef86 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -422,9 +422,30 @@ class SQLCompiler:
+         self.quote_cache[name] = r
+         return r
+ 
++    def compile_window_source(self, node):
++        """
++        Compile a window function's source expression without applying
++        SQLite's DecimalField numeric cast to the source itself.
++        """
++        suppress_sqlite_cast = getattr(self, '_suppress_sqlite_cast', None)
++        self._suppress_sqlite_cast = True
++        try:
++            return self.compile(node)
++        finally:
++            if suppress_sqlite_cast is None:
++                delattr(self, '_suppress_sqlite_cast')
++            else:
++                self._suppress_sqlite_cast = suppress_sqlite_cast
++
+     def compile(self, node):
+         vendor_impl = getattr(node, 'as_' + self.connection.vendor, None)
+-        if vendor_impl:
++        if (
++            getattr(self, '_suppress_sqlite_cast', False) and
++            self.connection.vendor == 'sqlite' and
++            getattr(node, 'window_compatible', False)
++        ):
++            sql, params = node.as_sql(self, self.connection)
++        elif vendor_impl:
+             sql, params = vendor_impl(self, self.connection)
+         else:
+             sql, params = node.as_sql(self, self.connection)

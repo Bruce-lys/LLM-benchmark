@@ -1,0 +1,45 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 000e2e8d3..c60ca99d9 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -354,7 +354,7 @@ class PyObject(ObjectDescription):
+                             'keyword', 'kwarg', 'kwparam'),
+                      typerolename='class', typenames=('paramtype', 'type'),
+                      can_collapse=True),
+-        PyTypedField('variable', label=_('Variables'), rolename='obj',
++        PyTypedField('variable', label=_('Variables'), rolename='attr',
+                      names=('var', 'ivar', 'cvar'),
+                      typerolename='class', typenames=('vartype',),
+                      can_collapse=True),
+@@ -1157,9 +1157,28 @@ class PythonDomain(Domain):
+                     else:
+                         # "fuzzy" searching mode
+                         searchname = '.' + name
+-                        matches = [(oname, self.objects[oname]) for oname in self.objects
+-                                   if oname.endswith(searchname) and
+-                                   self.objects[oname].objtype in objtypes]
++                        if modname and classname:
++                            searchprefix = modname + '.' + classname + '.'
++                            matches = [(oname, self.objects[oname]) for oname in self.objects
++                                       if oname.startswith(searchprefix) and
++                                       oname.endswith(searchname) and
++                                       self.objects[oname].objtype in objtypes]
++                        elif modname:
++                            searchprefix = modname + '.'
++                            matches = [(oname, self.objects[oname]) for oname in self.objects
++                                       if oname.startswith(searchprefix) and
++                                       oname.endswith(searchname) and
++                                       self.objects[oname].objtype in objtypes]
++                        elif classname:
++                            searchprefix = classname + '.'
++                            matches = [(oname, self.objects[oname]) for oname in self.objects
++                                       if oname.startswith(searchprefix) and
++                                       oname.endswith(searchname) and
++                                       self.objects[oname].objtype in objtypes]
++                        else:
++                            matches = [(oname, self.objects[oname]) for oname in self.objects
++                                       if oname.endswith(searchname) and
++                                       self.objects[oname].objtype in objtypes]
+         else:
+             # NOTE: searching for exact match, object type is not considered
+             if name in self.objects:

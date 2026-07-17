@@ -1,0 +1,41 @@
+diff --git a/xarray/core/dataarray.py b/xarray/core/dataarray.py
+index 807badde..d170a160 100644
+--- a/xarray/core/dataarray.py
++++ b/xarray/core/dataarray.py
+@@ -53,7 +53,7 @@ from .coordinates import (
+ from .dataset import Dataset, merge_indexes, split_indexes
+ from .formatting import format_item
+ from .indexes import Indexes, default_indexes
+-from .options import OPTIONS
++from .options import OPTIONS, _get_keep_attrs
+ from .utils import ReprObject, _check_inplace, either_dict_or_kwargs
+ from .variable import (
+     IndexVariable,
+@@ -2875,7 +2875,12 @@ class DataArray(AbstractArray, DataWithCoords):
+         ds = self._to_temp_dataset().quantile(
+             q, dim=dim, keep_attrs=keep_attrs, interpolation=interpolation
+         )
+-        return self._from_temp_dataset(ds)
++        result = self._from_temp_dataset(ds)
++        if keep_attrs is None:
++            keep_attrs = _get_keep_attrs(default=False)
++        if keep_attrs:
++            result.attrs = self.attrs.copy()
++        return result
+ 
+     def rank(
+         self, dim: Hashable, pct: bool = False, keep_attrs: bool = None
+@@ -2917,7 +2922,12 @@ class DataArray(AbstractArray, DataWithCoords):
+         """
+ 
+         ds = self._to_temp_dataset().rank(dim, pct=pct, keep_attrs=keep_attrs)
+-        return self._from_temp_dataset(ds)
++        result = self._from_temp_dataset(ds)
++        if keep_attrs is None:
++            keep_attrs = _get_keep_attrs(default=False)
++        if keep_attrs:
++            result.attrs = self.attrs.copy()
++        return result
+ 
+     def differentiate(
+         self, coord: Hashable, edge_order: int = 1, datetime_unit: str = None

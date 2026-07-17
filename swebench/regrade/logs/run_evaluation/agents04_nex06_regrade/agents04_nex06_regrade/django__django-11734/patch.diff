@@ -1,0 +1,43 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 35f3c5e1ea..e9f366fd10 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -23,7 +23,7 @@ from django.db import DEFAULT_DB_ALIAS, NotSupportedError, connections
+ from django.db.models.aggregates import Count
+ from django.db.models.constants import LOOKUP_SEP
+ from django.db.models.expressions import (
+-    BaseExpression, Col, F, OuterRef, Ref, SimpleCol,
++    BaseExpression, Col, F, OuterRef, ResolvedOuterRef, Ref, SimpleCol, Value,
+ )
+ from django.db.models.fields import Field
+ from django.db.models.fields.related_lookups import MultiColSource
+@@ -1702,12 +1702,27 @@ class Query(BaseExpression):
+         handle.
+         """
+         filter_lhs, filter_rhs = filter_expr
+-        if isinstance(filter_rhs, F):
++        filter_rhs_is_outer_ref = isinstance(filter_rhs, (OuterRef, ResolvedOuterRef))
++        if not filter_rhs_is_outer_ref and isinstance(filter_rhs, F):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
+         # Generate the inner query.
+         query = Query(self.model)
+         query._filtered_relations = self._filtered_relations
+-        query.add_filter(filter_expr)
++        if filter_rhs_is_outer_ref:
++            # Avoid resolving the outer reference against the inner query's
++            # model. Build the lookup with a dummy value, then replace it.
++            condition, _ = query.build_filter(
++                (filter_lhs, Value(None)),
++                can_reuse=None, branch_negated=False, current_negated=False,
++                allow_joins=True, split_subq=True,
++            )
++            for child in condition.children:
++                if isinstance(child, Lookup):
++                    child.rhs = filter_expr[1]
++                    break
++            query.where.add(condition, AND)
++        else:
++            query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+         # the subquery.

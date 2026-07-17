@@ -1,0 +1,106 @@
+diff --git a/astropy/coordinates/sky_coordinate.py b/astropy/coordinates/sky_coordinate.py
+index ab475f7d0..a47b07f1d 100644
+--- a/astropy/coordinates/sky_coordinate.py
++++ b/astropy/coordinates/sky_coordinate.py
+@@ -866,33 +866,60 @@ class SkyCoord(ShapedLikeNDArray):
+             isinstance(self.frame.name, list) and string in self.frame.name
+         )
+ 
+-    def __getattr__(self, attr):
++    def _is_descriptor(self, attr):
+         """
+-        Overrides getattr to return coordinates that this can be transformed
+-        to, based on the alias attr in the primary transform graph.
++        Return whether *attr* is a descriptor in the class hierarchy.
+         """
+-        if "_sky_coord_frame" in self.__dict__:
+-            if self._is_name(attr):
+-                return self  # Should this be a deepcopy of self?
+-
+-            # Anything in the set of all possible frame_attr_names is handled
+-            # here. If the attr is relevant for the current frame then delegate
+-            # to self.frame otherwise get it from self._<attr>.
+-            if attr in frame_transform_graph.frame_attributes:
+-                if attr in self.frame.frame_attributes:
+-                    return getattr(self.frame, attr)
+-                else:
+-                    return getattr(self, "_" + attr, None)
++        for cls in type(self).__mro__:
++            obj = cls.__dict__.get(attr)
++            if obj is not None and hasattr(obj, "__get__") and not callable(obj):
++                return True
++        return False
+ 
+-            # Some attributes might not fall in the above category but still
+-            # are available through self._sky_coord_frame.
+-            if not attr.startswith("_") and hasattr(self._sky_coord_frame, attr):
+-                return getattr(self._sky_coord_frame, attr)
++    def __getattribute__(self, attr):
++        """
++        Overrides attribute access to return coordinates that this can be transformed
++        to, based on the alias attr in the primary transform graph.
++        """
++        try:
++            return object.__getattribute__(self, attr)
++        except AttributeError:
++            # If the attribute is a descriptor (e.g., a property) in the class
++            # hierarchy, the AttributeError came from that descriptor. Re-raise
++            # it directly so that, e.g., properties that fail due to missing
++            # internal attributes report the internal attribute name.
++            if self._is_descriptor(attr):
++                raise
+ 
+-            # Try to interpret as a new frame for transforming.
+-            frame_cls = frame_transform_graph.lookup_name(attr)
+-            if frame_cls is not None and self.frame.is_transformable_to(frame_cls):
+-                return self.transform_to(attr)
++            try:
++                frame = object.__getattribute__(self, "_sky_coord_frame")
++            except AttributeError:
++                pass
++            else:
++                if object.__getattribute__(self, "_is_name")(attr):
++                    return self  # Should this be a deepcopy of self?
++
++                # Anything in the set of all possible frame_attr_names is handled
++                # here. If the attr is relevant for the current frame then delegate
++                # to self.frame otherwise get it from self._<attr>.
++                if attr in frame_transform_graph.frame_attributes:
++                    if attr in frame.frame_attributes:
++                        return getattr(frame, attr)
++                    else:
++                        try:
++                            return object.__getattribute__(self, "_" + attr)
++                        except AttributeError:
++                            return None
++
++                # Some attributes might not fall in the above category but still
++                # are available through self._sky_coord_frame.
++                if not attr.startswith("_") and hasattr(frame, attr):
++                    return getattr(frame, attr)
++
++                # Try to interpret as a new frame for transforming.
++                frame_cls = frame_transform_graph.lookup_name(attr)
++                if frame_cls is not None and frame.is_transformable_to(frame_cls):
++                    return object.__getattribute__(self, "transform_to")(attr)
+ 
+         # Fail
+         raise AttributeError(
+@@ -900,7 +927,7 @@ class SkyCoord(ShapedLikeNDArray):
+         )
+ 
+     def __setattr__(self, attr, val):
+-        # This is to make anything available through __getattr__ immutable
++        # This is to make anything available through __getattribute__ immutable
+         if "_sky_coord_frame" in self.__dict__:
+             if self._is_name(attr):
+                 raise AttributeError(f"'{attr}' is immutable")
+@@ -915,7 +942,7 @@ class SkyCoord(ShapedLikeNDArray):
+ 
+         if attr in frame_transform_graph.frame_attributes:
+             # All possible frame attributes can be set, but only via a private
+-            # variable.  See __getattr__ above.
++            # variable.  See __getattribute__ above.
+             super().__setattr__("_" + attr, val)
+             # Validate it
+             frame_transform_graph.frame_attributes[attr].__get__(self)

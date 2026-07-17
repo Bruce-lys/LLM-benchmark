@@ -1,0 +1,40 @@
+            )
+        )
+
+    def describe(self):
+        return "Alter %s for %s (%s constraint(s))" % (self.option_name, self.name, len(self.option_value or ''))
+
+    @property
+    def migration_name_fragment(self):
+        return 'alter_%s_%s' % (self.name_lower, self.option_name)
+
+    def reduce(self, operation, app_label):
+        result = super().reduce(operation, app_label)
+        if result:
+            return result
+        # If the operation is another AlterTogetherOptionOperation for the same model,
+        # we can optimize across it (e.g., AlterUniqueTogether with AlterIndexTogether)
+        if (
+            isinstance(operation, AlterTogetherOptionOperation) and
+            self.name_lower == operation.name_lower
+        ):
+            return True
+        return result
+
+
+class AlterUniqueTogether(AlterTogetherOptionOperation):
+    """
+    Change the value of unique_together to the target one.
+    Input value of unique_together must be a set of tuples.
+    """
+    option_name = 'unique_together'
+
+    def __init__(self, name, unique_together):
+        super().__init__(name, unique_together)
+
+
+class AlterIndexTogether(AlterTogetherOptionOperation):
+    """
+    Change the value of index_together to the target one.
+    Input value of index_together must be a set of tuples.
+    """

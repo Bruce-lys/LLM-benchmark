@@ -1,0 +1,51 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index eaccc96d7d..d37cbe6cb7 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -251,6 +251,17 @@ class SQLCompiler:
+             ret.append((col, (sql, params), alias))
+         return ret, klass_info, annotations
+ 
++    def order_by_from_expression(self, field):
++        if isinstance(field, Value):
++            # output_field must be resolved for constants.
++            field = Cast(field, field.output_field)
++        if not isinstance(field, OrderBy):
++            field = field.asc()
++        if not self.query.standard_ordering:
++            field = field.copy()
++            field.reverse_ordering()
++        return field
++
+     def get_order_by(self):
+         """
+         Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the
+@@ -279,15 +290,7 @@ class SQLCompiler:
+         order_by = []
+         for field in ordering:
+             if hasattr(field, 'resolve_expression'):
+-                if isinstance(field, Value):
+-                    # output_field must be resolved for constants.
+-                    field = Cast(field, field.output_field)
+-                if not isinstance(field, OrderBy):
+-                    field = field.asc()
+-                if not self.query.standard_ordering:
+-                    field = field.copy()
+-                    field.reverse_ordering()
+-                order_by.append((field, False))
++                order_by.append((self.order_by_from_expression(field), False))
+                 continue
+             if field == '?':  # random
+                 order_by.append((OrderBy(Random()), False))
+@@ -722,6 +725,11 @@ class SQLCompiler:
+ 
+             results = []
+             for item in opts.ordering:
++                if hasattr(item, 'resolve_expression') and not isinstance(item, OrderBy):
++                    item = item.desc() if descending else item.asc()
++                if isinstance(item, OrderBy):
++                    results.append((item, False))
++                    continue
+                 results.extend(self.find_ordering_name(item, opts, alias,
+                                                        order, already_seen))
+             return results

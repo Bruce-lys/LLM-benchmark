@@ -1,0 +1,52 @@
+diff --git a/sklearn/impute/_iterative.py b/sklearn/impute/_iterative.py
+index 1d918bc0c..e6d47ced6 100644
+--- a/sklearn/impute/_iterative.py
++++ b/sklearn/impute/_iterative.py
+@@ -117,6 +117,15 @@ class IterativeImputer(_BaseImputer):
+         Which strategy to use to initialize the missing values. Same as the
+         `strategy` parameter in :class:`~sklearn.impute.SimpleImputer`.
+ 
++    fill_value : str or numerical value, default=None
++        When `initial_strategy` == "constant", `fill_value` is used to
++        replace all occurrences of missing values in the initial imputation.
++        If left to the default, `fill_value` will be 0 when imputing
++        numerical data and "missing_value" for strings or object data types.
++        Setting `fill_value` to `np.nan` allows missing values to remain
++        unimputed during the initial step, which can be useful for
++        decision tree-based estimators.
++
+     imputation_order : {'ascending', 'descending', 'roman', 'arabic', \
+             'random'}, default='ascending'
+         The order in which the features will be imputed. Possible values:
+@@ -277,6 +286,7 @@ class IterativeImputer(_BaseImputer):
+         "sample_posterior": ["boolean"],
+         "max_iter": [Interval(Integral, 0, None, closed="left")],
+         "tol": [Interval(Real, 0, None, closed="left")],
++        "fill_value": "no_validation",  # any object is valid
+         "n_nearest_features": [None, Interval(Integral, 1, None, closed="left")],
+         "initial_strategy": [
+             StrOptions({"mean", "median", "most_frequent", "constant"})
+@@ -301,6 +311,7 @@ class IterativeImputer(_BaseImputer):
+         tol=1e-3,
+         n_nearest_features=None,
+         initial_strategy="mean",
++        fill_value=None,
+         imputation_order="ascending",
+         skip_complete=False,
+         min_value=-np.inf,
+@@ -315,6 +326,7 @@ class IterativeImputer(_BaseImputer):
+             add_indicator=add_indicator,
+             keep_empty_features=keep_empty_features,
+         )
++        self.fill_value = fill_value
+ 
+         self.estimator = estimator
+         self.sample_posterior = sample_posterior
+@@ -614,6 +626,7 @@ class IterativeImputer(_BaseImputer):
+                 missing_values=self.missing_values,
+                 strategy=self.initial_strategy,
+                 keep_empty_features=self.keep_empty_features,
++                fill_value=self.fill_value,
+             )
+             X_filled = self.initial_imputer_.fit_transform(X)
+         else:

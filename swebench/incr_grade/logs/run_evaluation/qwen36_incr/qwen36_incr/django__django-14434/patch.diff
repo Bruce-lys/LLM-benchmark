@@ -1,0 +1,21 @@
+diff --git a/django/db/backends/ddl_references.py b/django/db/backends/ddl_references.py
+index c06386a2fa..2c6000f5cb 100644
+--- a/django/db/backends/ddl_references.py
++++ b/django/db/backends/ddl_references.py
+@@ -64,11 +64,14 @@ class TableColumns(Table):
+         self.table = table
+         self.columns = columns
+ 
++    def _get_table_name(self):
++        return self.table.table if isinstance(self.table, Table) else self.table
++
+     def references_column(self, table, column):
+-        return self.table == table and column in self.columns
++        return self._get_table_name() == table and column in self.columns
+ 
+     def rename_column_references(self, table, old_column, new_column):
+-        if self.table == table:
++        if self._get_table_name() == table:
+             for index, column in enumerate(self.columns):
+                 if column == old_column:
+                     self.columns[index] = new_column

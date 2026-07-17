@@ -1,0 +1,88 @@
+diff --git a/sympy/codegen/ast.py b/sympy/codegen/ast.py
+index a02714b174..b780d4d9ec 100644
+--- a/sympy/codegen/ast.py
++++ b/sympy/codegen/ast.py
+@@ -869,6 +869,55 @@ def _construct_iterable(cls, itr):
+         return _sympify(itr)
+ 
+ 
++class _StringArgTuple(tuple):
++    """A tuple of string arguments that is iterable but false for atoms().
++
++    This keeps ``String.args`` iterable for ``String(*args)`` reconstruction
++    while making ``atoms()`` treat ``String`` as an atom.
++    """
++    def __bool__(self):
++        return False
++
++
++class _StringArg(Basic):
++    """Internal Basic argument used to store the text of a ``String``.
++
++    The string text itself is stored in ``String.text`` and excluded from the
++    Basic arguments. This private Basic object supplies the single Basic
++    argument required for argument invariance, ``String(*String.args) == String``.
++    """
++    __slots__ = ('text', 'argname')
++
++    def __new__(cls, text, argname=None):
++        if isinstance(text, _StringArg):
++            text, argname = text.text, argname or text.argname
++        else:
++            text = str(text)
++        if argname is None:
++            argname = cls.__name__
++        obj = Basic.__new__(cls)
++        obj.text = text
++        obj.argname = argname
++        return obj
++
++    def __eq__(self, other):
++        if isinstance(other, _StringArg):
++            return (self.text == other.text and
++                    self.argname == other.argname)
++        if isinstance(other, Basic) and hasattr(other, 'text'):
++            return (self.text == other.text and
++                    self.argname == other.__class__.__name__)
++        return NotImplemented
++
++    def __hash__(self):
++        return hash((self.argname, self.text))
++
++    def _hashable_content(self):
++        return (self.argname, self.text)
++
++    def __getnewargs__(self):
++        return (self.text, self.argname)
++
+ class String(Token):
+     """ SymPy object representing a string.
+ 
+@@ -897,13 +946,27 @@ class String(Token):
+     __slots__ = ('text',)
+     not_in_args = ['text']
+     is_Atom = True
++    __hash__ = Basic.__hash__
+ 
+     @classmethod
+     def _construct_text(cls, text):
++        if isinstance(text, _StringArg):
++            text = text.text
+         if not isinstance(text, str):
+             raise TypeError("Argument text is not a string type.")
+         return text
+ 
++    def __new__(cls, *args, **kwargs):
++        obj = super().__new__(cls, *args, **kwargs)
++        obj._args = _StringArgTuple((_StringArg(obj.text, cls.__name__),))
++        return obj
++
++    def __eq__(self, other):
++        if isinstance(other, _StringArg):
++            return (self.text == other.text and
++                    self.__class__.__name__ == other.argname)
++        return super().__eq__(other)
++
+     def _sympystr(self, printer, *args, **kwargs):
+         return self.text
+ 

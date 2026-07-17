@@ -1,0 +1,112 @@
+diff --git a/django/contrib/contenttypes/fields.py b/django/contrib/contenttypes/fields.py
+index 5b327b6ae4..fd806200c5 100644
+--- a/django/contrib/contenttypes/fields.py
++++ b/django/contrib/contenttypes/fields.py
+@@ -644,8 +644,20 @@ def create_generic_related_manager(superclass, rel):
+             # instances' PK in order to match up instances:
+             object_id_converter = instances[0]._meta.pk.to_python
+             content_type_id_field_name = "%s_id" % self.content_type_field_name
++            # Clone the queryset if it's sliced to be able to filter it.
++            if queryset.query.is_sliced:
++                queryset = queryset._chain()
++                # Save the slice limits to re-apply them after filtering.
++                low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++                queryset.query.low_mark = 0
++                queryset.query.high_mark = None
++            queryset = queryset.filter(query)
++            # Re-apply slice if it was present.
++            if 'low_mark' in locals():
++                queryset.query.low_mark = low_mark
++                queryset.query.high_mark = high_mark
+             return (
+-                queryset.filter(query),
++                queryset,
+                 lambda relobj: (
+                     object_id_converter(getattr(relobj, self.object_id_field_name)),
+                     getattr(relobj, content_type_id_field_name),
+diff --git a/django/db/models/fields/related_descriptors.py b/django/db/models/fields/related_descriptors.py
+index b192df4fbf..67038458a5 100644
+--- a/django/db/models/fields/related_descriptors.py
++++ b/django/db/models/fields/related_descriptors.py
+@@ -145,7 +145,18 @@ class ForwardManyToOneDescriptor:
+             }
+         else:
+             query = {"%s__in" % self.field.related_query_name(): instances}
++        # Clone the queryset if it's sliced to be able to filter it.
++        if queryset.query.is_sliced:
++            queryset = queryset._chain()
++            # Save the slice limits to re-apply them after filtering.
++            low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++            queryset.query.low_mark = 0
++            queryset.query.high_mark = None
+         queryset = queryset.filter(**query)
++        # Re-apply slice if it was present.
++        if 'low_mark' in locals():
++            queryset.query.low_mark = low_mark
++            queryset.query.high_mark = high_mark
+ 
+         # Since we're going to assign directly in the cache,
+         # we must manage the reverse relation cache manually.
+@@ -404,7 +415,18 @@ class ReverseOneToOneDescriptor:
+         instance_attr = self.related.field.get_foreign_related_value
+         instances_dict = {instance_attr(inst): inst for inst in instances}
+         query = {"%s__in" % self.related.field.name: instances}
++        # Clone the queryset if it's sliced to be able to filter it.
++        if queryset.query.is_sliced:
++            queryset = queryset._chain()
++            # Save the slice limits to re-apply them after filtering.
++            low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++            queryset.query.low_mark = 0
++            queryset.query.high_mark = None
+         queryset = queryset.filter(**query)
++        # Re-apply slice if it was present.
++        if 'low_mark' in locals():
++            queryset.query.low_mark = low_mark
++            queryset.query.high_mark = high_mark
+ 
+         # Since we're going to assign directly in the cache,
+         # we must manage the reverse relation cache manually.
+@@ -719,7 +741,18 @@ def create_reverse_many_to_one_manager(superclass, rel):
+             instance_attr = self.field.get_foreign_related_value
+             instances_dict = {instance_attr(inst): inst for inst in instances}
+             query = {"%s__in" % self.field.name: instances}
++            # Clone the queryset if it's sliced to be able to filter it.
++            if queryset.query.is_sliced:
++                queryset = queryset._chain()
++                # Save the slice limits to re-apply them after filtering.
++                low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++                queryset.query.low_mark = 0
++                queryset.query.high_mark = None
+             queryset = queryset.filter(**query)
++            # Re-apply slice if it was present.
++            if 'low_mark' in locals():
++                queryset.query.low_mark = low_mark
++                queryset.query.high_mark = high_mark
+ 
+             # Since we just bypassed this class' get_queryset(), we must manage
+             # the reverse relation manually.
+@@ -1052,6 +1085,13 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+             queryset = queryset.using(queryset._db or self._db)
+ 
+             query = {"%s__in" % self.query_field_name: instances}
++            # Clone the queryset if it's sliced to be able to filter it.
++            if queryset.query.is_sliced:
++                queryset = queryset._chain()
++                # Save the slice limits to re-apply them after all operations.
++                low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark
++                queryset.query.low_mark = 0
++                queryset.query.high_mark = None
+             queryset = queryset._next_is_sticky().filter(**query)
+ 
+             # M2M: need to annotate the query in order to get the primary model
+@@ -1073,6 +1113,10 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
+                     for f in fk.local_related_fields
+                 }
+             )
++            # Re-apply slice if it was present.
++            if 'low_mark' in locals():
++                queryset.query.low_mark = low_mark
++                queryset.query.high_mark = high_mark
+             return (
+                 queryset,
+                 lambda result: tuple(

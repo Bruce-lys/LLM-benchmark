@@ -1,0 +1,42 @@
+diff --git a/django/core/handlers/exception.py b/django/core/handlers/exception.py
+index 98fb46083a..0901406c10 100644
+--- a/django/core/handlers/exception.py
++++ b/django/core/handlers/exception.py
+@@ -41,6 +41,37 @@ def convert_exception_to_response(get_response):
+             return response
+         return inner
+     else:
++        # If get_response has a 'get_response' attribute (like MiddlewareMixin)
++        # and that inner get_response is a coroutine function, we need to handle
++        # the case where the middleware's __call__ may return a coroutine.
++        # In this case, we should call the middleware's __acall__ method directly
++        # if it has one, so that the response is properly awaited before
++        # process_response is called.
++        if hasattr(get_response, 'get_response') and asyncio.iscoroutinefunction(get_response.get_response):
++            if hasattr(get_response, '__acall__') and asyncio.iscoroutinefunction(get_response.__acall__):
++                @wraps(get_response)
++                async def inner(request):
++                    try:
++                        # Call __acall__ directly to ensure proper async handling
++                        response = await get_response.__acall__(request)
++                    except Exception as exc:
++                        response = await sync_to_async(response_for_exception)(request, exc)
++                    return response
++                return inner
++            else:
++                # If there's no __acall__, we need to wrap __call__ to await its result
++                @wraps(get_response)
++                async def inner(request):
++                    try:
++                        response = get_response(request)
++                        # If the middleware returned a coroutine, await it
++                        if asyncio.iscoroutine(response):
++                            response = await response
++                    except Exception as exc:
++                        response = await sync_to_async(response_for_exception)(request, exc)
++                    return response
++                return inner
++
+         @wraps(get_response)
+         def inner(request):
+             try:

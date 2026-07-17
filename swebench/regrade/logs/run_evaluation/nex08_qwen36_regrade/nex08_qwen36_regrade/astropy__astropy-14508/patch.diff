@@ -1,0 +1,32 @@
+diff --git a/astropy/io/fits/card.py b/astropy/io/fits/card.py
+index 118bfced8..50a150e39 100644
+--- a/astropy/io/fits/card.py
++++ b/astropy/io/fits/card.py
+@@ -1299,6 +1299,27 @@ def _format_value(value):
+ 
+ def _format_float(value):
+     """Format a floating number to make sure it gets the decimal point."""
++    value_str = str(value).translate(FIX_FP_TABLE)
++
++    if "." not in value_str and "E" not in value_str:
++        value_str += ".0"
++
++    # Normalize exponent to use two digits.
++    idx = value_str.find("E")
++    if idx >= 0:
++        significand, exponent = value_str.split("E", 1)
++        if exponent[0] in ("+", "-"):
++            sign = exponent[0]
++            exponent = exponent[1:]
++        else:
++            sign = ""
++        value_str = f"{significand}E{sign}{int(exponent):02d}"
++
++    # Prefer Python's shortest string representation when it fits in the
++    # 20-character value field.
++    if len(value_str) <= 20:
++        return value_str
++
+     value_str = f"{value:.16G}"
+     if "." not in value_str and "E" not in value_str:
+         value_str += ".0"

@@ -1,0 +1,34 @@
+diff --git a/src/_pytest/setuponly.py b/src/_pytest/setuponly.py
+index c9cc589ff..6f8a93f87 100644
+--- a/src/_pytest/setuponly.py
++++ b/src/_pytest/setuponly.py
+@@ -1,5 +1,7 @@
+ import pytest
+ 
++from _pytest._io.saferepr import saferepr
++
+ 
+ def pytest_addoption(parser):
+     group = parser.getgroup("debugconfig")
+@@ -43,6 +45,12 @@ def pytest_fixture_post_finalizer(fixturedef) -> None:
+                 del fixturedef.cached_param
+ 
+ 
++def _saferepr(obj) -> str:
++    if isinstance(obj, (bytes, bytearray)):
++        return saferepr(obj)
++    return str(obj)
++
++
+ def _show_fixture_action(fixturedef, msg):
+     config = fixturedef._fixturemanager.config
+     capman = config.pluginmanager.getplugin("capturemanager")
+@@ -66,7 +74,7 @@ def _show_fixture_action(fixturedef, msg):
+             tw.write(" (fixtures used: {})".format(", ".join(deps)))
+ 
+     if hasattr(fixturedef, "cached_param"):
+-        tw.write("[{}]".format(fixturedef.cached_param))
++        tw.write("[{}]".format(_saferepr(fixturedef.cached_param)))
+ 
+     tw.flush()
+ 

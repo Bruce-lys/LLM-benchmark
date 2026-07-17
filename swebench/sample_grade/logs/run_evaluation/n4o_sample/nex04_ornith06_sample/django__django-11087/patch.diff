@@ -1,0 +1,43 @@
+diff --git a/django/contrib/admin/utils.py b/django/contrib/admin/utils.py
+index dd6b108ff3..751aaa7098 100644
+--- a/django/contrib/admin/utils.py
++++ b/django/contrib/admin/utils.py
+@@ -183,7 +183,9 @@ class NestedObjects(Collector):
+             self.protected.update(e.protected_objects)
+ 
+     def related_objects(self, related, objs):
+-        qs = super().related_objects(related, objs)
++        qs = related.related_model._base_manager.using(self.using).filter(
++            **{"%s__in" % related.field.name: objs}
++        )
+         return qs.select_related(related.field.name)
+ 
+     def _nested(self, obj, seen, format_callback):
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index 3a462f1c4c..a058d78346 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -232,9 +232,22 @@ class Collector:
+         """
+         Get a QuerySet of objects related to `objs` via the relation `related`.
+         """
+-        return related.related_model._base_manager.using(self.using).filter(
++        queryset = related.related_model._base_manager.using(self.using).filter(
+             **{"%s__in" % related.field.name: objs}
+         )
++        # Optimization: only fetch fields required for cascading deletion when
++        # there are no signal listeners that might need other fields.
++        if (not signals.pre_delete.has_listeners(related.related_model) and
++                not signals.post_delete.has_listeners(related.related_model) and
++                not signals.m2m_changed.has_listeners(related.related_model)):
++            opts = related.related_model._meta
++            fields = [opts.pk.name]
++            concrete_opts = opts.concrete_model._meta
++            for ptr in concrete_opts.parents.values():
++                if ptr:
++                    fields.append(ptr.name)
++            queryset = queryset.only(*fields)
++        return queryset
+ 
+     def instances_with_model(self):
+         for model, instances in self.data.items():

@@ -1,0 +1,54 @@
+diff --git a/django/db/models/fields/files.py b/django/db/models/fields/files.py
+index 7f8eb128e1..c1fd6b894d 100644
+--- a/django/db/models/fields/files.py
++++ b/django/db/models/fields/files.py
+@@ -8,6 +8,7 @@ from django.core.files.images import ImageFile
+ from django.core.files.storage import Storage, default_storage
+ from django.core.files.utils import validate_file_name
+ from django.db.models import signals
++from django.db.models.signals import class_prepared
+ from django.db.models.fields import Field
+ from django.db.models.query_utils import DeferredAttribute
+ from django.db.models.utils import AltersData
+@@ -437,12 +438,6 @@ class ImageField(FileField):
+ 
+     def contribute_to_class(self, cls, name, **kwargs):
+         super().contribute_to_class(cls, name, **kwargs)
+-        # Attach update_dimension_fields so that dimension fields declared
+-        # after their corresponding image field don't stay cleared by
+-        # Model.__init__, see bug #11196.
+-        # Only run post-initialization dimension update on non-abstract models
+-        if not cls._meta.abstract:
+-            signals.post_init.connect(self.update_dimension_fields, sender=cls)
+ 
+     def update_dimension_fields(self, instance, force=False, *args, **kwargs):
+         """
+@@ -508,3 +503,28 @@ class ImageField(FileField):
+                 **kwargs,
+             }
+         )
++
++
++def _connect_image_field_post_init(sender, **kwargs):
++    """
++    Attach update_dimension_fields to the post_init signal for models with
++    ImageFields that use width_field or height_field.
++    """
++    if sender._meta.abstract:
++        return
++    for field in sender._meta.local_fields:
++        if isinstance(field, ImageField) and (field.width_field or field.height_field):
++            signals.post_init.connect(
++                field.update_dimension_fields,
++                sender=sender,
++                dispatch_uid=(
++                    "django.db.models.fields.files.ImageField.update_dimension_fields."
++                    "%s.%s" % (sender._meta.label, field.name)
++                ),
++            )
++
++
++class_prepared.connect(
++    _connect_image_field_post_init,
++    dispatch_uid="django.db.models.fields.files.ImageField.class_prepared",
++)

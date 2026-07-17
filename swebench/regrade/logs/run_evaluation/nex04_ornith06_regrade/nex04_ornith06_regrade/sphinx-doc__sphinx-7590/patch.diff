@@ -1,0 +1,98 @@
+diff --git a/sphinx/domains/cpp.py b/sphinx/domains/cpp.py
+index fe52d881d..e6b68a75c 100644
+--- a/sphinx/domains/cpp.py
++++ b/sphinx/domains/cpp.py
+@@ -35,7 +35,7 @@ from sphinx.util.cfamily import (
+     BaseParser, DefinitionError, UnsupportedMultiCharacterCharLiteral,
+     identifier_re, anon_identifier_re, integer_literal_re, octal_literal_re,
+     hex_literal_re, binary_literal_re, float_literal_re,
+-    char_literal_re
++    char_literal_re, udl_suffix_re
+ )
+ from sphinx.util.docfields import Field, GroupedField
+ from sphinx.util.docutils import SphinxDirective
+@@ -856,9 +856,11 @@ class ASTStringLiteral(ASTLiteral):
+ 
+ 
+ class ASTCharLiteral(ASTLiteral):
+-    def __init__(self, prefix: str, data: str) -> None:
++    def __init__(self, prefix: str, data: str,
++                 udl_suffix: str = None) -> None:
+         self.prefix = prefix  # may be None when no prefix
+         self.data = data
++        self.udl_suffix = udl_suffix
+         assert prefix in _id_char_from_prefix
+         self.type = _id_char_from_prefix[prefix]
+         decoded = data.encode().decode('unicode-escape')
+@@ -869,9 +871,9 @@ class ASTCharLiteral(ASTLiteral):
+ 
+     def _stringify(self, transform: StringifyTransform) -> str:
+         if self.prefix is None:
+-            return "'" + self.data + "'"
++            return "'" + self.data + "'" + (self.udl_suffix or "")
+         else:
+-            return self.prefix + "'" + self.data + "'"
++            return self.prefix + "'" + self.data + "'" + (self.udl_suffix or "")
+ 
+     def get_id(self, version: int) -> str:
+         return self.type + str(self.value)
+@@ -4662,12 +4664,19 @@ class DefinitionParser(BaseParser):
+                       integer_literal_re, octal_literal_re]:
+             pos = self.pos
+             if self.match(regex):
++                # user-defined literal?
++                udl_suffix = self._parse_udl_suffix()
++                if udl_suffix:
++                    return ASTNumberLiteral(self.definition[pos:self.pos])
+                 while self.current_char in 'uUlLfF':
+                     self.pos += 1
+                 return ASTNumberLiteral(self.definition[pos:self.pos])
+ 
+         string = self._parse_string()
+         if string is not None:
++            udl_suffix = self._parse_udl_suffix()
++            if udl_suffix:
++                string += udl_suffix
+             return ASTStringLiteral(string)
+ 
+         # character-literal
+@@ -4675,16 +4684,25 @@ class DefinitionParser(BaseParser):
+             prefix = self.last_match.group(1)  # may be None when no prefix
+             data = self.last_match.group(2)
+             try:
+-                return ASTCharLiteral(prefix, data)
++                udl_suffix = self._parse_udl_suffix()
++                return ASTCharLiteral(prefix, data, udl_suffix)
+             except UnicodeDecodeError as e:
+                 self.fail("Can not handle character literal. Internal error was: %s" % e)
+             except UnsupportedMultiCharacterCharLiteral:
+                 self.fail("Can not handle character literal"
+                           " resulting in multiple decoded characters.")
+ 
+-        # TODO: user-defined lit
+         return None
+ 
++    def _parse_udl_suffix(self) -> str:
++        """Parse a user-defined literal suffix and return it, or empty string."""
++        pos = self.pos
++        if self.match(udl_suffix_re):
++            return self.matched_text
++        else:
++            self.pos = pos
++            return ""
++
+     def _parse_fold_or_paren_expression(self) -> ASTExpression:
+         # "(" expression ")"
+         # fold-expression
+diff --git a/sphinx/util/cfamily.py b/sphinx/util/cfamily.py
+index 790a492a5..50d29be6a 100644
+--- a/sphinx/util/cfamily.py
++++ b/sphinx/util/cfamily.py
+@@ -53,6 +53,7 @@ float_literal_re = re.compile(r'''(?x)
+     | (0[xX][0-9a-fA-F]+\.([pP][+-]?[0-9a-fA-F]+)?)
+     )
+ ''')
++udl_suffix_re = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
+ char_literal_re = re.compile(r'''(?x)
+     ((?:u8)|u|U|L)?
+     '(

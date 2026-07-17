@@ -1,0 +1,28 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index b8efb9f881..6ca2cfcf1b 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -216,14 +216,18 @@ def get_child_arguments():
+     executable is reported to not have the .exe extension which can cause bugs
+     on reloading.
+     """
+-    import django.__main__
+-    django_main_path = Path(django.__main__.__file__)
+     py_script = Path(sys.argv[0])
++    main_module = sys.modules['__main__']
++    main_spec = getattr(main_module, '__spec__', None)
+ 
+     args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions]
+-    if py_script == django_main_path:
+-        # The server was started with `python -m django runserver`.
+-        args += ['-m', 'django']
++    # __main__.__spec__ is not None if and only if Python was launched with -m
++    # or the name of a "directory, zipfile or other sys.path entry." In the
++    # latter cases, __main__.__spec__.parent is the empty string.
++    # https://docs.python.org/3/reference/import.html#main-spec
++    if main_spec is not None and main_spec.parent:
++        # The server was started with `python -m <pkg> runserver`.
++        args += ['-m', main_spec.parent]
+         args += sys.argv[1:]
+     elif not py_script.exists():
+         # sys.argv[0] may not exist for several reasons on Windows.

@@ -1,0 +1,155 @@
+diff --git a/sphinx/domains/cpp.py b/sphinx/domains/cpp.py
+index fe52d881d..82cfe0a18 100644
+--- a/sphinx/domains/cpp.py
++++ b/sphinx/domains/cpp.py
+@@ -43,6 +43,10 @@ from sphinx.util.nodes import make_refnode
+ 
+ 
+ logger = logging.getLogger(__name__)
++
++
++_udl_suffix_re = re.compile(r'(?x)(~?[a-zA-Z_]|@[a-zA-Z0-9_])[a-zA-Z0-9_]*\b')
++_std_literal_suffix_re = re.compile(r'[uUlLfF]+')
+ T = TypeVar('T')
+ 
+ """
+@@ -838,6 +842,23 @@ class ASTNumberLiteral(ASTLiteral):
+         signode.append(nodes.Text(txt, txt))
+ 
+ 
++class ASTUserDefinedLiteral(ASTLiteral):
++    def __init__(self, value: str, suffix: str) -> None:
++        self.value = value
++        self.suffix = suffix
++
++    def _stringify(self, transform: StringifyTransform) -> str:
++        return self.value + self.suffix
++
++    def get_id(self, version: int) -> str:
++        return "L%sE" % self
++
++    def describe_signature(self, signode: TextElement, mode: str,
++                           env: "BuildEnvironment", symbol: "Symbol") -> None:
++        txt = str(self)
++        signode.append(nodes.Text(txt, txt))
++
++
+ class ASTStringLiteral(ASTLiteral):
+     def __init__(self, data: str) -> None:
+         self.data = data
+@@ -4625,9 +4646,14 @@ class DefinitionParser(BaseParser):
+         return self.config.cpp_paren_attributes
+ 
+     def _parse_string(self) -> str:
++        startPos = self.pos
++        if self.definition.startswith('u8', self.pos):
++            self.pos += 2
++        elif self.current_char in 'uUlL':
++            self.pos += 1
+         if self.current_char != '"':
++            self.pos = startPos
+             return None
+-        startPos = self.pos
+         self.pos += 1
+         escape = False
+         while True:
+@@ -4662,12 +4688,30 @@ class DefinitionParser(BaseParser):
+                       integer_literal_re, octal_literal_re]:
+             pos = self.pos
+             if self.match(regex):
++                suffixPos = self.pos
++                if self.match(_udl_suffix_re):
++                    suffix = self.matched_text
++                    suffixLen = len(suffix)
++                    if _std_literal_suffix_re.match(suffix):
++                        self.pos = suffixPos + suffixLen
++                    else:
++                        self.pos = suffixPos + suffixLen
++                        return ASTUserDefinedLiteral(
++                            self.definition[pos:suffixPos], suffix)
++                    return ASTNumberLiteral(self.definition[pos:self.pos])
++                # consume standard literals suffixes (uUlLfF) for backwards compatibility
+                 while self.current_char in 'uUlLfF':
+                     self.pos += 1
+                 return ASTNumberLiteral(self.definition[pos:self.pos])
+ 
+         string = self._parse_string()
+         if string is not None:
++            suffixPos = self.pos
++            if self.match(_udl_suffix_re):
++                suffix = self.matched_text
++                self.pos = suffixPos + len(suffix)
++                return ASTUserDefinedLiteral(
++                    self.definition[pos:suffixPos], suffix)
+             return ASTStringLiteral(string)
+ 
+         # character-literal
+@@ -4675,6 +4719,12 @@ class DefinitionParser(BaseParser):
+             prefix = self.last_match.group(1)  # may be None when no prefix
+             data = self.last_match.group(2)
+             try:
++                suffixPos = self.pos
++                if self.match(_udl_suffix_re):
++                    suffix = self.matched_text
++                    self.pos = suffixPos + len(suffix)
++                    return ASTUserDefinedLiteral(
++                        self.definition[pos:suffixPos], suffix)
+                 return ASTCharLiteral(prefix, data)
+             except UnicodeDecodeError as e:
+                 self.fail("Can not handle character literal. Internal error was: %s" % e)
+@@ -4682,7 +4732,6 @@ class DefinitionParser(BaseParser):
+                 self.fail("Can not handle character literal"
+                           " resulting in multiple decoded characters.")
+ 
+-        # TODO: user-defined lit
+         return None
+ 
+     def _parse_fold_or_paren_expression(self) -> ASTExpression:
+diff --git a/tests/test_domain_cpp.py b/tests/test_domain_cpp.py
+index 9db741ae5..0e1285e3d 100644
+--- a/tests/test_domain_cpp.py
++++ b/tests/test_domain_cpp.py
+@@ -161,6 +161,13 @@ def test_expressions():
+                 'A.B', 'A.BpF', 'A.Bp+F', 'A.Bp-F']:
+             expr = "0x" + e + suffix
+             exprCheck(expr, 'L' + expr + 'E')
++    exprCheck('6.62607015e-34q_J', 'L6.62607015e-34q_JE')
++    exprCheck('1q_s', 'L1q_sE')
++    exprCheck('"abc"q', 'L"abc"qE')
++    exprCheck('u8"abc"q', 'Lu8"abc"qE')
++    exprCheck('L"abc"q', 'LL"abc"qE')
++    exprCheck("'x'q", "L'x'qE")
++    exprCheck("u8'x'q", "Lu8'x'qE")
+     exprCheck('"abc\\"cba"', 'LA8_KcE')  # string
+     exprCheck('this', 'fpT')
+     # character literals
+@@ -786,6 +793,7 @@ def test_initializers():
+     check('function', 'template<T v> void f()', idsTemplate)
+     # with '=', assignment-expression
+     check('member', 'T v = 42', idsMember)
++    check('member', 'T v = 6.62607015e-34q_J * 1q_s', idsMember)
+     check('function', 'void f(T v = 42)', idsFunction)
+     check('function', 'template<T v = 42> void f()', idsTemplate)
+     # with '=', braced-init
+@@ -810,6 +818,21 @@ def test_initializers():
+     check('member', 'T v = T{}', idsMember)
+ 
+ 
++def test_user_defined_literals():
++    class Config:
++        cpp_id_attributes = ["id_attr"]
++        cpp_paren_attributes = ["paren_attr"]
++    for decl in [
++            'constexpr auto units::si::planck_constant = 6.62607015e-34q_J * 1q_s;',
++            'auto x = 1q_s;',
++            'auto y = u8"abc"q;']:
++        parser = DefinitionParser(decl, location=None, config=Config())
++        parser.allowFallbackExpressionParsing = False
++        ast = parser.parse_declaration('member', 'member')
++        parser.assert_end()
++        assert str(ast) == decl
++
++
+ def test_attributes():
+     # style: C++
+     check('member', '[[]] int f', {1: 'f__i', 2: '1f'})

@@ -1,0 +1,75 @@
+diff --git a/django/contrib/auth/__init__.py b/django/contrib/auth/__init__.py
+index 155330c596..f66eaf7de7 100644
+--- a/django/contrib/auth/__init__.py
++++ b/django/contrib/auth/__init__.py
+@@ -5,7 +5,7 @@ from django.apps import apps as django_apps
+ from django.conf import settings
+ from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+ from django.middleware.csrf import rotate_token
+-from django.utils.crypto import constant_time_compare
++from django.utils.crypto import constant_time_compare, salted_hmac
+ from django.utils.module_loading import import_string
+ from django.views.decorators.debug import sensitive_variables
+ 
+@@ -17,6 +17,31 @@ HASH_SESSION_KEY = "_auth_user_hash"
+ REDIRECT_FIELD_NAME = "next"
+ 
+ 
++def _session_auth_hash_matches(user, session_auth_hash, current_hash=None):
++    """
++    Return whether the user's session authentication hash matches the current
++    or a fallback secret key.
++    """
++    if not session_auth_hash:
++        return False
++    if current_hash is None:
++        current_hash = settings.SECRET_KEY
++    if constant_time_compare(current_hash, session_auth_hash):
++        return True
++    key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
++    fallback_keys = settings.SECRET_KEY_FALLBACKS or ()
++    for secret in fallback_keys:
++        hash_value = salted_hmac(
++            key_salt,
++            user.password,
++            secret=secret,
++            algorithm="sha256",
++        ).hexdigest()
++        if constant_time_compare(hash_value, session_auth_hash):
++            return True
++    return False
++
++
+ def load_backend(path):
+     return import_string(path)()
+ 
+@@ -104,11 +129,12 @@ def login(request, user, backend=None):
+         session_auth_hash = user.get_session_auth_hash()
+ 
+     if SESSION_KEY in request.session:
++        session_hash = request.session.get(HASH_SESSION_KEY, "")
++        session_hash_matches = not session_auth_hash or _session_auth_hash_matches(
++            user, session_hash, current_hash=session_auth_hash
++        )
+         if _get_user_session_key(request) != user.pk or (
+-            session_auth_hash
+-            and not constant_time_compare(
+-                request.session.get(HASH_SESSION_KEY, ""), session_auth_hash
+-            )
++            session_auth_hash and not session_hash_matches
+         ):
+             # To avoid reusing another user's session, create a new, empty
+             # session if the existing session corresponds to a different
+@@ -199,8 +225,10 @@ def get_user(request):
+             # Verify the session
+             if hasattr(user, "get_session_auth_hash"):
+                 session_hash = request.session.get(HASH_SESSION_KEY)
+-                session_hash_verified = session_hash and constant_time_compare(
+-                    session_hash, user.get_session_auth_hash()
++                session_hash_verified = session_hash and _session_auth_hash_matches(
++                    user,
++                    session_hash,
++                    current_hash=user.get_session_auth_hash(),
+                 )
+                 if not session_hash_verified:
+                     request.session.flush()

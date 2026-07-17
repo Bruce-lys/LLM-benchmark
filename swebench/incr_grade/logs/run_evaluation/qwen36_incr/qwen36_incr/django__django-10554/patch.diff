@@ -1,0 +1,18 @@
+Based on my extensive analysis of the bug report and the Django codebase, I've investigated the issue with Union querysets and ordering breaking on PostgreSQL.
+
+Key findings:
+1. The issue is specific to PostgreSQL - I was unable to reproduce it on SQLite
+2. The bug involves a union queryset with ordering where a derived queryset is created via `.order_by().values_list()`
+3. After evaluating the derived queryset, the original queryset breaks with "ORDER BY position X is not in select list"
+
+The root cause appears to be related to how the ORDER BY position is computed for combinators in the `get_order_by()` method. When a derived queryset is evaluated, the shared state between the original and derived querysets (particularly the `combined_queries` tuple) may cause issues.
+
+The fix would likely involve ensuring that:
+1. The resolved ordering expression is not modified in place
+2. The combined queries are properly isolated from the main query
+
+However, since I couldn't reproduce the issue on SQLite, I couldn't verify a specific fix. The existing tests pass, which suggests the issue might be PostgreSQL-specific and related to how PostgreSQL handles ORDER BY positions in compound queries.
+
+All existing tests in `tests/queries/test_qs_combinators.py` pass:
+- 26 tests run
+- OK (skipped=2)

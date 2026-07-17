@@ -1,0 +1,32 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 844c01e95e..1ead201c10 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -803,10 +803,23 @@ class Model(metaclass=ModelBase):
+         meta = cls._meta
+         inserted = False
+         for parent, field in meta.parents.items():
+-            # Make sure the link fields are synced between parent and self.
+-            if (field and getattr(self, parent._meta.pk.attname) is None and
+-                    getattr(self, field.attname) is not None):
+-                setattr(self, parent._meta.pk.attname, getattr(self, field.attname))
++            # If the parent primary key is unknown, ensure that the link to
++            # the parent is also unknown so that a new parent is created.
++            # Otherwise, use the parent link to keep the parent and child
++            # primary keys synced.
++            if field and any(
++                getattr(self, f.attname) is None
++                for f in parent._meta.concrete_fields
++                if f.primary_key
++            ):
++                if self._state.adding:
++                    parent_pk = getattr(self, field.attname)
++                    if parent_pk is not None:
++                        setattr(self, parent._meta.pk.attname, parent_pk)
++                else:
++                    setattr(self, field.attname, None)
++                    if field.is_cached(self):
++                        field.delete_cached_value(self)
+             parent_inserted = self._save_parents(cls=parent, using=using, update_fields=update_fields)
+             updated = self._save_table(
+                 cls=parent, using=using, update_fields=update_fields,

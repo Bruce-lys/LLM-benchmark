@@ -1,0 +1,18 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 3fa04b821f..7470bc4579 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1147,6 +1147,13 @@ class BaseInlineFormSet(BaseModelFormSet):
+         # form (it may have been saved after the formset was originally
+         # instantiated).
+         setattr(form.instance, self.fk.name, self.instance)
++        # Also update the database column, which may differ from the related
++        # field when to_field is used.
++        setattr(
++            form.instance,
++            self.fk.get_attname(),
++            getattr(self.instance, self.fk.target_field.attname),
++        )
+         return super().save_new(form, commit=commit)
+ 
+     def add_fields(self, form, index):

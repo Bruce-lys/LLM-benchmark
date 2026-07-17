@@ -1,0 +1,80 @@
+diff --git a/django/utils/translation/trans_real.py b/django/utils/translation/trans_real.py
+index 7dcc77b46c..20ff689dbb 100644
+--- a/django/utils/translation/trans_real.py
++++ b/django/utils/translation/trans_real.py
+@@ -43,7 +43,23 @@ language_code_re = _lazy_re_compile(
+     re.IGNORECASE
+ )
+ 
+-language_code_prefix_re = _lazy_re_compile(r'^/(\w+([@-]\w+)?)(/|$)')
++language_code_prefix_re = _lazy_re_compile(
++    r'^/(\w+(?:[+-]\w+)*)(/|$)',
++    re.IGNORECASE
++)
++
++
++def _is_valid_script_or_region(code):
++    """Return True if the subtag after the language is a script or region."""
++    parts = code.split("-")
++    if len(parts) == 1:
++        return True
++    subtag = parts[1]
++    return (
++        len(subtag) == 4 and subtag.isalpha() or
++        len(subtag) == 2 and subtag.isalpha() or
++        len(subtag) == 3 and subtag.isdigit()
++    )
+ 
+ 
+ @receiver(setting_changed)
+@@ -133,7 +149,7 @@ class DjangoTranslation(gettext_module.GNUTranslations):
+             self.domain = domain
+ 
+         self.__language = language
+-        self.__to_language = to_language(language)
++        self.__to_language = language
+         self.__locale = to_locale(language)
+         self._catalog = None
+         # If a language doesn't have a catalog, use the Germanic default for
+@@ -461,7 +477,7 @@ def get_languages():
+ 
+ 
+ @functools.lru_cache(maxsize=1000)
+-def get_supported_language_variant(lang_code, strict=False):
++def get_supported_language_variant(lang_code, strict=False, allow_fallback=True):
+     """
+     Return the language code that's listed in supported languages, possibly
+     selecting a more generic variant. Raise LookupError if nothing is found.
+@@ -469,6 +485,9 @@ def get_supported_language_variant(lang_code, strict=False):
+     If `strict` is False (the default), look for a country-specific variant
+     when neither the language code nor its generic variant is found.
+ 
++    If `allow_fallback` is False, don't try supported variants that start with
++    the generic language code.
++
+     lru_cache should have a maxsize to prevent from memory exhaustion attacks,
+     as the provided language codes are taken from the HTTP request. See also
+     <https://www.djangoproject.com/weblog/2007/oct/26/security-fix/>.
+@@ -490,7 +509,7 @@ def get_supported_language_variant(lang_code, strict=False):
+         for code in possible_lang_codes:
+             if code in supported_lang_codes and check_for_language(code):
+                 return code
+-        if not strict:
++        if not strict and allow_fallback:
+             # if fr-fr is not supported, try fr-ca.
+             for supported_code in supported_lang_codes:
+                 if supported_code.startswith(generic_lang_code + '-'):
+@@ -509,8 +528,12 @@ def get_language_from_path(path, strict=False):
+     if not regex_match:
+         return None
+     lang_code = regex_match[1]
++    if lang_code.count('-') >= 2 and not _is_valid_script_or_region(lang_code):
++        return None
+     try:
+-        return get_supported_language_variant(lang_code, strict=strict)
++        return get_supported_language_variant(
++            lang_code, strict=strict, allow_fallback=lang_code.count('-') <= 1
++        )
+     except LookupError:
+         return None
+ 

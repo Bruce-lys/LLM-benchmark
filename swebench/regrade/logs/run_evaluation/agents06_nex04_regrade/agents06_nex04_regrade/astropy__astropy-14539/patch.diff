@@ -1,0 +1,62 @@
+diff --git a/astropy/io/fits/diff.py b/astropy/io/fits/diff.py
+index 100cdf1b8..cf4265154 100644
+--- a/astropy/io/fits/diff.py
++++ b/astropy/io/fits/diff.py
+@@ -44,6 +44,31 @@ __all__ = [
+     "TableDataDiff",
+ ]
+ 
++
++def _is_variable_length_array_column(col):
++    return getattr(col.format, "p_format", None) is not None
++
++
++def _variable_length_array_differs(a, b, rtol=0.0, atol=0.0):
++    if a is None or b is None:
++        return a is not b
++    if not isinstance(a, np.ndarray) or not isinstance(b, np.ndarray):
++        return not np.array_equal(a, b)
++    if a.shape != b.shape:
++        return True
++    if (
++        np.issubdtype(a.dtype, np.floating)
++        and np.issubdtype(b.dtype, np.floating)
++    ):
++        return not np.allclose(a, b, rtol=rtol, atol=atol)
++    if (
++        np.issubdtype(a.dtype, np.complexfloating)
++        and np.issubdtype(b.dtype, np.complexfloating)
++    ):
++        return not np.allclose(a, b, rtol=rtol, atol=atol)
++    return not np.array_equal(a, b)
++
++
+ # Column attributes of interest for comparison
+ _COL_ATTRS = [
+     ("unit", "units"),
+@@ -1449,13 +1474,23 @@ class TableDataDiff(_BaseDiff):
+                 arrb.dtype, np.floating
+             ):
+                 diffs = where_not_allclose(arra, arrb, rtol=self.rtol, atol=self.atol)
++            elif _is_variable_length_array_column(col):
++                diffs = (
++                    [
++                        idx
++                        for idx in range(len(arra))
++                        if _variable_length_array_differs(
++                            arra[idx], arrb[idx], self.rtol, self.atol
++                        )
++                    ],
++                )
+             elif "P" in col.format:
+                 diffs = (
+                     [
+                         idx
+                         for idx in range(len(arra))
+-                        if not np.allclose(
+-                            arra[idx], arrb[idx], rtol=self.rtol, atol=self.atol
++                        if _variable_length_array_differs(
++                            arra[idx], arrb[idx], self.rtol, self.atol
+                         )
+                     ],
+                 )

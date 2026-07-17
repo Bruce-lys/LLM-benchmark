@@ -1,0 +1,23 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 30616c0172..1ad6189ac2 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -563,6 +563,18 @@ class MigrationAutodetector:
+                 if isinstance(base, str) and "." in base:
+                     base_app_label, base_name = base.split(".", 1)
+                     dependencies.append((base_app_label, base_name, None, True))
++                    # If the base model has fields being removed, depend on
++                    # those RemoveField operations. This is needed when moving
++                    # a field from a base class to a new subclass in the same
++                    # migration, e.g.:
++                    #     class Readable(models.Model):
++                    #         title = models.CharField(max_length=200)
++                    #     class Book(Readable):  # New model
++                    #         title = models.CharField(max_length=200)
++                    if (base_app_label, base_name.lower()) in self.kept_model_keys:
++                        for field_key in self.old_field_keys - self.new_field_keys:
++                            if field_key[0] == base_app_label and field_key[1] == base_name.lower():
++                                dependencies.append((base_app_label, base_name, field_key[2], False))
+             # Depend on the other end of the primary key if it's a relation
+             if primary_key_rel:
+                 dependencies.append((

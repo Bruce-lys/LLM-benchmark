@@ -1,0 +1,22 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 2428218696..26ffb98d0f 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -933,10 +933,13 @@ class Model(metaclass=ModelBase):
+                         "%s() prohibited to prevent data loss due to unsaved "
+                         "related object '%s'." % (operation_name, field.name)
+                     )
+-                elif getattr(self, field.attname) is None:
+-                    # Use pk from related object if it has been saved after
+-                    # an assignment.
+-                    setattr(self, field.attname, obj.pk)
++                else:
++                    related_value = getattr(obj, field.target_field.attname)
++                    if (getattr(self, field.attname) is None or
++                            (getattr(self, field.attname) == '' and related_value != '')):
++                        # Use pk or to_field from related object if it has been
++                        # saved after an assignment.
++                        setattr(self, field.attname, related_value)
+                 # If the relationship's pk/to_field was changed, clear the
+                 # cached relationship.
+                 if getattr(obj, field.target_field.attname) != getattr(self, field.attname):

@@ -1,0 +1,65 @@
+diff --git a/src/_pytest/mark/structures.py b/src/_pytest/mark/structures.py
+index 800a25c92..63e10d2ec 100644
+--- a/src/_pytest/mark/structures.py
++++ b/src/_pytest/mark/structures.py
+@@ -37,6 +37,7 @@ if TYPE_CHECKING:
+ 
+ 
+ EMPTY_PARAMETERSET_OPTION = "empty_parameter_set_mark"
++_MISSING = object()
+ 
+ 
+ def istestfunc(func) -> bool:
+@@ -357,6 +358,8 @@ class MarkDecorator:
+ 
+ def get_unpacked_marks(obj: object) -> Iterable[Mark]:
+     """Obtain the unpacked marks that are stored on an object."""
++    if inspect.isclass(obj):
++        return _get_marks_from_class(obj)
+     mark_list = getattr(obj, "pytestmark", [])
+     if not isinstance(mark_list, list):
+         mark_list = [mark_list]
+@@ -380,6 +383,43 @@ def normalize_mark_list(
+         yield mark_obj
+ 
+ 
++def _get_marks_from_class(cls: Type[object]) -> Iterable[Mark]:
++    """Obtain the unpacked marks for a class, considering its inheritance MRO.
++
++    For classes with multiple base classes, marks from all base classes are
++    merged in MRO order, deduplicating marker names by first occurrence.
++    Classes with a single base use the normal attribute lookup semantics.
++    """
++    if len(cls.__bases__) <= 1:
++        mark_list = getattr(cls, "pytestmark", [])
++        if not isinstance(mark_list, list):
++            mark_list = [mark_list]
++        return normalize_mark_list(mark_list)
++
++    marks: List[Mark] = []
++    seen: Set[str] = set()
++
++    for base in cls.__mro__[1:]:
++        mark_list = getattr(base, "pytestmark", [])
++        if not isinstance(mark_list, list):
++            mark_list = [mark_list]
++        for mark in normalize_mark_list(mark_list):
++            if mark.name not in seen:
++                seen.add(mark.name)
++                marks.append(mark)
++
++    mark_list = cls.__dict__.get("pytestmark", _MISSING)
++    if mark_list is not _MISSING:
++        if not isinstance(mark_list, list):
++            mark_list = [mark_list]
++        for mark in normalize_mark_list(mark_list):
++            if mark.name not in seen:
++                seen.add(mark.name)
++                marks.append(mark)
++
++    return marks
++
++
+ def store_mark(obj, mark: Mark) -> None:
+     """Store a Mark on an object.
+ 

@@ -1,0 +1,38 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index ddfd2b365..fbe90e755 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -606,6 +606,20 @@ class Documenter:
+ 
+                     for i, line in enumerate(self.process_doc(docstrings)):
+                         self.add_line(line, sourcename, i)
++                elif (self.parent and inspect.isclass(self.parent) and
++                      self.config.autodoc_inherit_docstrings):
++                    # also check base classes for inherited attributes
++                    for cls in self.parent.__mro__:
++                        key = (cls.__qualname__, self.objpath[-1])
++                        if key in attr_docs:
++                            no_docstring = True
++                            # make a copy of docstring for attributes to avoid cache
++                            # the change of autodoc-process-docstring event.
++                            docstrings = [list(attr_docs[key])]
++
++                            for i, line in enumerate(self.process_doc(docstrings)):
++                                self.add_line(line, sourcename, i)
++                            break
+ 
+         # add content from docstrings
+         if not no_docstring:
+@@ -746,7 +760,11 @@ class Documenter:
+                         keep = has_doc or self.options.undoc_members
+                 else:
+                     keep = False
+-            elif (namespace, membername) in attr_docs:
++            elif ((namespace, membername) in attr_docs or
++                  (inspect.isclass(self.object) and
++                   any((cls.__qualname__, membername) in attr_docs
++                       for cls in self.object.__mro__
++                       if cls is not self.object))):
+                 if want_all and isprivate:
+                     if self.options.private_members is None:
+                         keep = False

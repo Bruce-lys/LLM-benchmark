@@ -1,0 +1,29 @@
+run:
+  tag: gxt_nex_qwen_0p4_0p6_lite75_t085
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: nex_qwen_linear_0p4_0p6
+
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.60:8000/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

@@ -1,0 +1,45 @@
+diff --git a/sympy/physics/quantum/dagger.py b/sympy/physics/quantum/dagger.py
+index 17da3cfd2c..1abc59e6a6 100644
+--- a/sympy/physics/quantum/dagger.py
++++ b/sympy/physics/quantum/dagger.py
+@@ -76,6 +76,14 @@ class Dagger(adjoint):
+     .. [2] https://en.wikipedia.org/wiki/Hermitian_transpose
+     """
+ 
++    def __mul__(self, other):
++        from sympy.physics.quantum.operator import IdentityOperator
++
++        if isinstance(other, IdentityOperator):
++            return self
++
++        return Expr.__mul__(self, other)
++
+     def __new__(cls, arg):
+         if hasattr(arg, 'adjoint'):
+             obj = arg.adjoint()
+diff --git a/sympy/physics/quantum/operator.py b/sympy/physics/quantum/operator.py
+index 306bfee64f..537687eba3 100644
+--- a/sympy/physics/quantum/operator.py
++++ b/sympy/physics/quantum/operator.py
+@@ -184,6 +184,11 @@ def __mul__(self, other):
+         return Mul(self, other)
+ 
+ 
++def _is_dagger_of_operator(expr):
++    return (isinstance(expr, Dagger) and len(expr.args) == 1
++            and isinstance(expr.args[0], Operator))
++
++
+ class HermitianOperator(Operator):
+     """A Hermitian operator that satisfies H == Dagger(H).
+ 
+@@ -307,7 +312,8 @@ def _print_contents_latex(self, printer, *args):
+ 
+     def __mul__(self, other):
+ 
+-        if isinstance(other, Operator):
++        if isinstance(other, Operator) or (
++                isinstance(other, Dagger) and _is_dagger_of_operator(other)):
+             return other
+ 
+         return Mul(self, other)

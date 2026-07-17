@@ -1,0 +1,28 @@
+diff --git a/lib/matplotlib/cbook.py b/lib/matplotlib/cbook.py
+index c9699b2e21..0e86a052a1 100644
+--- a/lib/matplotlib/cbook.py
++++ b/lib/matplotlib/cbook.py
+@@ -791,6 +791,23 @@ class Grouper:
+     def __contains__(self, item):
+         return weakref.ref(item) in self._mapping
+ 
++    def __getstate__(self):
++        # Return unique groups as lists of strong references.
++        unique_groups = {}
++        for key, group in self._mapping.items():
++            root_id = id(group)
++            if root_id not in unique_groups:
++                unique_groups[root_id] = [x() for x in group if x() is not None]
++        return list(unique_groups.values())
++
++    def __setstate__(self, state):
++        # Reconstruct mapping with shared lists.
++        self._mapping = {}
++        for group in state:
++            weak_group = [weakref.ref(obj) for obj in group]
++            for obj in group:
++                self._mapping[weakref.ref(obj)] = weak_group
++
+     def clean(self):
+         """Clean dead weak references from the dictionary."""
+         mapping = self._mapping

@@ -1,0 +1,29 @@
+run:
+  tag: chwang_20260709_nex02_ornith02_qwen06_lite75_t10
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: Nex-0.2_Ornith-0.2_Qwen3.5-0.6
+
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.61:8016/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

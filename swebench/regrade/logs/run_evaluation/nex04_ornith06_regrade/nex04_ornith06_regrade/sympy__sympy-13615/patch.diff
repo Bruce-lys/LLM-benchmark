@@ -1,0 +1,38 @@
+diff --git a/sympy/sets/sets.py b/sympy/sets/sets.py
+index 917717bb7..209839f59 100644
+--- a/sympy/sets/sets.py
++++ b/sympy/sets/sets.py
+@@ -999,9 +999,30 @@ def _complement(self, other):
+             return Union(a, b)
+ 
+         if isinstance(other, FiniteSet):
+-            nums = [m for m in other.args if m.is_number]
+-            if nums == []:
+-                return None
++            # Classify elements by their membership in self
++            known_not_in = []
++            unknown = []
++            for el in other.args:
++                c = self.contains(el)
++                if c is S.false:
++                    known_not_in.append(el)
++                elif c is not S.true:
++                    # Either undecidable or non-number with undecidable membership
++                    unknown.append(el)
++                # If c is S.true, the element is in self and removed
++
++            if not unknown:
++                # All membership decisions are known
++                return FiniteSet(*known_not_in)
++
++            # There are elements with undecidable membership
++            unknown_set = FiniteSet(*unknown)
++            known_not_set = FiniteSet(*known_not_in)
++            if known_not_set == S.EmptySet:
++                return Complement(unknown_set, self, evaluate=False)
++            else:
++                return Union(Complement(unknown_set, self, evaluate=False),
++                             known_not_set)
+ 
+         return Set._complement(self, other)
+ 

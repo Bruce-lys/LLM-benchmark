@@ -1,0 +1,173 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 9735ce10c8..40de8d5ead 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -550,9 +550,168 @@ class Query(BaseExpression):
+         Perform a COUNT() query using the current filter constraints.
+         """
+         obj = self.clone()
++        # Strip annotations that are not referenced by filters, other
++        # annotations, or ordering.
++        used_annotations = obj.get_used_annotations()
++        stripped = False
++        for alias in list(obj.annotations):
++            if alias not in used_annotations:
++                del obj.annotations[alias]
++                if obj.annotation_select_mask is not None:
++                    obj.annotation_select_mask.discard(alias)
++                stripped = True
++        # Remove joins that are no longer referenced by the remaining query.
++        if stripped:
++            self._cleanup_unused_aliases(obj)
+         obj.add_annotation(Count("*"), alias="__count", is_summary=True)
+         return obj.get_aggregation(using, ["__count"])["__count"]
+ 
++    def get_used_annotations(self):
++        """
++        Return the set of annotation aliases that are actually referenced by
++        the query's filters, other annotations, or ordering.
++        """
++        from django.db.models.expressions import Ref
++
++        annotations = self.annotations
++        expr_to_alias = {id(expr): alias for alias, expr in annotations.items()}
++        used = set()
++
++        # Check the WHERE clause for references to annotations.
++        for child in self.where.children:
++            if hasattr(child, "flatten"):
++                for expr in child.flatten():
++                    if id(expr) in expr_to_alias:
++                        used.add(expr_to_alias[id(expr)])
++                    if isinstance(expr, Ref) and expr.refs in annotations:
++                        used.add(expr.refs)
++            elif hasattr(child, "lhs"):
++                lhs = child.lhs
++                if hasattr(lhs, "flatten"):
++                    for expr in lhs.flatten():
++                        if id(expr) in expr_to_alias:
++                            used.add(expr_to_alias[id(expr)])
++                        if isinstance(expr, Ref) and expr.refs in annotations:
++                            used.add(expr.refs)
++                elif isinstance(lhs, Ref) and lhs.refs in annotations:
++                    used.add(lhs.refs)
++                rhs = child.rhs
++                if hasattr(rhs, "flatten"):
++                    for expr in rhs.flatten():
++                        if id(expr) in expr_to_alias:
++                            used.add(expr_to_alias[id(expr)])
++                        if isinstance(expr, Ref) and expr.refs in annotations:
++                            used.add(expr.refs)
++
++        # Check ordering for references to annotations.
++        for ordering in self.order_by:
++            if isinstance(ordering, str):
++                name = ordering.lstrip("-")
++                if name in annotations:
++                    used.add(name)
++            elif hasattr(ordering, "flatten"):
++                for expr in ordering.flatten():
++                    if id(expr) in expr_to_alias:
++                        used.add(expr_to_alias[id(expr)])
++                    if isinstance(expr, Ref) and expr.refs in annotations:
++                        used.add(expr.refs)
++
++        # Transitively include annotations that are dependencies of used
++        # annotations.
++        changed = True
++        while changed:
++            changed = False
++            for alias in list(used):
++                annotation = annotations[alias]
++                if hasattr(annotation, "flatten"):
++                    for expr in annotation.flatten():
++                        if id(expr) in expr_to_alias:
++                            dep = expr_to_alias[id(expr)]
++                            if dep not in used:
++                                used.add(dep)
++                                changed = True
++
++        return used
++
++    def _cleanup_unused_aliases(self, query):
++        """
++        Set the reference count of aliases that are no longer referenced by
++        the query to 0, so they are excluded from the FROM clause.
++        """
++        from django.db.models.expressions import Col
++
++        referenced_aliases = set()
++        base_alias = query.base_table if query.alias_map else None
++
++        # Collect aliases directly referenced by the WHERE clause.
++        for child in query.where.children:
++            if isinstance(child, ExtraWhere):
++                # Cannot analyze black-box SQL, skip cleanup.
++                return
++            self._collect_col_aliases(child, referenced_aliases)
++
++        # Collect aliases directly referenced by select fields.
++        for col in query.select:
++            self._collect_col_aliases(col, referenced_aliases)
++
++        # Collect aliases directly referenced by kept annotations.
++        for expr in query.annotations.values():
++            self._collect_col_aliases(expr, referenced_aliases)
++
++        # Collect aliases directly referenced by ordering.
++        for ordering in query.order_by:
++            self._collect_col_aliases(ordering, referenced_aliases)
++
++        # Add ancestors of directly referenced aliases to the kept set,
++        # since they may be needed as intermediate joins.
++        kept_aliases = set()
++        if base_alias:
++            kept_aliases.add(base_alias)
++        for alias in referenced_aliases:
++            self._add_join_ancestors(query, alias, kept_aliases)
++
++        # Zero out refcounts for unreferenced non-base aliases.
++        for alias in query.alias_refcount:
++            if alias != base_alias and alias not in kept_aliases:
++                query.alias_refcount[alias] = 0
++
++    def _add_join_ancestors(self, query, alias, kept_aliases):
++        """Add an alias and all its ancestors up to the base table to kept_aliases."""
++        seen = set()
++        while alias and alias not in kept_aliases and alias not in seen:
++            if alias not in query.alias_map:
++                break
++            kept_aliases.add(alias)
++            seen.add(alias)
++            join = query.alias_map[alias]
++            alias = getattr(join, "parent_alias", None)
++
++    def _collect_col_aliases(self, expr, referenced_aliases):
++        """Recursively collect all Col aliases from an expression or node."""
++        from django.db.models.expressions import Col
++        from django.db.models.sql.where import WhereNode
++
++        if isinstance(expr, WhereNode):
++            for child in expr.children:
++                if isinstance(child, ExtraWhere):
++                    return True  # Signal to stop cleanup
++                self._collect_col_aliases(child, referenced_aliases)
++            return False
++        if isinstance(expr, ExtraWhere):
++            return True
++        if hasattr(expr, "flatten"):
++            for sub in expr.flatten():
++                if isinstance(sub, Col):
++                    referenced_aliases.add(sub.alias)
++        elif isinstance(expr, Col):
++            referenced_aliases.add(expr.alias)
++        elif hasattr(expr, "lhs"):
++            if self._collect_col_aliases(expr.lhs, referenced_aliases):
++                return True
++            if self._collect_col_aliases(expr.rhs, referenced_aliases):
++                return True
++        return False
++
+     def has_filters(self):
+         return self.where
+ 

@@ -1,0 +1,45 @@
+diff --git a/sympy/core/add.py b/sympy/core/add.py
+index 83a5f2aed..ed1c55bc7 100644
+--- a/sympy/core/add.py
++++ b/sympy/core/add.py
+@@ -536,8 +536,7 @@ def _eval_is_zero(self):
+             return
+         nz = []
+         z = 0
+-        im_or_z = False
+-        im = False
++        im_coeff = []
+         for a in self.args:
+             if a.is_real:
+                 if a.is_zero:
+@@ -546,10 +545,11 @@ def _eval_is_zero(self):
+                     nz.append(a)
+                 else:
+                     return
+-            elif a.is_imaginary:
+-                im = True
+-            elif (S.ImaginaryUnit*a).is_real:
+-                im_or_z = True
++            elif a.is_imaginary or (S.ImaginaryUnit*a).is_real:
++                c = a / S.ImaginaryUnit
++                if c.is_real is False:
++                    return
++                im_coeff.append(c)
+             else:
+                 return
+         if z == len(self.args):
+@@ -558,9 +558,12 @@ def _eval_is_zero(self):
+             return None
+         b = self.func(*nz)
+         if b.is_zero:
+-            if not im_or_z and not im:
++            if not im_coeff:
++                return True
++            im = self.func(*im_coeff)
++            if im.is_zero:
+                 return True
+-            if im and not im_or_z:
++            if im.is_zero is False:
+                 return False
+         if b.is_zero is False:
+             return False

@@ -1,0 +1,47 @@
+diff --git a/django/core/mail/message.py b/django/core/mail/message.py
+index e393b4cf5c..ee3e622938 100644
+--- a/django/core/mail/message.py
++++ b/django/core/mail/message.py
+@@ -32,6 +32,18 @@ DEFAULT_ATTACHMENT_MIME_TYPE = 'application/octet-stream'
+ RFC5322_EMAIL_LINE_LENGTH_LIMIT = 998
+ 
+ 
++def _make_msgid(domain=DNS_NAME):
++    """Return a Message-ID with an ASCII domain name."""
++    if domain is None:
++        return make_msgid()
++    domain = str(domain)
++    try:
++        domain.encode('ascii')
++    except UnicodeEncodeError:
++        domain = domain.encode('idna').decode('ascii')
++    return make_msgid(domain=domain)
++
++
+ class BadHeaderError(ValueError):
+     pass
+ 
+@@ -257,7 +269,7 @@ class EmailMessage:
+             msg['Date'] = formatdate(localtime=settings.EMAIL_USE_LOCALTIME)
+         if 'message-id' not in header_names:
+             # Use cached DNS_NAME for performance
+-            msg['Message-ID'] = make_msgid(domain=DNS_NAME)
++            msg['Message-ID'] = _make_msgid(DNS_NAME)
+         for name, value in self.extra_headers.items():
+             if name.lower() != 'from':  # From is already handled
+                 msg[name] = value
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..68f9e464d6 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -14,6 +14,10 @@ class CachedDnsName:
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+             self._fqdn = socket.getfqdn()
++            try:
++                self._fqdn.encode('ascii')
++            except UnicodeEncodeError:
++                self._fqdn = self._fqdn.encode('idna').decode('ascii')
+         return self._fqdn
+ 
+ 

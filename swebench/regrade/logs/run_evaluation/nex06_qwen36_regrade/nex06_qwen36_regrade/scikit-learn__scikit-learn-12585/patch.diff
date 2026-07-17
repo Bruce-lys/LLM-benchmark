@@ -1,0 +1,37 @@
+diff --git a/sklearn/base.py b/sklearn/base.py
+index 56ffb18bf..b72312c59 100644
+--- a/sklearn/base.py
++++ b/sklearn/base.py
+@@ -48,7 +48,7 @@ def clone(estimator, safe=True):
+     # XXX: not handling dictionaries
+     if estimator_type in (list, tuple, set, frozenset):
+         return estimator_type([clone(e, safe=safe) for e in estimator])
+-    elif not hasattr(estimator, 'get_params'):
++    elif not hasattr(estimator, 'get_params') or isinstance(estimator, type):
+         if not safe:
+             return copy.deepcopy(estimator)
+         else:
+@@ -180,7 +180,8 @@ class BaseEstimator(object):
+         out = dict()
+         for key in self._get_param_names():
+             value = getattr(self, key, None)
+-            if deep and hasattr(value, 'get_params'):
++            if (deep and hasattr(value, 'get_params') and
++                    not isinstance(value, type)):
+                 deep_items = value.get_params().items()
+                 out.update((key + '__' + k, val) for k, val in deep_items)
+             out[key] = value
+diff --git a/sklearn/utils/metaestimators.py b/sklearn/utils/metaestimators.py
+index 49b059b32..4808760f6 100644
+--- a/sklearn/utils/metaestimators.py
++++ b/sklearn/utils/metaestimators.py
+@@ -29,7 +29,8 @@ class _BaseComposition(six.with_metaclass(ABCMeta, BaseEstimator)):
+         estimators = getattr(self, attr)
+         out.update(estimators)
+         for name, estimator in estimators:
+-            if hasattr(estimator, 'get_params'):
++            if (hasattr(estimator, 'get_params') and
++                    not isinstance(estimator, type)):
+                 for key, value in six.iteritems(
+                         estimator.get_params(deep=True)):
+                     out['%s__%s' % (name, key)] = value

@@ -1,0 +1,28 @@
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index d88cda6e20..bb0250c114 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -168,7 +168,22 @@ class FunctionTypeSerializer(BaseSerializer):
+         ):
+             klass = self.value.__self__
+             module = klass.__module__
+-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {
++            # Use the class attribute name (rather than the function name) so
++            # nested and externally-assigned classmethods serialize correctly.
++            method_name = None
++            method = getattr(self.value, "__func__", None)
++            for cls in klass.__mro__:
++                for name, descriptor in cls.__dict__.items():
++                    if isinstance(descriptor, classmethod) and getattr(
++                        descriptor, "__func__", None
++                    ) is method:
++                        method_name = name
++                        break
++                if method_name:
++                    break
++            if method_name is None:
++                method_name = self.value.__name__
++            return "%s.%s.%s" % (module, klass.__qualname__, method_name), {
+                 "import %s" % module
+             }
+         # Further error checking

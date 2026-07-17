@@ -1,0 +1,30 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 76265f5be..3e962d90f 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -708,6 +708,7 @@ class Documenter:
+             else:
+                 isattr = False
+ 
++            attr_doc = attr_docs.get((namespace, membername))
+             doc = getdoc(member, self.get_attr, self.config.autodoc_inherit_docstrings,
+                          self.parent, self.object_name)
+             if not isinstance(doc, str):
+@@ -729,11 +730,15 @@ class Documenter:
+             has_doc = bool(doc)
+ 
+             metadata = extract_metadata(doc)
++            if not metadata and attr_doc:
++                metadata = extract_metadata('\n'.join(attr_doc))
+             if 'private' in metadata:
+-                # consider a member private if docstring has "private" metadata
++                # consider a member private if docstring or attribute doc
++                # has "private" metadata
+                 isprivate = True
+             elif 'public' in metadata:
+-                # consider a member public if docstring has "public" metadata
++                # consider a member public if docstring or attribute doc
++                # has "public" metadata
+                 isprivate = False
+             else:
+                 isprivate = membername.startswith('_')

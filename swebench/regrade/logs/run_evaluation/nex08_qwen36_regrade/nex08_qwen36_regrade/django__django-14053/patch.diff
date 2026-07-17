@@ -1,0 +1,85 @@
+diff --git a/django/contrib/staticfiles/storage.py b/django/contrib/staticfiles/storage.py
+index 494890cc23..fefc896245 100644
+--- a/django/contrib/staticfiles/storage.py
++++ b/django/contrib/staticfiles/storage.py
+@@ -226,22 +226,58 @@ class HashedFilesMixin:
+             path for path in paths
+             if matches_patterns(path, self._patterns)
+         ]
+-        # Do a single pass first. Post-process all files once, then repeat for
+-        # adjustable files.
++        adjustable_paths_set = set(adjustable_paths)
++        # Process files once, then repeat for adjustable files. Only yield the
++        # final hashed name for each file once.
++        processed_paths = {}
++        yieldable_paths = []
++        first_pass_errors = []
+         for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
+-            yield name, hashed_name, processed
++            if isinstance(processed, Exception):
++                first_pass_errors.append((name, processed))
++                break
++            if name in adjustable_paths_set:
++                processed_paths[name] = (name, hashed_name, processed)
++            else:
++                yieldable_paths.append((name, hashed_name, processed))
++
++        if first_pass_errors:
++            for _, hashed_name, processed in yieldable_paths:
++                yield _, hashed_name, processed
++            for _, result in processed_paths.items():
++                yield result
++            for name, exc in first_pass_errors:
++                yield name, None, exc
++            return
+ 
+         paths = {path: paths[path] for path in adjustable_paths}
+ 
++        substitutions = False
+         for i in range(self.max_post_process_passes):
+             substitutions = False
++            failed = False
+             for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
+-                yield name, hashed_name, processed
++                if isinstance(processed, Exception):
++                    failed = True
++                    break
+                 substitutions = substitutions or subst
+-
++                processed_paths[name] = (name, hashed_name, processed)
++            if failed:
++                for _, hashed_name, processed in yieldable_paths:
++                    yield _, hashed_name, processed
++                for _, result in processed_paths.items():
++                    yield result
++                yield name, None, processed
++                return
+             if not substitutions:
+                 break
++        else:
++            substitutions = True
+ 
++        for _, hashed_name, processed in yieldable_paths:
++            yield _, hashed_name, processed
++        for _, result in processed_paths.items():
++            yield result
+         if substitutions:
+             yield 'All', None, RuntimeError('Max post-process passes exceeded.')
+ 
+@@ -249,6 +285,7 @@ class HashedFilesMixin:
+         self.hashed_files.update(hashed_files)
+ 
+     def _post_process(self, paths, adjustable_paths, hashed_files):
++        adjustable_paths_set = set(adjustable_paths)
+         # Sort the files by directory level
+         def path_level(name):
+             return len(name.split(os.sep))
+@@ -277,7 +314,7 @@ class HashedFilesMixin:
+                 processed = False
+ 
+                 # ..to apply each replacement pattern to the content
+-                if name in adjustable_paths:
++                if name in adjustable_paths_set:
+                     old_hashed_name = hashed_name
+                     content = original_file.read().decode('utf-8')
+                     for extension, patterns in self._patterns.items():

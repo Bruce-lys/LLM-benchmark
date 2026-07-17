@@ -1,0 +1,47 @@
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index 15f0d66e2..042c4c466 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -521,20 +521,30 @@ def signature_from_str(signature: str) -> inspect.Signature:
+     params = []
+ 
+     if hasattr(args, "posonlyargs"):
+-        for arg in args.posonlyargs:  # type: ignore
+-            annotation = ast_unparse(arg.annotation) or Parameter.empty
+-            params.append(Parameter(arg.arg, Parameter.POSITIONAL_ONLY,
+-                                    annotation=annotation))
++        posonlyargs_count = len(args.posonlyargs)  # type: ignore
++        positional_args = list(args.posonlyargs) + list(args.args)  # type: ignore
++        for i, arg in enumerate(positional_args):  # type: ignore
++            if len(positional_args) - i <= len(args.defaults):
++                default = ast_unparse(args.defaults[-len(positional_args) + i])
++            else:
++                default = Parameter.empty
+ 
+-    for i, arg in enumerate(args.args):
+-        if len(args.args) - i <= len(args.defaults):
+-            default = ast_unparse(args.defaults[-len(args.args) + i])
+-        else:
+-            default = Parameter.empty
++            annotation = ast_unparse(arg.annotation) or Parameter.empty
++            if i < posonlyargs_count:
++                kind = Parameter.POSITIONAL_ONLY
++            else:
++                kind = Parameter.POSITIONAL_OR_KEYWORD
++            params.append(Parameter(arg.arg, kind, default=default, annotation=annotation))
++    else:
++        for i, arg in enumerate(args.args):
++            if len(args.args) - i <= len(args.defaults):
++                default = ast_unparse(args.defaults[-len(args.args) + i])
++            else:
++                default = Parameter.empty
+ 
+-        annotation = ast_unparse(arg.annotation) or Parameter.empty
+-        params.append(Parameter(arg.arg, Parameter.POSITIONAL_OR_KEYWORD,
+-                                default=default, annotation=annotation))
++            annotation = ast_unparse(arg.annotation) or Parameter.empty
++            params.append(Parameter(arg.arg, Parameter.POSITIONAL_OR_KEYWORD,
++                                    default=default, annotation=annotation))
+ 
+     if args.vararg:
+         annotation = ast_unparse(args.vararg.annotation) or Parameter.empty

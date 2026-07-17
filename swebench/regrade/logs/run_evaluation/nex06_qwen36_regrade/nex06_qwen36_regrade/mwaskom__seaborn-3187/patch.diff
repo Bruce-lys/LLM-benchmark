@@ -1,0 +1,49 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..481871e5 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -379,6 +379,18 @@ class ContinuousBase(Scale):
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+             labels = axis.major.formatter.format_ticks(locs)
++
++            # For ScalarFormatter with large values, the tick labels may be
++            # formatted relative to an offset or order of magnitude. For
++            # example, values around 1e6 may be displayed as "1", "2", etc.
++            # without the exponent. To avoid misleading legend labels, we
++            # reformat the labels using format_data when the formatter uses
++            # an offset or order of magnitude.
++            formatter = axis.major.formatter
++            if isinstance(formatter, ScalarFormatter):
++                if formatter.offset or formatter.orderOfMagnitude:
++                    labels = [formatter.format_data(x) for x in locs]
++
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/seaborn/utils.py b/seaborn/utils.py
+index 2407853c..383cf739 100644
+--- a/seaborn/utils.py
++++ b/seaborn/utils.py
+@@ -705,7 +705,20 @@ def locator_to_legend_entries(locator, limits, dtype):
+     # once pinned matplotlib>=3.1.0 with:
+     # formatted_levels = formatter.format_ticks(raw_levels)
+     formatter.set_locs(raw_levels)
+-    formatted_levels = [formatter(x) for x in raw_levels]
++
++    # For ScalarFormatter with large values, the tick labels may be
++    # formatted relative to an offset or order of magnitude. For
++    # example, values around 1e6 may be displayed as "1", "2", etc.
++    # without the exponent. To avoid misleading legend labels, we
++    # reformat the labels using format_data when the formatter uses
++    # an offset or order of magnitude.
++    if isinstance(formatter, mpl.ticker.ScalarFormatter):
++        if formatter.offset or formatter.orderOfMagnitude:
++            formatted_levels = [formatter.format_data(x) for x in raw_levels]
++        else:
++            formatted_levels = [formatter(x) for x in raw_levels]
++    else:
++        formatted_levels = [formatter(x) for x in raw_levels]
+ 
+     return raw_levels, formatted_levels
+ 

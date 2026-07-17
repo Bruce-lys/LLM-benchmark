@@ -1,0 +1,38 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index b8efb9f881..9fa5f674e9 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -216,15 +216,30 @@ def get_child_arguments():
+     executable is reported to not have the .exe extension which can cause bugs
+     on reloading.
+     """
+-    import django.__main__
+-    django_main_path = Path(django.__main__.__file__)
+     py_script = Path(sys.argv[0])
+ 
+     args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions]
++    main_spec = getattr(sys.modules['__main__'], '__spec__', None)
++    main_spec_parent = getattr(main_spec, 'parent', None) if main_spec else None
++    main_spec_parent_matches = (
++        main_spec_parent is not None and
++        py_script.name == '__main__.py' and
++        py_script.parent.name == main_spec_parent.rsplit('.', 1)[-1]
++    )
++
++    if main_spec_parent_matches:
++        # The server was started with `python -m <parent>`.
++        args += ['-m', main_spec_parent]
++        args += sys.argv[1:]
++        return args
++
++    import django.__main__
++    django_main_path = Path(django.__main__.__file__)
+     if py_script == django_main_path:
+-        # The server was started with `python -m django runserver`.
++        # The server was started with `python -m django`.
+         args += ['-m', 'django']
+         args += sys.argv[1:]
++        return args
+     elif not py_script.exists():
+         # sys.argv[0] may not exist for several reasons on Windows.
+         # It may exist with a .exe extension or have a -script.py suffix.

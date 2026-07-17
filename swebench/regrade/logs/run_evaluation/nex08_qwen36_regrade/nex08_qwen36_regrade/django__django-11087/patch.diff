@@ -1,0 +1,57 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index 3a462f1c4c..51f7b83f8c 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -185,6 +185,7 @@ class Collector:
+ 
+         If 'keep_parents' is True, data of parent model's will be not deleted.
+         """
++        objs = self._select_fields(objs)
+         if self.can_fast_delete(objs):
+             self.fast_deletes.append(objs)
+             return
+@@ -218,6 +219,7 @@ class Collector:
+                 batches = self.get_del_batches(new_objs, field)
+                 for batch in batches:
+                     sub_objs = self.related_objects(related, batch)
++                    sub_objs = self._select_fields(sub_objs)
+                     if self.can_fast_delete(sub_objs, from_field=field):
+                         self.fast_deletes.append(sub_objs)
+                     elif sub_objs:
+@@ -228,6 +230,36 @@ class Collector:
+                     sub_objs = field.bulk_related_objects(new_objs, self.using)
+                     self.collect(sub_objs, source=model, nullable=True)
+ 
++    def _get_fields_to_select(self, model, from_field=None):
++        """
++        Return the fields needed to collect a model for deletion.
++        """
++        if (
++                signals.pre_delete.has_listeners(model) or
++                signals.post_delete.has_listeners(model) or
++                signals.m2m_changed.has_listeners(model)
++        ):
++            return None
++        parents = model._meta.concrete_model._meta.parents
++        if parents:
++            if all(link == from_field for link in parents.values()):
++                return [model._meta.pk.name]
++            return None
++        return [model._meta.pk.name]
++
++    def _select_fields(self, objs):
++        """
++        Apply the minimal field selection to a queryset-like collection.
++        """
++        if hasattr(objs, 'query') and hasattr(objs.query, 'deferred_loading'):
++            # QuerySet.deferred_loading is (frozenset(), True) by default.
++            if objs.query.deferred_loading != (frozenset(), True):
++                return objs
++            fields = self._get_fields_to_select(objs.model)
++            if fields is not None:
++                return objs.only(*fields)
++        return objs
++
+     def related_objects(self, related, objs):
+         """
+         Get a QuerySet of objects related to `objs` via the relation `related`.

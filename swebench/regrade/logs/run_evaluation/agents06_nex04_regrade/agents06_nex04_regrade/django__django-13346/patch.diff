@@ -1,0 +1,96 @@
+diff --git a/django/db/models/fields/json.py b/django/db/models/fields/json.py
+index fafc1beee8..651dacf946 100644
+--- a/django/db/models/fields/json.py
++++ b/django/db/models/fields/json.py
+@@ -455,6 +455,58 @@ class KeyTransformIRegex(CaseInsensitiveMixin, KeyTransformTextLookupMixin, look
+     pass
+ 
+ 
++class KeyTransformIn(lookups.In):
++    def process_rhs(self, compiler, connection):
++        db_rhs = getattr(self.rhs, '_db', None)
++        if db_rhs is not None and db_rhs != connection.alias:
++            raise ValueError(
++                "Subqueries aren't allowed across different databases. Force "
++                "the inner query to be evaluated using `list(inner_query)`."
++            )
++
++        if self.rhs_is_direct_value():
++            try:
++                rhs = lookups.OrderedSet(self.rhs)
++                rhs.discard(None)
++            except TypeError:  # Unhashable items in self.rhs
++                rhs = [r for r in self.rhs if r is not None]
++
++            if not rhs:
++                raise lookups.EmptyResultSet
++
++            sqls, sqls_params = lookups.Lookup.batch_process_rhs(
++                self, compiler, connection, rhs
++            )
++            if connection.vendor in {'mysql', 'oracle', 'sqlite'}:
++                sqls, sqls_params = self._process_rhs(
++                    compiler, connection, sqls, sqls_params
++                )
++            return '(' + ', '.join(sqls) + ')', tuple(sqls_params)
++        return super().process_rhs(compiler, connection)
++
++    def _process_rhs(self, compiler, connection, sqls, params):
++        new_sqls, new_params = [], []
++        for sql, param in zip(sqls, params):
++            if hasattr(param, 'as_sql'):
++                new_sqls.append('%s')
++                new_params.append(param)
++                continue
++            if connection.vendor == 'mysql' or (
++                connection.vendor == 'sqlite' and param != 'null'):
++                new_sqls.append('JSON_EXTRACT(%s, \'$\')')
++                new_params.append(param)
++            elif connection.vendor == 'sqlite':
++                new_sqls.append('%s')
++            elif connection.vendor == 'oracle':
++                value = json.loads(param)
++                function = 'JSON_QUERY' if isinstance(value, (list, dict)) else 'JSON_VALUE'
++                new_sqls.append("%s('%s', '$.value')" % (
++                    function,
++                    json.dumps({'value': value}),
++                ))
++        return tuple(new_sqls), tuple(new_params)
++
++
+ class KeyTransformNumericLookupMixin:
+     def process_rhs(self, compiler, connection):
+         rhs, rhs_params = super().process_rhs(compiler, connection)
+@@ -494,6 +546,7 @@ KeyTransform.register_lookup(KeyTransformLt)
+ KeyTransform.register_lookup(KeyTransformLte)
+ KeyTransform.register_lookup(KeyTransformGt)
+ KeyTransform.register_lookup(KeyTransformGte)
++KeyTransform.register_lookup(KeyTransformIn)
+ 
+ 
+ class KeyTransformFactory:
+diff --git a/tests/model_fields/test_jsonfield.py b/tests/model_fields/test_jsonfield.py
+index a7648711ac..9fbd906d88 100644
+--- a/tests/model_fields/test_jsonfield.py
++++ b/tests/model_fields/test_jsonfield.py
+@@ -675,6 +675,20 @@ class TestQuerying(TestCase):
+         self.assertIn('"test\\"', query)
+         self.assertIn('\\"d', query)
+ 
++    def test_key_transform_in(self):
++        tests = (
++            ('value__a__in', ['b'], [self.objs[3], self.objs[4]]),
++            ('value__foo__in', ['bar'], [self.objs[7]]),
++            ('value__c__in', [14], [self.objs[3], self.objs[4]]),
++            ('value__d__1__f__in', ['g'], [self.objs[4]]),
++        )
++        for lookup, value, expected in tests:
++            with self.subTest(lookup=lookup, value=value):
++                self.assertSequenceEqual(
++                    NullableJSONModel.objects.filter(**{lookup: value}),
++                    expected,
++                )
++
+     def test_key_escape(self):
+         obj = NullableJSONModel.objects.create(value={'%total': 10})
+         self.assertEqual(NullableJSONModel.objects.filter(**{'value__%total': 10}).get(), obj)

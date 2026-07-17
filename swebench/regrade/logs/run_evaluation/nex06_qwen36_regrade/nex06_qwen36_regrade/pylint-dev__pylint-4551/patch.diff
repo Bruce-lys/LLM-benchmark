@@ -1,0 +1,141 @@
+diff --git a/pylint/pyreverse/diagrams.py b/pylint/pyreverse/diagrams.py
+index bf9f67af..42618f0e 100644
+--- a/pylint/pyreverse/diagrams.py
++++ b/pylint/pyreverse/diagrams.py
+@@ -119,15 +119,27 @@ class ClassDiagram(Figure, FilterMixIn):
+         """return class names if needed in diagram"""
+         names = []
+         for node in nodes:
+-            if isinstance(node, astroid.Instance):
++            if node is astroid.Uninferable:
++                continue
++            if hasattr(node, "_pyreverse_string_annotation"):
++                node_name = node._pyreverse_string_annotation
++                if node_name not in names:
++                    names.append(node_name)
++            elif isinstance(node, astroid.Instance):
+                 node = node._proxied
+-            if (
+-                isinstance(node, astroid.ClassDef)
+-                and hasattr(node, "name")
+-                and not self.has_node(node)
+-            ):
+-                if node.name not in names:
+-                    node_name = node.name
++                if isinstance(node, astroid.ClassDef) and hasattr(node, "name"):
++                    if not self.has_node(node) and node.name not in names:
++                        names.append(node.name)
++                elif hasattr(node, "as_string"):
++                    node_name = node.as_string()
++                    if node_name not in names:
++                        names.append(node_name)
++            elif isinstance(node, astroid.ClassDef) and hasattr(node, "name"):
++                if not self.has_node(node) and node.name not in names:
++                    names.append(node.name)
++            elif hasattr(node, "as_string"):
++                node_name = node.as_string()
++                if node_name not in names:
+                     names.append(node_name)
+         return names
+ 
+diff --git a/pylint/pyreverse/inspector.py b/pylint/pyreverse/inspector.py
+index 8fa12202..248ddabe 100644
+--- a/pylint/pyreverse/inspector.py
++++ b/pylint/pyreverse/inspector.py
+@@ -109,6 +109,66 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         # visited project
+         self.project = project
+ 
++    @staticmethod
++    def _parameter_annotations(func_node):
++        """Return a mapping of parameter names to their annotation nodes."""
++        annotations = {}
++        args = (
++            func_node.args.posonlyargs
++            + func_node.args.args
++            + func_node.args.kwonlyargs
++        )
++        arg_annotations = (
++            func_node.args.posonlyargs_annotations
++            + func_node.args.annotations
++            + func_node.args.kwonlyargs_annotations
++        )
++        for arg, arg_annotation in zip(args, arg_annotations):
++            if arg_annotation is not None:
++                annotations[arg.name] = arg_annotation
++        if func_node.args.vararg is not None:
++            annotations[func_node.args.vararg.name] = func_node.args.varargannotation
++        if func_node.args.kwarg is not None:
++            annotations[func_node.args.kwarg.name] = func_node.args.kwargannotation
++        return annotations
++
++    @staticmethod
++    def _annotation_for_assignattr(assignattr, attrname):
++        """Return the annotation for an instance attribute assignment."""
++        parent = assignattr.parent
++        if isinstance(parent, astroid.Assign):
++            func_node = parent.parent
++            value = parent.value
++            if not isinstance(func_node, astroid.FunctionDef):
++                return None
++            annotations = Linker._parameter_annotations(func_node)
++            if isinstance(value, astroid.Name):
++                return annotations.get(value.name)
++        elif isinstance(parent, astroid.AnnAssign):
++            func_node = parent.parent
++            if isinstance(func_node, astroid.FunctionDef) and parent.target.attrname == attrname:
++                return parent.annotation
++        return None
++
++    @staticmethod
++    def _add_annotation_to_instance_attr(node, attrname, annotation):
++        """Prefer the static annotation over inferred runtime types."""
++        if annotation is None:
++            return
++        if isinstance(annotation, astroid.Const) and isinstance(annotation.value, str):
++            annotation._pyreverse_string_annotation = annotation.value
++        current = list(node.instance_attrs_type[attrname])
++        # Remove inferred NoneType so that 'a: str = None' is shown as 'str'.
++        current = [
++            value
++            for value in current
++            if value is not astroid.Uninferable
++            and not (isinstance(value, astroid.Const) and value.value is None)
++        ]
++        if annotation not in current:
++            current.insert(0, annotation)
++        node.instance_attrs_type[attrname] = current
++
+     def visit_project(self, node):
+         """visit a pyreverse.utils.Project node
+ 
+@@ -166,6 +226,12 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+             for assignattr in assignattrs:
+                 if not isinstance(assignattr, astroid.Unknown):
+                     self.handle_assignattr_type(assignattr, node)
++                    annotation = self._annotation_for_assignattr(
++                        assignattr, assignattr.attrname
++                    )
++                    self._add_annotation_to_instance_attr(
++                        node, assignattr.attrname, annotation
++                    )
+         # resolve implemented interface
+         try:
+             node.implements = list(interfaces(node, self.inherited_interfaces))
+@@ -217,9 +283,14 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+                 else:
+                     self.visit_module(frame)
+ 
+-            current = frame.locals_type[node.name]
++            current = list(frame.locals_type[node.name])
+             values = set(node.infer())
+-            frame.locals_type[node.name] = list(set(current) | values)
++            if isinstance(node.parent, astroid.AnnAssign) and node.parent.annotation is not None:
++                annotation = node.parent.annotation
++                if annotation not in current:
++                    current.insert(0, annotation)
++            current.extend(values)
++            frame.locals_type[node.name] = current
+         except astroid.InferenceError:
+             pass
+ 

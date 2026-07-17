@@ -1,0 +1,25 @@
+# Qwen3.6-35B-A3B-hf swebench-kit config (2026-07-08, 防挂机安全口径)
+run:
+  tag: aiden_qwen36_swebench
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 6
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: Qwen3.6-35B-A3B-hf
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.33:8000/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 48
+  namespace: swebench

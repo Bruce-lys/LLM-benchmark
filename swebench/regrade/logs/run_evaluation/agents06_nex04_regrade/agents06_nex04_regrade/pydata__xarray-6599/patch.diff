@@ -1,0 +1,64 @@
+diff --git a/xarray/core/computation.py b/xarray/core/computation.py
+index 823cbe02..3316c92f 100644
+--- a/xarray/core/computation.py
++++ b/xarray/core/computation.py
+@@ -25,7 +25,7 @@ import numpy as np
+ from . import dtypes, duck_array_ops, utils
+ from .alignment import align, deep_align
+ from .common import zeros_like
+-from .duck_array_ops import datetime_to_numeric
++from .duck_array_ops import datetime_to_numeric, isnull
+ from .indexes import Index, filter_indexes_from_coords
+ from .merge import merge_attrs, merge_coordinates_without_align
+ from .options import OPTIONS, _get_keep_attrs
+@@ -1905,6 +1905,13 @@ def polyval(
+     coeffs = coeffs.reindex(
+         {degree_dim: np.arange(max_deg + 1)}, fill_value=0, copy=False
+     )
++
++    from .dataarray import DataArray
++
++    if isinstance(coord, DataArray) and (
++        coord.name is not None and (coord.name in coord.coords or coord.name in coord.dims)
++    ):
++        coord = coord[coord.name]
+     coord = _ensure_numeric(coord)  # type: ignore # https://github.com/python/mypy/issues/1533 ?
+ 
+     # using Horner's method
+@@ -1918,22 +1925,22 @@ def polyval(
+ 
+ 
+ def _ensure_numeric(data: T_Xarray) -> T_Xarray:
+-    """Converts all datetime64 variables to float64
++    """Converts all datetime64 and timedelta64 variables to float64
+ 
+     Parameters
+     ----------
+     data : DataArray or Dataset
+-        Variables with possible datetime dtypes.
++        Variables with possible datetime or timedelta dtypes.
+ 
+     Returns
+     -------
+     DataArray or Dataset
+-        Variables with datetime64 dtypes converted to float64.
++        Variables with datetime64 or timedelta64 dtypes converted to float64.
+     """
+     from .dataset import Dataset
+ 
+     def to_floatable(x: DataArray) -> DataArray:
+-        if x.dtype.kind in "mM":
++        if x.dtype.kind == "M":
+             return x.copy(
+                 data=datetime_to_numeric(
+                     x.data,
+@@ -1941,6 +1948,9 @@ def _ensure_numeric(data: T_Xarray) -> T_Xarray:
+                     datetime_unit="ns",
+                 ),
+             )
++        elif x.dtype.kind == "m":
++            data = x.data.astype("float64")
++            return x.copy(data=np.where(isnull(x.data), np.nan, data))
+         return x
+ 
+     if isinstance(data, Dataset):

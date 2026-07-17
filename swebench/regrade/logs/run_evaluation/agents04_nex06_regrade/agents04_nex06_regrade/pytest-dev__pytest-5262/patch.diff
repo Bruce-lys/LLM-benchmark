@@ -1,0 +1,18 @@
+diff --git a/src/_pytest/capture.py b/src/_pytest/capture.py
+index 25eab7fd..5b9d915d 100644
+--- a/src/_pytest/capture.py
++++ b/src/_pytest/capture.py
+@@ -438,6 +438,13 @@ class EncodedFile(object):
+             )
+         self.buffer.write(obj)
+ 
++    @property
++    def mode(self):
++        mode = getattr(self.buffer, "mode", None)
++        if mode is None:
++            return mode
++        return mode.replace("b", "")
++
+     def writelines(self, linelist):
+         data = "".join(linelist)
+         self.write(data)

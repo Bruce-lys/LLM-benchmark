@@ -1,0 +1,36 @@
+diff --git a/lib/matplotlib/widgets.py b/lib/matplotlib/widgets.py
+index a199e45d4..92dfbcc8f 100644
+--- a/lib/matplotlib/widgets.py
++++ b/lib/matplotlib/widgets.py
+@@ -2365,11 +2365,29 @@ class ToolLineHandles:
+         if line_props is None:
+             line_props = {}
+         line_props.update({'visible': False, 'animated': useblit})
++        if "transform" in line_props:
++            raise ValueError(
++                "'transform' is not allowed as a keyword argument; "
++                "ToolLineHandles generates its own transform.")
+ 
+-        line_fun = ax.axvline if self.direction == 'horizontal' else ax.axhline
+         self._line_props = line_props
++        self.artists = []
+ 
+-        self.artists = [line_fun(p, **line_props) for p in positions]
++        # Use Line2D directly so creating invisible handles does not autoscale
++        # the Axes.
++        for p in positions:
++            if self.direction == 'horizontal':
++                p, = ax._process_unit_info([("x", p)], line_props)
++                line = Line2D([p, p], [0, 1],
++                              transform=ax.get_xaxis_transform(which='grid'),
++                              **line_props)
++            else:
++                p, = ax._process_unit_info([("y", p)], line_props)
++                line = Line2D([0, 1], [p, p],
++                              transform=ax.get_yaxis_transform(which='grid'),
++                              **line_props)
++            ax.add_line(line)
++            self.artists.append(line)
+ 
+     @property
+     def positions(self):

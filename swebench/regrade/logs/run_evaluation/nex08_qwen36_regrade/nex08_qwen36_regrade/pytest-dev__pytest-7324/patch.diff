@@ -1,0 +1,66 @@
+diff --git a/src/_pytest/mark/expression.py b/src/_pytest/mark/expression.py
+index 04c73411a..bd5194bef 100644
+--- a/src/_pytest/mark/expression.py
++++ b/src/_pytest/mark/expression.py
+@@ -21,7 +21,6 @@ import re
+ import types
+ from typing import Callable
+ from typing import Iterator
+-from typing import Mapping
+ from typing import Optional
+ from typing import Sequence
+ 
+@@ -71,6 +70,12 @@ class ParseError(Exception):
+         return "at column {}: {}".format(self.column, self.message)
+ 
+ 
++def _str_constant(value: str) -> ast.expr:
++    if hasattr(ast, "Constant"):
++        return ast.Constant(value)
++    return ast.Str(value)
++
++
+ class Scanner:
+     __slots__ = ("tokens", "current")
+ 
+@@ -161,26 +166,14 @@ def not_expr(s: Scanner) -> ast.expr:
+         return ret
+     ident = s.accept(TokenType.IDENT)
+     if ident:
+-        return ast.Name(ident.value, ast.Load())
++        return ast.Call(
++            ast.Name("match", ast.Load()),
++            [_str_constant(ident.value)],
++            keywords=[],
++        )
+     s.reject((TokenType.NOT, TokenType.LPAREN, TokenType.IDENT))
+ 
+ 
+-class MatcherAdapter(Mapping[str, bool]):
+-    """Adapts a matcher function to a locals mapping as required by eval()."""
+-
+-    def __init__(self, matcher: Callable[[str], bool]) -> None:
+-        self.matcher = matcher
+-
+-    def __getitem__(self, key: str) -> bool:
+-        return self.matcher(key)
+-
+-    def __iter__(self) -> Iterator[str]:
+-        raise NotImplementedError()
+-
+-    def __len__(self) -> int:
+-        raise NotImplementedError()
+-
+-
+ class Expression:
+     """A compiled match expression as used by -k and -m.
+ 
+@@ -212,7 +205,5 @@ class Expression:
+ 
+         Returns whether the expression matches or not.
+         """
+-        ret = eval(
+-            self.code, {"__builtins__": {}}, MatcherAdapter(matcher)
+-        )  # type: bool
++        ret = eval(self.code, {"__builtins__": {}, "match": matcher})  # type: bool
+         return ret

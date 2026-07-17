@@ -1,0 +1,21 @@
+diff --git a/lib/matplotlib/colors.py b/lib/matplotlib/colors.py
+index 2d3072da04..d4907ecf60 100644
+--- a/lib/matplotlib/colors.py
++++ b/lib/matplotlib/colors.py
+@@ -726,10 +726,12 @@ class Colormap:
+                 np.clip(xa, -1, self.N, out=xa)
+                 xa = xa.astype(int)
+         # Set the over-range indices before the under-range;
+-        # otherwise the under-range values get converted to over-range.
+-        xa[xa > self.N - 1] = self._i_over
+-        xa[xa < 0] = self._i_under
+-        xa[mask_bad] = self._i_bad
++        # otherwise the under-range values get converted to over-range.  Use
++        # copyto to avoid NumPy 1.24 deprecation warnings for assigning
++        # out-of-bound sentinel values to integer arrays.
++        np.copyto(xa, self._i_over, where=xa > self.N - 1, casting='unsafe')
++        np.copyto(xa, self._i_under, where=xa < 0, casting='unsafe')
++        np.copyto(xa, self._i_bad, where=mask_bad, casting='unsafe')
+ 
+         lut = self._lut
+         if bytes:

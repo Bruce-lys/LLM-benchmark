@@ -1,0 +1,49 @@
+diff --git a/lib/matplotlib/tests/test_axes.py b/lib/matplotlib/tests/test_axes.py
+index 06ff5aca4..0daa34117 100644
+--- a/lib/matplotlib/tests/test_axes.py
++++ b/lib/matplotlib/tests/test_axes.py
+@@ -939,6 +939,24 @@ def test_inverted_limits():
+     plt.close()
+ 
+ 
++def test_log_inverted_limits():
++    fig, ax = plt.subplots()
++    ax.set_yscale('log')
++    ax.set_ylim(100, 1)
++
++    assert ax.get_ylim() == (100, 1)
++    assert ax.yaxis_inverted()
++    plt.close()
++
++    fig, ax = plt.subplots()
++    ax.set_xscale('log')
++    ax.set_xlim(100, 1)
++
++    assert ax.get_xlim() == (100, 1)
++    assert ax.xaxis_inverted()
++    plt.close()
++
++
+ @image_comparison(baseline_images=['nonfinite_limits'])
+ def test_nonfinite_limits():
+     x = np.arange(0., np.e, 0.01)
+diff --git a/lib/matplotlib/ticker.py b/lib/matplotlib/ticker.py
+index 209a3f92c..f7b5f2420 100644
+--- a/lib/matplotlib/ticker.py
++++ b/lib/matplotlib/ticker.py
+@@ -2380,8 +2380,13 @@ class LogLocator(Locator):
+             return 1, 10  # initial range, no data plotted yet
+ 
+         if vmin > vmax:
+-            vmin, vmax = vmax, vmin
+-        if vmax <= 0:
++            # Keep the order: reversed limits are used to invert axes.
++            if vmax <= 0:
++                cbook._warn_external(
++                    "Data has no positive values, and therefore cannot be "
++                    "log-scaled.")
++                return 1, 10
++        elif vmax <= 0:
+             cbook._warn_external(
+                 "Data has no positive values, and therefore cannot be "
+                 "log-scaled.")

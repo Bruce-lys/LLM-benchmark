@@ -1,0 +1,75 @@
+diff --git a/sympy/geometry/point.py b/sympy/geometry/point.py
+index 7c978c47be..48b5b09954 100644
+--- a/sympy/geometry/point.py
++++ b/sympy/geometry/point.py
+@@ -24,12 +24,13 @@
+ from sympy.core import S, sympify, Expr
+ from sympy.core.compatibility import is_sequence
+ from sympy.core.containers import Tuple
++from sympy.core.mul import Mul
++from sympy.core.numbers import Float
+ from sympy.simplify import nsimplify, simplify
+ from sympy.geometry.exceptions import GeometryError
+ from sympy.functions.elementary.miscellaneous import sqrt
+ from sympy.functions.elementary.complexes import im
+ from sympy.matrices import Matrix
+-from sympy.core.numbers import Float
+ from sympy.core.evaluate import global_evaluate
+ from sympy.core.add import Add
+ from sympy.utilities.iterables import uniq
+@@ -213,6 +214,18 @@ def __add__(self, other):
+         sympy.geometry.point.Point.translate
+ 
+         """
++        # If other is a Mul containing a Point, evaluate it first
++        if isinstance(other, Mul):
++            point_arg = None
++            factor = S.One
++            for arg in other.args:
++                if isinstance(arg, Point):
++                    point_arg = arg
++                else:
++                    factor = factor * arg
++            if point_arg is not None:
++                other = point_arg * factor
++
+         try:
+             s, o = Point._normalize_dimension(self, Point(other, evaluate=False))
+         except TypeError:
+@@ -278,6 +291,16 @@ def __mul__(self, factor):
+         coords = [simplify(x*factor) for x in self.args]
+         return Point(coords, evaluate=False)
+ 
++    def __rmul__(self, factor):
++        """Multiply point's coordinates by a factor (reversed).
++
++        See Also
++        ========
++
++        sympy.geometry.point.Point.mul
++        """
++        return self.__mul__(factor)
++
+     def __neg__(self):
+         """Negate the point."""
+         coords = [-x for x in self.args]
+@@ -286,6 +309,19 @@ def __neg__(self):
+     def __sub__(self, other):
+         """Subtract two points, or subtract a factor from this point's
+         coordinates."""
++        # If other is a Mul containing a Point, evaluate it first
++        if isinstance(other, Mul):
++            point_arg = None
++            factor = S.One
++            for arg in other.args:
++                if isinstance(arg, Point):
++                    point_arg = arg
++                else:
++                    factor = factor * arg
++            if point_arg is not None:
++                other = point_arg * factor
++        elif not is_sequence(other):
++            other = Point(other, evaluate=False)
+         return self + [-x for x in other]
+ 
+     @classmethod

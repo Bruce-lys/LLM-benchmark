@@ -1,0 +1,27 @@
+diff --git a/sphinx/util/docfields.py b/sphinx/util/docfields.py
+index c07bc7f66..0608d3bc2 100644
+--- a/sphinx/util/docfields.py
++++ b/sphinx/util/docfields.py
+@@ -178,7 +178,7 @@ class TypedField(GroupedField):
+                    items: Tuple, env: "BuildEnvironment" = None) -> nodes.field:
+         def handle_item(fieldarg: str, content: str) -> nodes.paragraph:
+             par = nodes.paragraph()
+-            par.extend(self.make_xrefs(self.rolename, domain, fieldarg,
++            par.append(self.make_xref(self.rolename, domain, fieldarg,
+                                        addnodes.literal_strong, env=env))
+             if fieldarg in types:
+                 par += nodes.Text(' (')
+@@ -325,9 +325,10 @@ class DocFieldTransformer:
+                 except ValueError:
+                     pass
+                 else:
+-                    types.setdefault(typename, {})[argname] = \
+-                        [nodes.Text(argtype)]
+-                    fieldarg = argname
++                    if ',' not in argtype and ' ' not in argname:
++                        types.setdefault(typename, {})[argname] = \
++                            [nodes.Text(argtype)]
++                        fieldarg = argname
+ 
+             translatable_content = nodes.inline(field_body.rawsource,
+                                                 translatable=True)

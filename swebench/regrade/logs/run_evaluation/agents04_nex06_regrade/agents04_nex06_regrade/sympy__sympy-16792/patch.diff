@@ -1,0 +1,181 @@
+diff --git a/sympy/utilities/autowrap.py b/sympy/utilities/autowrap.py
+index bd6afb12d..e9e431376 100644
+--- a/sympy/utilities/autowrap.py
++++ b/sympy/utilities/autowrap.py
+@@ -428,7 +428,8 @@ def _partition_args(self, args):
+                 sym_dims = [(i, d) for (i, d) in enumerate(dims) if
+                             isinstance(d, Symbol)]
+                 for (i, d) in sym_dims:
+-                    py_inferred[d] = (arg.name, i)
++                    if any(a.name == d for a in args):
++                        py_inferred[d] = (arg.name, i)
+         for arg in args:
+             if arg.name in py_inferred:
+                 py_inferred[arg] = py_inferred.pop(arg.name)
+diff --git a/sympy/utilities/codegen.py b/sympy/utilities/codegen.py
+index f0befb2bd..2b0d3de5d 100644
+--- a/sympy/utilities/codegen.py
++++ b/sympy/utilities/codegen.py
+@@ -94,6 +94,7 @@
+ from sympy.printing.octave import OctaveCodePrinter
+ from sympy.printing.rust import RustCodePrinter
+ from sympy.tensor import Idx, Indexed, IndexedBase
++from sympy.tensor.indexed import IndexException
+ from sympy.matrices import (MatrixSymbol, ImmutableMatrix, MatrixBase,
+                             MatrixExpr, MatrixSlice)
+ 
+@@ -110,6 +111,30 @@
+ ]
+ 
+ 
++def _argument_name(arg):
++    if isinstance(arg, IndexedBase):
++        return arg.label
++    if isinstance(arg, Indexed):
++        return arg.base.label
++    return arg
++
++
++def _argument_dimensions(arg):
++    if isinstance(arg, Indexed):
++        try:
++            shape = arg.base.shape
++        except IndexException:
++            return None
++    else:
++        try:
++            shape = arg.shape
++        except IndexException:
++            return None
++    if shape is None:
++        return None
++    return tuple((S.Zero, dim - 1) for dim in shape)
++
++
+ #
+ # Description of routines
+ #
+@@ -717,13 +742,15 @@ def routine(self, name, expr, argument_sequence=None, global_vars=None):
+         arg_list.extend(output_args)
+ 
+         if argument_sequence is not None:
+-            # if the user has supplied IndexedBase instances, we'll accept that
++            # if the user has supplied array symbols, preserve their dimensions
+             new_sequence = []
++            sequence_metadata = {}
+             for arg in argument_sequence:
+-                if isinstance(arg, IndexedBase):
+-                    new_sequence.append(arg.label)
+-                else:
+-                    new_sequence.append(arg)
++                symbol = _argument_name(arg)
++                new_sequence.append(symbol)
++                dims = _argument_dimensions(arg)
++                if dims is not None:
++                    sequence_metadata[symbol] = dims
+             argument_sequence = new_sequence
+ 
+             missing = [x for x in arg_list if x.name not in argument_sequence]
+@@ -739,7 +766,8 @@ def routine(self, name, expr, argument_sequence=None, global_vars=None):
+                 try:
+                     new_args.append(name_arg_dict[symbol])
+                 except KeyError:
+-                    new_args.append(InputArgument(symbol))
++                    new_args.append(InputArgument(
++                        symbol, dimensions=sequence_metadata.get(symbol)))
+             arg_list = new_args
+ 
+         return Routine(name, arg_list, return_val, local_vars, global_vars)
+@@ -1380,13 +1408,15 @@ def routine(self, name, expr, argument_sequence, global_vars):
+             arg_list.append(InputArgument(symbol))
+ 
+         if argument_sequence is not None:
+-            # if the user has supplied IndexedBase instances, we'll accept that
++            # if the user has supplied array symbols, preserve their dimensions
+             new_sequence = []
++            sequence_metadata = {}
+             for arg in argument_sequence:
+-                if isinstance(arg, IndexedBase):
+-                    new_sequence.append(arg.label)
+-                else:
+-                    new_sequence.append(arg)
++                symbol = _argument_name(arg)
++                new_sequence.append(symbol)
++                dims = _argument_dimensions(arg)
++                if dims is not None:
++                    sequence_metadata[symbol] = dims
+             argument_sequence = new_sequence
+ 
+             missing = [x for x in arg_list if x.name not in argument_sequence]
+@@ -1402,7 +1432,8 @@ def routine(self, name, expr, argument_sequence, global_vars):
+                 try:
+                     new_args.append(name_arg_dict[symbol])
+                 except KeyError:
+-                    new_args.append(InputArgument(symbol))
++                    new_args.append(InputArgument(
++                        symbol, dimensions=sequence_metadata.get(symbol)))
+             arg_list = new_args
+ 
+         return Routine(name, arg_list, return_vals, local_vars, global_vars)
+@@ -1588,13 +1619,15 @@ def routine(self, name, expr, argument_sequence, global_vars):
+             arg_list.append(InputArgument(symbol))
+ 
+         if argument_sequence is not None:
+-            # if the user has supplied IndexedBase instances, we'll accept that
++            # if the user has supplied array symbols, preserve their dimensions
+             new_sequence = []
++            sequence_metadata = {}
+             for arg in argument_sequence:
+-                if isinstance(arg, IndexedBase):
+-                    new_sequence.append(arg.label)
+-                else:
+-                    new_sequence.append(arg)
++                symbol = _argument_name(arg)
++                new_sequence.append(symbol)
++                dims = _argument_dimensions(arg)
++                if dims is not None:
++                    sequence_metadata[symbol] = dims
+             argument_sequence = new_sequence
+ 
+             missing = [x for x in arg_list if x.name not in argument_sequence]
+@@ -1610,7 +1643,8 @@ def routine(self, name, expr, argument_sequence, global_vars):
+                 try:
+                     new_args.append(name_arg_dict[symbol])
+                 except KeyError:
+-                    new_args.append(InputArgument(symbol))
++                    new_args.append(InputArgument(
++                        symbol, dimensions=sequence_metadata.get(symbol)))
+             arg_list = new_args
+ 
+         return Routine(name, arg_list, return_vals, local_vars, global_vars)
+@@ -1819,13 +1853,15 @@ def routine(self, name, expr, argument_sequence, global_vars):
+             arg_list.append(InputArgument(symbol))
+ 
+         if argument_sequence is not None:
+-            # if the user has supplied IndexedBase instances, we'll accept that
++            # if the user has supplied array symbols, preserve their dimensions
+             new_sequence = []
++            sequence_metadata = {}
+             for arg in argument_sequence:
+-                if isinstance(arg, IndexedBase):
+-                    new_sequence.append(arg.label)
+-                else:
+-                    new_sequence.append(arg)
++                symbol = _argument_name(arg)
++                new_sequence.append(symbol)
++                dims = _argument_dimensions(arg)
++                if dims is not None:
++                    sequence_metadata[symbol] = dims
+             argument_sequence = new_sequence
+ 
+             missing = [x for x in arg_list if x.name not in argument_sequence]
+@@ -1841,7 +1877,8 @@ def routine(self, name, expr, argument_sequence, global_vars):
+                 try:
+                     new_args.append(name_arg_dict[symbol])
+                 except KeyError:
+-                    new_args.append(InputArgument(symbol))
++                    new_args.append(InputArgument(
++                        symbol, dimensions=sequence_metadata.get(symbol)))
+             arg_list = new_args
+ 
+         return Routine(name, arg_list, return_vals, local_vars, global_vars)

@@ -1,0 +1,141 @@
+diff --git a/django/db/models/fields/related_lookups.py b/django/db/models/fields/related_lookups.py
+index 1a845a1f7f..5cd00fbc9f 100644
+--- a/django/db/models/fields/related_lookups.py
++++ b/django/db/models/fields/related_lookups.py
+@@ -8,6 +8,7 @@ from django.db.models.lookups import (
+     IsNull,
+     LessThan,
+     LessThanOrEqual,
++    _get_single_selected_field,
+ )
+ from django.utils.deprecation import RemovedInDjango50Warning
+ 
+@@ -74,6 +75,8 @@ def get_normalized_value(value, lhs):
+ 
+ class RelatedIn(In):
+     def get_prep_lookup(self):
++        from django.db.models.sql.query import Query  # avoid circular import
++
+         if not isinstance(self.lhs, MultiColSource):
+             if self.rhs_is_direct_value():
+                 # If we get here, we are dealing with single-column relations.
+@@ -90,22 +93,30 @@ class RelatedIn(In):
+                         -1
+                     ]
+                     self.rhs = [target_field.get_prep_value(v) for v in self.rhs]
+-            elif not getattr(self.rhs, "has_select_fields", True) and not getattr(
+-                self.lhs.field.target_field, "primary_key", False
++            elif self.rhs_is_direct_value() or isinstance(
++                self.rhs, Query
+             ):
+-                self.rhs.clear_select_clause()
+-                if (
+-                    getattr(self.lhs.output_field, "primary_key", False)
+-                    and self.lhs.output_field.model == self.rhs.model
+-                ):
+-                    # A case like
+-                    # Restaurant.objects.filter(place__in=restaurant_qs), where
+-                    # place is a OneToOneField and the primary key of
+-                    # Restaurant.
+-                    target_field = self.lhs.field.name
+-                else:
+-                    target_field = self.lhs.field.target_field.name
+-                self.rhs.add_fields([target_field], True)
++                selected_field = _get_single_selected_field(self.rhs)
++                if selected_field is not None:
++                    self.rhs.clear_select_clause()
++                    if selected_field in self.rhs.annotations:
++                        self.rhs.set_annotation_mask((selected_field,))
++                    elif selected_field in self.rhs.extra_select:
++                        self.rhs.set_extra_mask((selected_field,))
++                    else:
++                        self.rhs.add_fields([selected_field])
++                elif not getattr(self.lhs.field.target_field, "primary_key", False):
++                    self.rhs.clear_select_clause()
++                    if (
++                        getattr(self.lhs.output_field, "primary_key", False)
++                        and self.lhs.output_field.model == self.rhs.model
++                    ):
++                        # Example: Restaurant.objects.filter(place__in=restaurant_qs).
++                        # place is a OneToOneField and the primary key of Restaurant.
++                        target_field = self.lhs.field.name
++                    else:
++                        target_field = self.lhs.field.target_field.name
++                    self.rhs.add_fields([target_field], True)
+         return super().get_prep_lookup()
+ 
+     def as_sql(self, compiler, connection):
+diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py
+index 866e38df83..b02894a8b5 100644
+--- a/django/db/models/lookups.py
++++ b/django/db/models/lookups.py
+@@ -384,6 +384,33 @@ class LessThan(FieldGetDbPrepValueMixin, BuiltinLookup):
+     lookup_name = "lt"
+ 
+ 
++def _get_single_selected_field(query):
++    """
++    Return the single field selected by a Query used as a filter value.
++
++    QuerySets used as filter values may explicitly select a single field via
++    values() or values_list(). For values() selecting an annotation, values_select
++    is empty but _fields contains the selected annotation alias. QuerySets built
++    by adding a single related field also have exactly one entry in select.
++    Otherwise, no explicit single field was selected.
++    """
++    values_select = getattr(query, "values_select", ())
++    if len(values_select) > 1:
++        raise TypeError("Cannot use multi-field values as a filter value.")
++    if values_select:
++        return values_select[0]
++
++    fields = getattr(query, "_fields", None)
++    if fields:
++        if len(fields) > 1:
++            raise TypeError("Cannot use multi-field values as a filter value.")
++        return fields[0]
++
++    if len(query.select) == 1:
++        return query.select[0].target.name
++    return None
++
++
+ @Field.register_lookup
+ class LessThanOrEqual(FieldGetDbPrepValueMixin, BuiltinLookup):
+     lookup_name = "lte"
+@@ -420,9 +447,22 @@ class In(FieldGetDbPrepValueIterableMixin, BuiltinLookup):
+ 
+         if isinstance(self.rhs, Query):
+             self.rhs.clear_ordering(clear_default=True)
+-            if not self.rhs.has_select_fields:
++            selected_field = _get_single_selected_field(self.rhs)
++            if selected_field is None:
+                 self.rhs.clear_select_clause()
+                 self.rhs.add_fields(["pk"])
++            elif selected_field in self.rhs.values_select:
++                self.rhs.clear_select_clause()
++                self.rhs.add_fields([selected_field])
++            elif selected_field in self.rhs.annotations:
++                self.rhs.clear_select_clause()
++                self.rhs.set_annotation_mask((selected_field,))
++            elif selected_field in self.rhs.extra_select:
++                self.rhs.clear_select_clause()
++                self.rhs.set_extra_mask((selected_field,))
++            else:
++                self.rhs.clear_select_clause()
++                self.rhs.add_fields([selected_field])
+         return super().get_prep_lookup()
+ 
+     def process_rhs(self, compiler, connection):
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index be0deb90b0..1ff81a2bf1 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -1916,6 +1916,7 @@ class QuerySet:
+             # if they are set up to select only a single field.
+             raise TypeError("Cannot use multi-field values as a filter value.")
+         query = self.query.resolve_expression(*args, **kwargs)
++        query._fields = self._fields
+         query._db = self._db
+         return query
+ 

@@ -1,0 +1,36 @@
+diff --git a/sympy/geometry/point.py b/sympy/geometry/point.py
+index 7c978c47be..b3b0ecef02 100644
+--- a/sympy/geometry/point.py
++++ b/sympy/geometry/point.py
+@@ -22,6 +22,7 @@
+ import warnings
+ 
+ from sympy.core import S, sympify, Expr
++from sympy.core.mul import Mul
+ from sympy.core.compatibility import is_sequence
+ from sympy.core.containers import Tuple
+ from sympy.simplify import nsimplify, simplify
+@@ -213,6 +214,12 @@ def __add__(self, other):
+         sympy.geometry.point.Point.translate
+ 
+         """
++        if isinstance(other, Mul):
++            points = [arg for arg in other.args if isinstance(arg, Point)]
++            if len(points) == 1:
++                factor = Mul(*[arg for arg in other.args if not isinstance(arg, Point)])
++                other = points[0] * factor
++
+         try:
+             s, o = Point._normalize_dimension(self, Point(other, evaluate=False))
+         except TypeError:
+@@ -278,6 +285,10 @@ def __mul__(self, factor):
+         coords = [simplify(x*factor) for x in self.args]
+         return Point(coords, evaluate=False)
+ 
++    def __rmul__(self, factor):
++        """Multiply the point's coordinates by a factor from the right."""
++        return self * factor
++
+     def __neg__(self):
+         """Negate the point."""
+         coords = [-x for x in self.args]

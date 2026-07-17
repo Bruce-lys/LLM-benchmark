@@ -1,0 +1,38 @@
+diff --git a/django/core/management/commands/inspectdb.py b/django/core/management/commands/inspectdb.py
+index f9b4bfb477..45be470856 100644
+--- a/django/core/management/commands/inspectdb.py
++++ b/django/core/management/commands/inspectdb.py
+@@ -120,14 +120,31 @@ class Command(BaseCommand):
+                             rel_type = 'OneToOneField'
+                         else:
+                             rel_type = 'ForeignKey'
++                        rel_field_name = relations[column_name][0]
++                        rel_table_name = relations[column_name][1]
+                         rel_to = (
+-                            "self" if relations[column_name][1] == table_name
+-                            else table2model(relations[column_name][1])
++                            "self" if rel_table_name == table_name
++                            else table2model(rel_table_name)
+                         )
+                         if rel_to in known_models:
+                             field_type = '%s(%s' % (rel_type, rel_to)
+                         else:
+                             field_type = "%s('%s'" % (rel_type, rel_to)
++                        if rel_table_name == table_name:
++                            target_pk_column = primary_key_column
++                        else:
++                            try:
++                                target_pk_column = connection.introspection.get_primary_key_column(
++                                    cursor, rel_table_name)
++                            except NotImplementedError:
++                                target_pk_column = None
++                        if target_pk_column is not None:
++                            target_pk_field_name = self.normalize_col_name(
++                                target_pk_column, [], False)[0]
++                            rel_field_field_name = self.normalize_col_name(
++                                rel_field_name, [], False)[0]
++                            if rel_field_field_name != target_pk_field_name:
++                                extra_params['to_field'] = rel_field_field_name
+                     else:
+                         # Calling `get_field_type` to get the field type string and any
+                         # additional parameters and notes.

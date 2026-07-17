@@ -1,0 +1,21 @@
+diff --git a/django/core/handlers/exception.py b/django/core/handlers/exception.py
+index 98fb46083a..f8345c7e2c 100644
+--- a/django/core/handlers/exception.py
++++ b/django/core/handlers/exception.py
+@@ -40,6 +40,16 @@ def convert_exception_to_response(get_response):
+                 response = await sync_to_async(response_for_exception)(request, exc)
+             return response
+         return inner
++    elif getattr(get_response, 'async_capable', False) and asyncio.iscoroutinefunction(getattr(get_response, 'get_response', None)):
++        # MiddlewareMixin.__call__ returns a coroutine when get_response is async.
++        @wraps(get_response)
++        async def inner(request):
++            try:
++                response = await get_response(request)
++            except Exception as exc:
++                response = await sync_to_async(response_for_exception)(request, exc)
++            return response
++        return inner
+     else:
+         @wraps(get_response)
+         def inner(request):

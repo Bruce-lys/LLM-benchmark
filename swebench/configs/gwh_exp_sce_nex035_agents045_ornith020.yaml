@@ -1,0 +1,29 @@
+run:
+  tag: gwh_exp_sce_nex035_agents045_ornith020_lite75_t10
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: exp_sce_Nex_0.35_Agents_0.45_Ornith_0.20
+
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.60:8001/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

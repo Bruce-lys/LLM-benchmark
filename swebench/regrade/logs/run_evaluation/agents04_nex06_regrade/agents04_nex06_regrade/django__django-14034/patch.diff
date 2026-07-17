@@ -1,0 +1,26 @@
+diff --git a/django/forms/fields.py b/django/forms/fields.py
+index 65d6a9ec82..f277d195a4 100644
+--- a/django/forms/fields.py
++++ b/django/forms/fields.py
+@@ -1021,14 +1021,14 @@ class MultiValueField(Field):
+         errors = []
+         if self.disabled and not isinstance(value, list):
+             value = self.widget.decompress(value)
+-        if not value or isinstance(value, (list, tuple)):
+-            if not value or not [v for v in value if v not in self.empty_values]:
+-                if self.required:
+-                    raise ValidationError(self.error_messages['required'], code='required')
+-                else:
+-                    return self.compress([])
+-        else:
++        if value and not isinstance(value, (list, tuple)):
+             raise ValidationError(self.error_messages['invalid'], code='invalid')
++        if not value or not [v for v in value if v not in self.empty_values]:
++            if self.required:
++                raise ValidationError(self.error_messages['required'], code='required')
++            elif not any(field.required for field in self.fields):
++                return self.compress([])
++            value = []
+         for i, field in enumerate(self.fields):
+             try:
+                 field_value = value[i]

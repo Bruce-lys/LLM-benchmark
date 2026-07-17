@@ -1,0 +1,31 @@
+run:
+  tag: gwh_nexn2pro_verified_t1
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: verified
+  workers: 16
+  max_passes: 3
+  retry_empty: true
+
+model:
+  path: /dev/null
+  served_name: Nex-N2-Pro
+
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  repetition_penalty: 1.05
+
+agent:
+  step_limit: 250
+
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.46:8012/v1
+
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 16
+  namespace: swebench

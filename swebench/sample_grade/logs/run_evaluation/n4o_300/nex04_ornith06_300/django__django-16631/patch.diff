@@ -1,0 +1,73 @@
+diff --git a/django/contrib/auth/__init__.py b/django/contrib/auth/__init__.py
+index 155330c596..205939fc27 100644
+--- a/django/contrib/auth/__init__.py
++++ b/django/contrib/auth/__init__.py
+@@ -106,8 +106,9 @@ def login(request, user, backend=None):
+     if SESSION_KEY in request.session:
+         if _get_user_session_key(request) != user.pk or (
+             session_auth_hash
+-            and not constant_time_compare(
+-                request.session.get(HASH_SESSION_KEY, ""), session_auth_hash
++            and not _session_auth_hash_matches(
++                request.session.get(HASH_SESSION_KEY, ""),
++                user,
+             )
+         ):
+             # To avoid reusing another user's session, create a new, empty
+@@ -179,6 +180,20 @@ def get_user_model():
+         )
+ 
+ 
++def _session_auth_hash_matches(session_hash, user):
++    """
++    Check if the given session hash matches the user's session auth hash,
++    trying SECRET_KEY and SECRET_KEY_FALLBACKS.
++    """
++    return any(
++        constant_time_compare(
++            session_hash,
++            user.get_session_auth_hash(secret=secret),
++        )
++        for secret in [None, *settings.SECRET_KEY_FALLBACKS]
++    )
++
++
+ def get_user(request):
+     """
+     Return the user model instance associated with the given request session.
+@@ -199,8 +214,12 @@ def get_user(request):
+             # Verify the session
+             if hasattr(user, "get_session_auth_hash"):
+                 session_hash = request.session.get(HASH_SESSION_KEY)
+-                session_hash_verified = session_hash and constant_time_compare(
+-                    session_hash, user.get_session_auth_hash()
++                session_hash_verified = session_hash and any(
++                    constant_time_compare(
++                        session_hash,
++                        user.get_session_auth_hash(secret=secret),
++                    )
++                    for secret in [None, *settings.SECRET_KEY_FALLBACKS]
+                 )
+                 if not session_hash_verified:
+                     request.session.flush()
+diff --git a/django/contrib/auth/base_user.py b/django/contrib/auth/base_user.py
+index 5ee30bf59c..1bb77a7702 100644
+--- a/django/contrib/auth/base_user.py
++++ b/django/contrib/auth/base_user.py
+@@ -131,7 +131,7 @@ class AbstractBaseUser(models.Model):
+         """
+         return is_password_usable(self.password)
+ 
+-    def get_session_auth_hash(self):
++    def get_session_auth_hash(self, secret=None):
+         """
+         Return an HMAC of the password field.
+         """
+@@ -139,6 +139,7 @@ class AbstractBaseUser(models.Model):
+         return salted_hmac(
+             key_salt,
+             self.password,
++            secret=secret,
+             algorithm="sha256",
+         ).hexdigest()
+ 

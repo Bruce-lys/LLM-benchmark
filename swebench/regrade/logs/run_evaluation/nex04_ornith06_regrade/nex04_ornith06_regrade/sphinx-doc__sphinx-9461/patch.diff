@@ -1,0 +1,87 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 1cecb1f79..8f324e163 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -2663,6 +2663,26 @@ class PropertyDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):  #
+                             ) -> bool:
+         return inspect.isproperty(member) and isinstance(parent, ClassDocumenter)
+ 
++    def import_object(self, raiseerror: bool = False) -> bool:
++        ret = super().import_object(raiseerror)
++        if not ret:
++            return ret
++
++        # If the object is a classmethod wrapping a property (available since Python 3.9),
++        # replace it with the underlying property to get the correct docstring and fget.
++        obj = self.parent.__dict__.get(self.object_name)
++        if obj is None:
++            # check MRO if the member is inherited
++            for basecls in getattr(self.parent, '__mro__', [self.parent]):
++                obj = basecls.__dict__.get(self.object_name)
++                if obj is not None:
++                    break
++
++        if obj is not None and inspect.isclassmethod(obj) and inspect.isproperty(getattr(obj, '__func__', None)):
++            self.object = obj.__func__
++
++        return ret
++
+     def document_members(self, all_members: bool = False) -> None:
+         pass
+ 
+diff --git a/sphinx/ext/autodoc/importer.py b/sphinx/ext/autodoc/importer.py
+index 1a8ea0973..28993aa7b 100644
+--- a/sphinx/ext/autodoc/importer.py
++++ b/sphinx/ext/autodoc/importer.py
+@@ -17,8 +17,8 @@ from sphinx.deprecation import RemovedInSphinx50Warning
+ from sphinx.ext.autodoc.mock import ismock, undecorate
+ from sphinx.pycode import ModuleAnalyzer, PycodeError
+ from sphinx.util import logging
+-from sphinx.util.inspect import (getannotations, getmro, getslots, isclass, isenumclass,
+-                                 safe_getattr)
++from sphinx.util.inspect import (getannotations, getmro, getslots, isclass, isclassmethod,
++                                 isenumclass, isproperty, safe_getattr)
+ 
+ if False:
+     # For type annotation
+@@ -281,8 +281,22 @@ def get_class_members(subject: Any, objpath: List[str], attrgetter: Callable
+             unmangled = unmangle(subject, name)
+             if unmangled and unmangled not in members:
+                 if name in obj_dict:
++                    obj = obj_dict[name]
++                    # handle classmethod wrapping a property (available since Python 3.9)
++                    if isclassmethod(obj) and isproperty(getattr(obj, '__func__', None)):
++                        value = obj.__func__
++
+                     members[unmangled] = ObjectMember(unmangled, value, class_=subject)
+                 else:
++                    # check MRO for classmethod wrapping a property
++                    for cls in getmro(subject):
++                        if name in cls.__dict__:
++                            obj = cls.__dict__[name]
++                            if isclassmethod(obj) and isproperty(getattr(obj, '__func__', None)):
++                                value = obj.__func__
++
++                            break
++
+                     members[unmangled] = ObjectMember(unmangled, value)
+         except AttributeError:
+             continue
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index 23dd9e930..b12dceb84 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -390,7 +390,12 @@ def isproperty(obj: Any) -> bool:
+         if isinstance(obj, cached_property):
+             return True
+ 
+-    return isinstance(obj, property)
++    if isinstance(obj, property):
++        return True
++    elif isinstance(obj, classmethod) and isinstance(getattr(obj, '__func__', None), property):
++        return True
++
++    return False
+ 
+ 
+ def isgenericalias(obj: Any) -> bool:

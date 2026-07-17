@@ -1,0 +1,47 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index d69c24419b..f8b5095875 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1666,6 +1666,8 @@ class Query(BaseExpression):
+             filter_expr = (filter_lhs, OuterRef(filter_rhs.name))
+         # Generate the inner query.
+         query = Query(self.model)
++        query.annotations = self.annotations.copy()
++        query._filtered_relations = self._filtered_relations.copy()
+         query.add_filter(filter_expr)
+         query.clear_ordering(True)
+         # Try to have as simple as possible subquery -> trim leading joins from
+@@ -2119,12 +2121,32 @@ class Query(BaseExpression):
+             t for t in self.alias_map
+             if t in self._lookup_joins or t == self.base_table
+         ]
++        # Process all joins that may have a filtered_relation.
++        # Check filtered_relation before m2m check to ensure conditions are preserved.
+         for trimmed_paths, path in enumerate(all_paths):
++            # Skip the base table (it has no filtered_relation and isn't in all_paths).
++            # The lookup_tables may include the base table, but all_paths only contains
++            # PathInfos for joins, not the base table.
++            if trimmed_paths >= len(lookup_tables) - 1:
++                # We've reached the last lookup_table, which is likely the base table
++                # or we've run out of joins to process.
++                break
++            alias = lookup_tables[trimmed_paths + 1]  # +1 to skip the base table
++            join = self.alias_map[alias]
++            # If the join has a filtered_relation, add its condition to the WHERE clause
++            # before removing the join.
++            if join.filtered_relation:
++                from django.db.models.sql.where import AND
++                condition = self.build_filtered_relation_q(
++                    join.filtered_relation.condition,
++                    reuse=set(join.filtered_relation.path),
++                )
++                if condition:
++                    self.where.add(condition, AND)
+             if path.m2m:
+                 break
+             if self.alias_map[lookup_tables[trimmed_paths + 1]].join_type == LOUTER:
+                 contains_louter = True
+-            alias = lookup_tables[trimmed_paths]
+             self.unref_alias(alias)
+         # The path.join_field is a Rel, lets get the other side's field
+         join_field = path.join_field.field

@@ -1,0 +1,27 @@
+diff --git a/sympy/simplify/fu.py b/sympy/simplify/fu.py
+index ad1130ef9..42d4afde4 100644
+--- a/sympy/simplify/fu.py
++++ b/sympy/simplify/fu.py
+@@ -501,9 +501,11 @@ def _f(rv):
+         if not (rv.is_Pow and rv.base.func == f):
+             return rv
+ 
+-        if (rv.exp < 0) == True:
++        if rv.exp.is_negative:
+             return rv
+-        if (rv.exp > max) == True:
++        if rv.exp.is_positive and (rv.exp > max) == True:
++            return rv
++        if not rv.exp.is_Integer:
+             return rv
+         if rv.exp == 2:
+             return h(g(rv.base.args[0])**2)
+@@ -511,7 +513,7 @@ def _f(rv):
+             if rv.exp == 4:
+                 e = 2
+             elif not pow:
+-                if rv.exp % 2:
++                if rv.exp.is_odd:
+                     return rv
+                 e = rv.exp//2
+             else:

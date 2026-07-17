@@ -1,0 +1,85 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 59a5d6abbb..185fe79be8 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -1836,7 +1836,6 @@ class SQLUpdateCompiler(SQLCompiler):
+         query.clear_ordering(force=True)
+         query.extra = {}
+         query.select = []
+-        query.add_fields([query.get_meta().pk.name])
+         super().pre_sql_setup()
+ 
+         must_pre_select = (
+@@ -1850,11 +1849,43 @@ class SQLUpdateCompiler(SQLCompiler):
+             # Either we're using the idents in multiple update queries (so
+             # don't want them to change), or the db backend doesn't support
+             # selecting from the updating table (e.g. MySQL).
+-            idents = []
+-            for rows in query.get_compiler(self.using).execute_sql(MULTI):
+-                idents.extend(r[0] for r in rows)
+-            self.query.add_filter("pk__in", idents)
+-            self.query.related_ids = idents
++            if self.query.related_updates:
++                # For the main query, use the child's pk for filtering
++                query.add_fields([query.get_meta().pk.name])
++                idents = []
++                for rows in query.get_compiler(self.using).execute_sql(MULTI):
++                    idents.extend(r[0] for r in rows)
++                self.query.add_filter("pk__in", idents)
++                # For each ancestor model being updated, we need to get the
++                # correct pk column from the child table.
++                related_ids = {}
++                for model in self.query.related_updates:
++                    # Get the OneToOneField that links the child to this parent
++                    for field in self.query.model._meta.concrete_model._meta.fields:
++                        if field.one_to_one and field.related_model == model:
++                            pk_column = field.column
++                            break
++                    else:
++                        # Fallback to the child's pk if no direct link found
++                        pk_column = self.query.model._meta.pk.column
++                    # Execute a separate query for each model to get the correct pk
++                    query_model = self.query.chain(klass=Query)
++                    query_model.select_related = False
++                    query_model.clear_ordering(force=True)
++                    query_model.extra = {}
++                    query_model.select = []
++                    query_model.add_fields([pk_column])
++                    idents_model = []
++                    for rows in query_model.get_compiler(self.using).execute_sql(MULTI):
++                        idents_model.extend(r[0] for r in rows)
++                    related_ids[model] = idents_model
++                self.query.related_ids = related_ids
++            else:
++                query.add_fields([query.get_meta().pk.name])
++                idents = []
++                for rows in query.get_compiler(self.using).execute_sql(MULTI):
++                    idents.extend(r[0] for r in rows)
++                self.query.add_filter("pk__in", idents)
+         else:
+             # The fast path. Filters and updates in one query.
+             self.query.add_filter("pk__in", query)
+diff --git a/django/db/models/sql/subqueries.py b/django/db/models/sql/subqueries.py
+index 04063f73bc..2ad4916b26 100644
+--- a/django/db/models/sql/subqueries.py
++++ b/django/db/models/sql/subqueries.py
+@@ -60,7 +60,7 @@ class UpdateQuery(Query):
+         would normally be set in __init__() should go here instead.
+         """
+         self.values = []
+-        self.related_ids = None
++        self.related_ids = {}
+         self.related_updates = {}
+ 
+     def clone(self):
+@@ -133,8 +133,8 @@ class UpdateQuery(Query):
+         for model, values in self.related_updates.items():
+             query = UpdateQuery(model)
+             query.values = values
+-            if self.related_ids is not None:
+-                query.add_filter("pk__in", self.related_ids)
++            if self.related_ids:
++                query.add_filter("pk__in", self.related_ids.get(model, []))
+             result.append(query)
+         return result
+ 

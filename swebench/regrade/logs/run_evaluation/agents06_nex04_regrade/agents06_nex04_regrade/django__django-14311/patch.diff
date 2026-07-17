@@ -1,0 +1,65 @@
+diff --git a/django/utils/autoreload.py b/django/utils/autoreload.py
+index b6af5f5491..999013e5a6 100644
+--- a/django/utils/autoreload.py
++++ b/django/utils/autoreload.py
+@@ -223,9 +223,16 @@ def get_child_arguments():
+     # __spec__ is set when the server was started with the `-m` option,
+     # see https://docs.python.org/3/reference/import.html#main-spec
+     # __spec__ may not exist, e.g. when running in a Conda env.
+-    if getattr(__main__, '__spec__', None) is not None and __main__.__spec__.parent:
+-        args += ['-m', __main__.__spec__.parent]
+-        args += sys.argv[1:]
++    spec = getattr(__main__, '__spec__', None)
++    if spec is not None:
++        module_name = spec.name
++        # `python -m django` runs `django/__main__.py` and sets
++        # `__main__.__spec__.name` to `'django.__main__'`.
++        if module_name and module_name.endswith('.__main__'):
++            module_name = module_name.rsplit('.', 1)[0]
++        if module_name:
++            args += ['-m', module_name]
++            args += sys.argv[1:]
+     elif not py_script.exists():
+         # sys.argv[0] may not exist for several reasons on Windows.
+         # It may exist with a .exe extension or have a -script.py suffix.
+diff --git a/tests/utils_tests/test_autoreload.py b/tests/utils_tests/test_autoreload.py
+index 7b91686bf5..4391fea719 100644
+--- a/tests/utils_tests/test_autoreload.py
++++ b/tests/utils_tests/test_autoreload.py
+@@ -10,6 +10,7 @@ import types
+ import weakref
+ import zipfile
+ from importlib import import_module
++from importlib.util import spec_from_loader
+ from pathlib import Path
+ from subprocess import CompletedProcess
+ from unittest import mock, skip, skipIf
+@@ -483,6 +484,28 @@ class RestartWithReloaderTests(SimpleTestCase):
+             self.assertEqual(mock_call.call_count, 1)
+             self.assertEqual(mock_call.call_args[0][0], [self.executable, '-Wall', '-m', 'django'] + argv[1:])
+ 
++    def test_python_m_module(self):
++        main = '/usr/lib/pythonX.Y/site-packages/foo/bar/baz.py'
++        argv = [main, 'runserver']
++        mock_call = self.patch_autoreload(argv)
++        module = types.ModuleType('foo.bar.baz')
++        module.__spec__ = spec_from_loader('foo.bar.baz', loader=None)
++        with mock.patch.dict(sys.modules, {'__main__': module}):
++            autoreload.restart_with_reloader()
++        self.assertEqual(mock_call.call_count, 1)
++        self.assertEqual(mock_call.call_args[0][0], [self.executable, '-Wall', '-m', 'foo.bar.baz'] + argv[1:])
++
++    def test_python_m_package(self):
++        main = '/usr/lib/pythonX.Y/site-packages/foo/bar.py'
++        argv = [main, 'runserver']
++        mock_call = self.patch_autoreload(argv)
++        module = types.ModuleType('foo.bar')
++        module.__spec__ = spec_from_loader('foo.bar', loader=None)
++        with mock.patch.dict(sys.modules, {'__main__': module}):
++            autoreload.restart_with_reloader()
++        self.assertEqual(mock_call.call_count, 1)
++        self.assertEqual(mock_call.call_args[0][0], [self.executable, '-Wall', '-m', 'foo.bar'] + argv[1:])
++
+ 
+ class ReloaderTests(SimpleTestCase):
+     RELOADER_CLS = None

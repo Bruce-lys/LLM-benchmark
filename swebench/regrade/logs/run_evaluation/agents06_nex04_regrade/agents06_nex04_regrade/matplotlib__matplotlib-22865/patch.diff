@@ -1,0 +1,55 @@
+diff --git a/lib/matplotlib/colorbar.py b/lib/matplotlib/colorbar.py
+index c59b0ac815..74ed575ec9 100644
+--- a/lib/matplotlib/colorbar.py
++++ b/lib/matplotlib/colorbar.py
+@@ -651,8 +651,13 @@ class Colorbar:
+             if not self.drawedges:
+                 if len(self._y) >= self.n_rasterize:
+                     self.solids.set_rasterized(True)
+-        self.dividers.set_segments(
+-            np.dstack([X, Y])[1:-1] if self.drawedges else [])
++        if self.drawedges:
++            first_edge = 0 if self._extend_lower() else 1
++            last_edge = len(X) if self._extend_upper() else len(X) - 1
++            segments = np.dstack([X, Y])[first_edge:last_edge]
++        else:
++            segments = []
++        self.dividers.set_segments(segments)
+ 
+     def _add_solids_patches(self, X, Y, C, mappable):
+         hatches = mappable.hatches * len(C)  # Have enough hatches.
+diff --git a/lib/matplotlib/tests/test_colorbar.py b/lib/matplotlib/tests/test_colorbar.py
+index ae3ab92c0d..38118b56ae 100644
+--- a/lib/matplotlib/tests/test_colorbar.py
++++ b/lib/matplotlib/tests/test_colorbar.py
+@@ -516,6 +516,30 @@ def test_colorbar_get_ticks():
+     assert len(cbar.get_ticks(minor=True)) == 0
+ 
+ 
++@pytest.mark.parametrize("extend", ["neither", "min", "max", "both"])
++@pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
++def test_colorbar_drawedges_include_extension_edges(extend, orientation):
++    # drawedges should draw edges between the extensions and the interior of
++    # the colorbar as well as between the interior color bins.
++    fig, ax = plt.subplots()
++    cbar = Colorbar(
++        ax, cmap=cm.get_cmap("viridis"), norm=Normalize(vmin=0, vmax=1),
++        orientation=orientation, extend=extend, drawedges=True)
++
++    X, Y = cbar._mesh()
++    long_axis = X if orientation == "horizontal" else Y
++    first_edge = 0 if cbar._extend_lower() else 1
++    last_edge = len(X) if cbar._extend_upper() else len(X) - 1
++
++    segments = np.asarray(cbar.dividers.get_segments())
++    if orientation == "horizontal":
++        coords = segments[:, 0, 0]
++    else:
++        coords = segments[:, 0, 1]
++
++    np.testing.assert_allclose(coords, long_axis[first_edge:last_edge, 0])
++
++
+ @pytest.mark.parametrize("extend", ['both', 'min', 'max'])
+ def test_colorbar_lognorm_extension(extend):
+     # Test that colorbar with lognorm is extended correctly

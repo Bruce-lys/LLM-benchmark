@@ -1,0 +1,187 @@
+diff --git a/sphinx/builders/html/transforms.py b/sphinx/builders/html/transforms.py
+index c91da57e9..fc83a6734 100644
+--- a/sphinx/builders/html/transforms.py
++++ b/sphinx/builders/html/transforms.py
+@@ -8,8 +8,7 @@
+     :license: BSD, see LICENSE for details.
+ """
+ 
+-import re
+-from typing import Any, Dict
++from typing import Any, Dict, List, Tuple
+ 
+ from docutils import nodes
+ 
+@@ -17,6 +16,135 @@ from sphinx.application import Sphinx
+ from sphinx.transforms.post_transforms import SphinxPostTransform
+ from sphinx.util.nodes import NodeMatcher
+ 
++# Characters that can serve as compound-key separators
++KEYBOARD_SEPARATORS = {'-', '+', '^'}
++
++
++def _parse_kbd(text: str) -> List[Tuple[str, str]]:
++    """Parse a kbd string into a list of (type, value) tuples.
++
++    Types are either ``"key"`` or ``"sep"``.
++
++    The parsing follows this grammar::
++
++        kbd := key (sep kbd)?
++        key := non-sep-seq | sep-char
++        sep := whitespace | sep-char
++
++    A ``sep-char`` (``-``, ``+`` or ``^``) is treated as a separator only
++    if it is between two keys (possibly through whitespace).  Otherwise,
++    it is treated as a key itself.
++    """
++    tokens: List[Tuple[str, str]] = []
++    i = 0
++    n = len(text)
++
++    def is_isolated_sep(pos: int) -> bool:
++        """Check if a separator char at *pos* is isolated (should be a key)."""
++        prev = pos - 1
++        while prev >= 0 and text[prev].isspace():
++            prev -= 1
++        prev_is_key = prev >= 0 and text[prev] not in KEYBOARD_SEPARATORS
++
++        next_pos = pos + 1
++        while next_pos < n and text[next_pos].isspace():
++            next_pos += 1
++        next_is_key = next_pos < n and text[next_pos] not in KEYBOARD_SEPARATORS
++
++        # Isolated if NOT between two non-separator keys
++        return not (prev_is_key and next_is_key)
++
++    def parse_key() -> bool:
++        """Try to parse a key at the current position.
++
++        Returns ``True`` if a key was parsed, ``False`` otherwise
++        (current position is a separator, not a key).
++        """
++        nonlocal i
++        if i >= n:
++            return False
++
++        if text[i] not in KEYBOARD_SEPARATORS and not text[i].isspace():
++            # non-separator sequence -> key
++            j = i
++            while j < n and text[j] not in KEYBOARD_SEPARATORS and not text[j].isspace():
++                j += 1
++            tokens.append(("key", text[i:j]))
++            i = j
++            return True
++        elif text[i] in KEYBOARD_SEPARATORS:
++            # single separator character used as a key
++            tokens.append(("key", text[i]))
++            i += 1
++            return True
++
++        return False
++
++    def parse_sep() -> bool:
++        """Try to parse a separator at the current position.
++
++        Returns ``True`` if a separator was parsed, ``False`` otherwise.
++        """
++        nonlocal i
++        if i >= n:
++            return False
++
++        if text[i].isspace():
++            j = i
++            while j < n and text[j].isspace():
++                j += 1
++            tokens.append(("sep", text[i:j]))
++            i = j
++            return True
++
++        elif text[i] in KEYBOARD_SEPARATORS:
++            # Look backwards (through whitespace) for a non-separator key
++            prev_idx = i - 1
++            while prev_idx >= 0 and text[prev_idx].isspace():
++                prev_idx -= 1
++            prev_is_key = prev_idx >= 0 and text[prev_idx] not in KEYBOARD_SEPARATORS
++
++            # Look forwards (through whitespace) for a non-separator key
++            # or an isolated separator character (which is itself a key)
++            next_idx = i + 1
++            while next_idx < n and text[next_idx].isspace():
++                next_idx += 1
++            if next_idx < n and text[next_idx] in KEYBOARD_SEPARATORS:
++                next_is_key = is_isolated_sep(next_idx)
++            else:
++                next_is_key = next_idx < n and text[next_idx] not in KEYBOARD_SEPARATORS
++
++            if prev_is_key and next_is_key:
++                # This is a real separator between two keys
++                tokens.append(("sep", text[i]))
++                i += 1
++                return True
++            else:
++                # This separator character is itself a key
++                tokens.append(("key", text[i]))
++                i += 1
++                return True
++
++        return False
++
++    # Parse the first key
++    parse_key()
++
++    # Alternate between separators and keys
++    while i < n:
++        # Consume consecutive separators (or keys that are isolated sep chars)
++        parsed = True
++        while parsed and i < n:
++            parsed = parse_sep()
++
++        if i >= n:
++            break
++
++        # Parse the next key
++        parse_key()
++
++    return tokens
++
+ 
+ class KeyboardTransform(SphinxPostTransform):
+     """Transform :kbd: role to more detailed form.
+@@ -37,26 +165,23 @@ class KeyboardTransform(SphinxPostTransform):
+     """
+     default_priority = 400
+     builders = ('html',)
+-    pattern = re.compile(r'(-|\+|\^|\s+)')
+ 
+     def run(self, **kwargs: Any) -> None:
+         matcher = NodeMatcher(nodes.literal, classes=["kbd"])
+         for node in self.document.traverse(matcher):  # type: nodes.literal
+-            parts = self.pattern.split(node[-1].astext())
+-            if len(parts) == 1:
++            text = node[-1].astext()
++            tokens = _parse_kbd(text)
++
++            # If there's only a single key with no separators, no transform needed
++            if len(tokens) == 1 and tokens[0] == ("key", text):
+                 continue
+ 
+             node.pop()
+-            while parts:
+-                key = parts.pop(0)
+-                node += nodes.literal('', key, classes=["kbd"])
+-
+-                try:
+-                    # key separator (ex. -, +, ^)
+-                    sep = parts.pop(0)
+-                    node += nodes.Text(sep)
+-                except IndexError:
+-                    pass
++            for typ, value in tokens:
++                if typ == "key":
++                    node += nodes.literal('', value, classes=["kbd"])
++                else:
++                    node += nodes.Text(value)
+ 
+ 
+ def setup(app: Sphinx) -> Dict[str, Any]:

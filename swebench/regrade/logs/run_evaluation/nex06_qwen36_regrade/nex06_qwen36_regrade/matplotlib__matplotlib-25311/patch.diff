@@ -1,0 +1,162 @@
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index 10a4072328..113527a37e 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -3189,6 +3189,7 @@ None}, default: None
+ 
+         # re-initialise some of the unstored state information
+         FigureCanvasBase(self)  # Set self.canvas.
++        self._reconnect_draggables()
+ 
+         if restore_to_pylab:
+             # lazy import to avoid circularity
+@@ -3203,6 +3204,29 @@ None}, default: None
+ 
+         self.stale = True
+ 
++    def _reconnect_draggables(self):
++        for artist in self.get_children():
++            if (hasattr(artist, "_draggable")
++                    and artist._draggable is not None):
++                artist._draggable._reconnect()
++            try:
++                legend = artist.legend_
++            except AttributeError:
++                legend = None
++            if legend is not None and legend._draggable is not None:
++                legend._draggable._reconnect()
++            try:
++                children = artist.get_children()
++            except AttributeError:
++                children = []
++            for child in children:
++                if (hasattr(child, "_draggable")
++                        and child._draggable is not None):
++                    child._draggable._reconnect()
++        for legend in self.legends:
++            if legend is not None and legend._draggable is not None:
++                legend._draggable._reconnect()
++
+     def add_axobserver(self, func):
+         """Whenever the Axes state change, ``func(self)`` will be called."""
+         # Connect a wrapper lambda and not func itself, to avoid it being
+diff --git a/lib/matplotlib/legend.py b/lib/matplotlib/legend.py
+index ff6abdb958..a0869f5cd8 100644
+--- a/lib/matplotlib/legend.py
++++ b/lib/matplotlib/legend.py
+@@ -1208,6 +1208,12 @@ class Legend(Artist):
+         """Return ``True`` if the legend is draggable, ``False`` otherwise."""
+         return self._draggable is not None
+ 
++    def __setstate__(self, state):
++        self.__dict__.update(state)
++        draggable = getattr(self, "_draggable", None)
++        if draggable is not None:
++            draggable._reconnect()
++
+ 
+ # Helper functions to parse legend arguments for both `figure.legend` and
+ # `axes.legend`:
+diff --git a/lib/matplotlib/offsetbox.py b/lib/matplotlib/offsetbox.py
+index 1dee8a23d9..d48b61b1bc 100644
+--- a/lib/matplotlib/offsetbox.py
++++ b/lib/matplotlib/offsetbox.py
+@@ -1508,12 +1508,49 @@ class DraggableBase:
+         self.canvas = self.ref_artist.figure.canvas
+         self._use_blit = use_blit and self.canvas.supports_blit
+         self.cids = [
+-            self.canvas.callbacks._connect_picklable(
++            self.canvas.callbacks.connect(
+                 'pick_event', self.on_pick),
+-            self.canvas.callbacks._connect_picklable(
++            self.canvas.callbacks.connect(
+                 'button_release_event', self.on_release),
+         ]
+ 
++    def __getstate__(self):
++        state = self.__dict__.copy()
++        # The canvas and its callbacks are not picklable in general.  The
++        # callbacks will be reconnected after unpickling.
++        state.pop("canvas", None)
++        state.pop("cids", None)
++        state.pop("_c1", None)
++        state.pop("background", None)
++        state["got_artist"] = False
++        return state
++
++    def _reconnect(self):
++        if (getattr(self, "cids", None) is not None
++                and getattr(self, "canvas", None) is not None):
++            return
++        figure = getattr(self.ref_artist, "figure", None)
++        if figure is None:
++            axes = getattr(self.ref_artist, "axes", None)
++            if axes is not None:
++                figure = getattr(axes, "figure", None)
++        if figure is None or not hasattr(figure, "canvas"):
++            self._needs_reconnect = True
++            return
++        self._needs_reconnect = False
++        self.canvas = figure.canvas
++        self._use_blit = self._use_blit and self.canvas.supports_blit
++        self.cids = [
++            self.canvas.callbacks.connect("pick_event", self.on_pick),
++            self.canvas.callbacks.connect(
++                "button_release_event", self.on_release),
++        ]
++
++    def __setstate__(self, state):
++        self.__dict__.update(state)
++        self.got_artist = False
++        self._reconnect()
++
+     def on_motion(self, evt):
+         if self._check_still_parented() and self.got_artist:
+             dx = evt.x - self.mouse_x
+@@ -1540,7 +1577,7 @@ class DraggableBase:
+                 self.ref_artist.draw(
+                     self.ref_artist.figure._get_renderer())
+                 self.canvas.blit()
+-            self._c1 = self.canvas.callbacks._connect_picklable(
++            self._c1 = self.canvas.callbacks.connect(
+                 "motion_notify_event", self.on_motion)
+             self.save_offset()
+ 
+@@ -1562,7 +1599,7 @@ class DraggableBase:
+ 
+     def disconnect(self):
+         """Disconnect the callbacks."""
+-        for cid in self.cids:
++        for cid in getattr(self, "cids", []):
+             self.canvas.mpl_disconnect(cid)
+         try:
+             c1 = self._c1
+@@ -1611,6 +1648,10 @@ class DraggableAnnotation(DraggableBase):
+         super().__init__(annotation, use_blit=use_blit)
+         self.annotation = annotation
+ 
++    def __setstate__(self, state):
++        super().__setstate__(state)
++        self._reconnect()
++
+     def save_offset(self):
+         ann = self.annotation
+         self.ox, self.oy = ann.get_transform().transform(ann.xyann)
+diff --git a/lib/matplotlib/text.py b/lib/matplotlib/text.py
+index 0f874ba33d..d494148a2b 100644
+--- a/lib/matplotlib/text.py
++++ b/lib/matplotlib/text.py
+@@ -1666,6 +1666,13 @@ class Annotation(Text, _AnnotationBase):
+         A `.FancyArrowPatch` to point from *xytext* to *xy*.
+     """
+ 
++
++    def __setstate__(self, state):
++        self.__dict__.update(state)
++        draggable = getattr(self, "_draggable", None)
++        if draggable is not None:
++            draggable._reconnect()
++
+     def __str__(self):
+         return f"Annotation({self.xy[0]:g}, {self.xy[1]:g}, {self._text!r})"
+ 

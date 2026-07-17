@@ -1,0 +1,26 @@
+diff --git a/sphinx/cmd/quickstart.py b/sphinx/cmd/quickstart.py
+index a40a21073..770bed342 100644
+--- a/sphinx/cmd/quickstart.py
++++ b/sphinx/cmd/quickstart.py
+@@ -99,6 +99,12 @@ def allow_empty(x: str) -> str:
+     return x
+ 
+ 
++def allow_empty_path(x: str) -> str:
++    if not x:
++        return x
++    return is_path(x)
++
++
+ def nonempty(x: str) -> str:
+     if not x:
+         raise ValidationError(__("Please enter some text."))
+@@ -223,7 +229,7 @@ def ask_user(d: Dict) -> None:
+         print(__('sphinx-quickstart will not overwrite existing Sphinx projects.'))
+         print()
+         d['path'] = do_prompt(__('Please enter a new root path (or just Enter to exit)'),
+-                              '', is_path)
++                              '', allow_empty_path)
+         if not d['path']:
+             sys.exit(1)
+ 

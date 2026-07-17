@@ -1,0 +1,65 @@
+diff --git a/django/core/servers/basehttp.py b/django/core/servers/basehttp.py
+index fef5532e58..a83dadeb3c 100644
+--- a/django/core/servers/basehttp.py
++++ b/django/core/servers/basehttp.py
+@@ -143,6 +143,60 @@ class ServerHandler(simple_server.ServerHandler):
+         if self.headers.get("Connection") == "close":
+             self.request_handler.close_connection = True
+ 
++    def _status_code(self):
++        if self.status is None:
++            return None
++        try:
++            return int(self.status.split()[0])
++        except (IndexError, ValueError):
++            return None
++
++    def _is_status_no_body(self):
++        status_code = self._status_code()
++        return status_code is not None and (
++            100 <= status_code < 200 or status_code in (204, 304)
++        )
++
++    def _set_content_length_for_no_body(self):
++        if "Content-Length" in self.headers:
++            return
++        if self._is_status_no_body():
++            self.headers["Content-Length"] = "0"
++            return
++        if (
++            self.environ.get("REQUEST_METHOD") == "HEAD"
++            and isinstance(self.result, (list, tuple))
++        ):
++            try:
++                self.headers["Content-Length"] = str(
++                    sum(len(data) for data in self.result)
++                )
++            except TypeError:
++                pass
++
++    def _should_strip_body(self):
++        if self.headers is None:
++            return False
++        status_code = self._status_code()
++        if status_code is None:
++            return False
++        return (
++            self.environ.get("REQUEST_METHOD") == "HEAD"
++            or self._is_status_no_body()
++        )
++
++    def write(self, data):
++        assert type(data) is bytes, "write() argument must be a bytes instance"
++        if not self.status:
++            raise AssertionError("write() before start_response()")
++        if self._should_strip_body():
++            if not self.headers_sent:
++                # RFC 7231 requires no body for HEAD and some status codes.
++                self._set_content_length_for_no_body()
++                self.send_headers()
++            return
++        return super().write(data)
++
+     def close(self):
+         self.get_stdin().read()
+         super().close()

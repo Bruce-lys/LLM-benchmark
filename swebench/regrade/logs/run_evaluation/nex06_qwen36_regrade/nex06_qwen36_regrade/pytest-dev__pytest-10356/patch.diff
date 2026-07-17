@@ -1,0 +1,47 @@
+diff --git a/src/_pytest/mark/structures.py b/src/_pytest/mark/structures.py
+index 800a25c92..7073a61a6 100644
+--- a/src/_pytest/mark/structures.py
++++ b/src/_pytest/mark/structures.py
+@@ -356,11 +356,40 @@ class MarkDecorator:
+ 
+ 
+ def get_unpacked_marks(obj: object) -> Iterable[Mark]:
+-    """Obtain the unpacked marks that are stored on an object."""
++    """Obtain the unpacked marks that are stored on an object.
++
++    For classes without an explicit ``pytestmark`` attribute, marks are
++    gathered from the class hierarchy, with duplicates removed by marker name.
++    """
++    if isinstance(obj, type):
++        if "pytestmark" in obj.__dict__:
++            mark_list = obj.__dict__["pytestmark"]
++            if not isinstance(mark_list, list):
++                mark_list = [mark_list]
++            yield from normalize_mark_list(mark_list)
++            return
++
++        seen_names: Set[str] = set()
++        for cls in obj.__mro__:
++            mark_list = getattr(cls, "pytestmark", None)
++            if mark_list is None:
++                continue
++            if not isinstance(mark_list, list):
++                mark_list = [mark_list]
++            cls_marks = list(normalize_mark_list(mark_list))
++            if cls_marks:
++                new_names = {mark.name for mark in cls_marks} - seen_names
++                if new_names:
++                    for mark in cls_marks:
++                        if mark.name in new_names:
++                            yield mark
++                    seen_names.update(new_names)
++        return
++
+     mark_list = getattr(obj, "pytestmark", [])
+     if not isinstance(mark_list, list):
+         mark_list = [mark_list]
+-    return normalize_mark_list(mark_list)
++    yield from normalize_mark_list(mark_list)
+ 
+ 
+ def normalize_mark_list(

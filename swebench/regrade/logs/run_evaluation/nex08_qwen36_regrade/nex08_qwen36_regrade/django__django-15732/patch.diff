@@ -1,0 +1,64 @@
+diff --git a/django/db/backends/base/schema.py b/django/db/backends/base/schema.py
+index f2ca8c8df9..8e74c97926 100644
+--- a/django/db/backends/base/schema.py
++++ b/django/db/backends/base/schema.py
+@@ -528,7 +528,10 @@ class BaseDatabaseSchemaEditor:
+         # Deleted uniques
+         for fields in olds.difference(news):
+             self._delete_composed_index(
+-                model, fields, {"unique": True}, self.sql_delete_unique
++                model,
++                fields,
++                {"unique": True, "primary_key": False},
++                self.sql_delete_unique,
+             )
+         # Created uniques
+         for field_names in news.difference(olds):
+@@ -548,27 +551,44 @@ class BaseDatabaseSchemaEditor:
+             self._delete_composed_index(
+                 model,
+                 fields,
+-                {"index": True, "unique": False},
++                {"index": True, "unique": False, "primary_key": False},
+                 self.sql_delete_index,
++                suffix="_idx",
+             )
+         # Created indexes
+         for field_names in news.difference(olds):
+             fields = [model._meta.get_field(field) for field in field_names]
+             self.execute(self._create_index_sql(model, fields=fields, suffix="_idx"))
+ 
+-    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
++    def _delete_composed_index(
++        self, model, fields, constraint_kwargs, sql, suffix="_uniq"
++    ):
+         meta_constraint_names = {
+             constraint.name for constraint in model._meta.constraints
+         }
+         meta_index_names = {constraint.name for constraint in model._meta.indexes}
+         columns = [model._meta.get_field(field).column for field in fields]
++        expected_name = self._create_index_name(model._meta.db_table, columns, suffix)
++        # Prefer the generated name when multiple constraints match the columns.
++        # This avoids deleting the primary key or a field-level unique constraint.
+         constraint_names = self._constraint_names(
+             model,
+             columns,
+             exclude=meta_constraint_names | meta_index_names,
+             **constraint_kwargs,
+         )
+-        if len(constraint_names) != 1:
++        if len(constraint_names) > 1:
++            if expected_name not in constraint_names:
++                raise ValueError(
++                    "Found wrong number (%s) of constraints for %s(%s)"
++                    % (
++                        len(constraint_names),
++                        model._meta.db_table,
++                        ", ".join(columns),
++                    )
++                )
++            constraint_names = [expected_name]
++        elif len(constraint_names) == 0:
+             raise ValueError(
+                 "Found wrong number (%s) of constraints for %s(%s)"
+                 % (

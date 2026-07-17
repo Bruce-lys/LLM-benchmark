@@ -1,0 +1,25 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index cd02eaad5..8f3dd383f 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -788,6 +788,11 @@ class PyMethod(PyObject):
+             if modname and self.env.config.add_module_names:
+                 clsname = '.'.join([modname, clsname])
+         except ValueError:
++            if 'property' in self.options:
++                if modname:
++                    return _('%s (in module %s)') % (name, modname)
++                else:
++                    return name
+             if modname:
+                 return _('%s() (in module %s)') % (name, modname)
+             else:
+@@ -796,7 +801,7 @@ class PyMethod(PyObject):
+         if 'classmethod' in self.options:
+             return _('%s() (%s class method)') % (methname, clsname)
+         elif 'property' in self.options:
+-            return _('%s() (%s property)') % (methname, clsname)
++            return _('%s (%s property)') % (methname, clsname)
+         elif 'staticmethod' in self.options:
+             return _('%s() (%s static method)') % (methname, clsname)
+         else:

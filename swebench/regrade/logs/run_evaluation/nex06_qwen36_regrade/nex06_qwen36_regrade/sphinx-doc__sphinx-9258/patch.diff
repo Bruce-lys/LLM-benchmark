@@ -1,0 +1,25 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 7d39d80ed..703408b1d 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -304,7 +304,7 @@ class PyXrefMixin:
+     def make_xrefs(self, rolename: str, domain: str, target: str,
+                    innernode: Type[TextlikeNode] = nodes.emphasis,
+                    contnode: Node = None, env: BuildEnvironment = None) -> List[Node]:
+-        delims = r'(\s*[\[\]\(\),](?:\s*or\s)?\s*|\s+or\s+|\.\.\.)'
++        delims = r'(\s*[\[\]\(\),](?:\s*or\s)?\s*|\s+or\s+|\s*\|\s*|\.\.\.)'
+         delims_re = re.compile(delims)
+         sub_targets = re.split(delims, target)
+ 
+@@ -316,7 +316,10 @@ class PyXrefMixin:
+                 contnode = nodes.Text(sub_target)
+ 
+             if delims_re.match(sub_target):
+-                results.append(contnode or innernode(sub_target, sub_target))
++                if sub_target.strip() == '|':
++                    results.append(nodes.Text(' | '))
++                else:
++                    results.append(contnode or innernode(sub_target, sub_target))
+             else:
+                 results.append(self.make_xref(rolename, domain, sub_target,
+                                               innernode, contnode, env))

@@ -1,0 +1,40 @@
+diff --git a/astropy/timeseries/core.py b/astropy/timeseries/core.py
+index c279f35f8..6945a4c4c 100644
+--- a/astropy/timeseries/core.py
++++ b/astropy/timeseries/core.py
+@@ -76,10 +76,31 @@ class BaseTimeSeries(QTable):
+ 
+             elif self.colnames[:len(required_columns)] != required_columns:
+ 
+-                raise ValueError("{} object is invalid - expected '{}' "
+-                                 "as the first column{} but found '{}'"
+-                                 .format(self.__class__.__name__, required_columns[0], plural, self.colnames[0]))
+-
++                if len(required_columns) == 1:
++                    raise ValueError("{} object is invalid - expected '{}' "
++                                     "as the first column but found '{}'"
++                                     .format(self.__class__.__name__, required_columns[0], self.colnames[0]))
++
++                expected_columns = "', '".join(required_columns)
++                n_colnames = len(self.colnames)
++
++                if (n_colnames < len(required_columns)
++                        and self.colnames == required_columns[:n_colnames]):
++                    missing_columns = "', '".join(
++                        required_columns[n_colnames:])
++                    found_columns = "', '".join(self.colnames)
++                    raise ValueError("{} object is invalid - expected '{}'"
++                                     " as the first columns but found only '{}'"
++                                     " (missing '{}')"
++                                     .format(self.__class__.__name__, expected_columns,
++                                             found_columns, missing_columns))
++
++                found_columns = "', '".join(
++                    self.colnames[:len(required_columns)])
++                raise ValueError("{} object is invalid - expected '{}'"
++                                 " as the first columns but found '{}'"
++                                 .format(self.__class__.__name__, expected_columns,
++                                         found_columns))
+             if (self._required_columns_relax
+                     and self._required_columns == self.colnames[:len(self._required_columns)]):
+                 self._required_columns_relax = False

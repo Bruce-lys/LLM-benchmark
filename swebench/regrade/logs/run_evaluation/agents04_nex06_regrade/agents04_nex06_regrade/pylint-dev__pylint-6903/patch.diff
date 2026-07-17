@@ -1,0 +1,50 @@
+diff --git a/pylint/lint/run.py b/pylint/lint/run.py
+index a7e5d557..ea58158a 100644
+--- a/pylint/lint/run.py
++++ b/pylint/lint/run.py
+@@ -44,20 +44,23 @@ def _query_cpu() -> int | None:
+             # Not useful for AWS Batch based jobs as result is -1, but works on local linux systems
+             cpu_quota = int(file.read().rstrip())
+ 
+-    if (
+-        cpu_quota
+-        and cpu_quota != -1
+-        and Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").is_file()
+-    ):
+-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", encoding="utf-8") as file:
+-            cpu_period = int(file.read().rstrip())
+-        # Divide quota by period and you should get num of allotted CPU to the container, rounded down if fractional.
+-        avail_cpu = int(cpu_quota / cpu_period)
+-    elif Path("/sys/fs/cgroup/cpu/cpu.shares").is_file():
++    if cpu_quota and cpu_quota != -1:
++        period_path = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
++        if period_path.is_file():
++            with open(period_path, encoding="utf-8") as file:
++                cpu_period = int(file.read().rstrip())
++            if cpu_period > 0:
++                # Divide quota by period and you should get the number of allotted
++                # CPUs, rounded down if fractional. multiprocessing requires at least
++                # 1 worker.
++                return max(1, cpu_quota // cpu_period)
++
++    if Path("/sys/fs/cgroup/cpu/cpu.shares").is_file():
+         with open("/sys/fs/cgroup/cpu/cpu.shares", encoding="utf-8") as file:
+             cpu_shares = int(file.read().rstrip())
+         # For AWS, gives correct value * 1024.
+-        avail_cpu = int(cpu_shares / 1024)
++        # multiprocessing requires at least 1 worker.
++        return max(1, cpu_shares // 1024)
+     return avail_cpu
+ 
+ 
+@@ -76,8 +79,8 @@ def _cpu_count() -> int:
+     else:
+         cpu_count = 1
+     if cpu_share is not None:
+-        return min(cpu_share, cpu_count)
+-    return cpu_count
++        return max(1, min(cpu_share, cpu_count))
++    return max(1, cpu_count)
+ 
+ 
+ UNUSED_PARAM_SENTINEL = object()

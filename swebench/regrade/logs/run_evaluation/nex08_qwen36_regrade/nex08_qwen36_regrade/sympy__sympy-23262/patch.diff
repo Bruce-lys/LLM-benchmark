@@ -1,0 +1,15 @@
+diff --git a/sympy/utilities/lambdify.py b/sympy/utilities/lambdify.py
+index da67263b19..315c2cc278 100644
+--- a/sympy/utilities/lambdify.py
++++ b/sympy/utilities/lambdify.py
+@@ -959,6 +959,10 @@ def _recursive_to_string(doprint, arg):
+             left, right = "[]"
+         elif isinstance(arg, tuple):
+             left, right = "()"
++            if len(arg) == 1:
++                return "({}{})".format(_recursive_to_string(doprint, arg[0]), ',')
++            return "({})".format(
++                ', '.join(_recursive_to_string(doprint, e) for e in arg))
+         else:
+             raise NotImplementedError("unhandled type: %s, %s" % (type(arg), arg))
+         return left +', '.join(_recursive_to_string(doprint, e) for e in arg) + right

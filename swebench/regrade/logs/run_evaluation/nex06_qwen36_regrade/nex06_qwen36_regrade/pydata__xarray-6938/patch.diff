@@ -1,0 +1,44 @@
+diff --git a/xarray/core/dataset.py b/xarray/core/dataset.py
+index c775d05c..27d16e1c 100644
+--- a/xarray/core/dataset.py
++++ b/xarray/core/dataset.py
+@@ -3773,6 +3773,8 @@ class Dataset(
+             dims = tuple(dims_dict.get(dim, dim) for dim in v.dims)
+             if k in result_dims:
+                 var = v.to_index_variable()
++                if var is v:
++                    var = var.copy(deep=False)
+                 var.dims = dims
+                 if k in self._indexes:
+                     indexes[k] = self._indexes[k]
+diff --git a/xarray/tests/test_dataset.py b/xarray/tests/test_dataset.py
+index 9ea47163..3dfe919b 100644
+--- a/xarray/tests/test_dataset.py
++++ b/xarray/tests/test_dataset.py
+@@ -2995,6 +2995,26 @@ class TestDataset:
+         assert isinstance(actual.variables["x"], Variable)
+         assert actual.xindexes["y"].equals(expected.xindexes["y"])
+ 
++    def test_swap_dims_does_not_mutate_index_variable(self) -> None:
++        original = Dataset(
++            data_vars={
++                "y": ("z", np.arange(11.0)),
++                "lev": ("z", np.arange(11) * 10),
++            }
++        )
++        ds2 = (
++            original.swap_dims(z="lev")
++            .rename_dims(lev="z")
++            .reset_index("lev")
++            .reset_coords()
++        )
++        expected = ds2.copy()
++        swapped = ds2.swap_dims(z="lev")
++
++        assert isinstance(ds2.variables["lev"], IndexVariable)
++        assert_identical(ds2, expected)
++        assert swapped.variables["lev"].dims == ("lev",)
++
+     def test_expand_dims_error(self) -> None:
+         original = Dataset(
+             {

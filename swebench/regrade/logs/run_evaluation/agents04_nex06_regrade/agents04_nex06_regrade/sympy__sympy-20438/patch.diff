@@ -1,0 +1,72 @@
+diff --git a/sympy/core/relational.py b/sympy/core/relational.py
+index e2e0b7fbcc..069a05bf6a 100644
+--- a/sympy/core/relational.py
++++ b/sympy/core/relational.py
+@@ -305,6 +305,16 @@ def _eval_simplify(self, **kwargs):
+         r = self
+         r = r.func(*[i.simplify(**kwargs) for i in r.args])
+         if r.is_Relational:
++            if hasattr(r.lhs, 'is_subset') and hasattr(r.rhs, 'is_subset'):
++                from sympy.sets.sets import Set
++                if isinstance(r.lhs, Set) and isinstance(r.rhs, Set):
++                    lhs_subset_rhs = r.lhs.is_subset(r.rhs)
++                    rhs_subset_lhs = r.rhs.is_subset(r.lhs)
++                    if lhs_subset_rhs is True and rhs_subset_lhs is True:
++                        return True
++                    if lhs_subset_rhs is False or rhs_subset_lhs is False:
++                        return False
++                    return r.canonical
+             dif = r.lhs - r.rhs
+             # replace dif with a valid Number that will
+             # allow a definitive comparison with 0
+diff --git a/sympy/sets/handlers/comparison.py b/sympy/sets/handlers/comparison.py
+index 6f7a19fccf..31eb87f892 100644
+--- a/sympy/sets/handlers/comparison.py
++++ b/sympy/sets/handlers/comparison.py
+@@ -49,6 +49,17 @@ def _eval_is_eq(lhs, rhs): # noqa: F811
+     return tfn[fuzzy_and(map(fuzzy_bool, eqs))]
+ 
+ 
++@dispatch(ProductSet, FiniteSet) # type:ignore
++def _eval_is_eq(lhs, rhs): # noqa: F811
++    if lhs.is_finite_set:
++        return is_eq(lhs.rewrite(FiniteSet), rhs)
++
++
++@dispatch(FiniteSet, ProductSet) # type:ignore
++def _eval_is_eq(lhs, rhs): # noqa: F811
++    return _eval_is_eq(rhs, lhs)
++
++
+ @dispatch(Set, Basic) # type:ignore
+ def _eval_is_eq(lhs, rhs): # noqa: F811
+     return False
+diff --git a/sympy/sets/sets.py b/sympy/sets/sets.py
+index 3c4aa86e36..548f200ece 100644
+--- a/sympy/sets/sets.py
++++ b/sympy/sets/sets.py
+@@ -793,6 +793,9 @@ def _contains(self, element):
+ 
+         Passes operation on to constituent sets
+         """
++        if isinstance(element, tuple):
++            element = Tuple(*element)
++
+         if element.is_Symbol:
+             return None
+ 
+@@ -852,6 +855,14 @@ def is_finite_set(self):
+         all_finite = fuzzy_and(s.is_finite_set for s in self.sets)
+         return fuzzy_or([self.is_empty, all_finite])
+ 
++    def _eval_is_subset(self, other):
++        if self.is_finite_set is True:
++            return fuzzy_and(other._contains(e) for e in self)
++
++    def _eval_rewrite_as_FiniteSet(self, *args, **kwargs):
++        if self.is_finite_set is True:
++            return FiniteSet(*self)
++
+     @property
+     def _measure(self):
+         measure = 1

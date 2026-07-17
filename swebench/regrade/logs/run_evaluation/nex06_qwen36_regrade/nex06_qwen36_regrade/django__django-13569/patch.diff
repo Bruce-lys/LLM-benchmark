@@ -1,0 +1,18 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index 13918467ee..0bb51d2998 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -669,6 +669,13 @@ class Func(SQLiteNumericMixin, Expression):
+     def set_source_expressions(self, exprs):
+         self.source_expressions = exprs
+ 
++    def get_group_by_cols(self, alias=None):
++        # A function with no source expressions (e.g. Random()) doesn't
++        # depend on any columns and shouldn't be added to GROUP BY.
++        if not self.get_source_expressions():
++            return []
++        return super().get_group_by_cols(alias)
++
+     def resolve_expression(self, query=None, allow_joins=True, reuse=None, summarize=False, for_save=False):
+         c = self.copy()
+         c.is_summary = summarize

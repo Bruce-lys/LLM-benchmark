@@ -1,0 +1,45 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 144eadeae2..55b99dbd58 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -1447,14 +1447,30 @@ class QuadContourSet(ContourSet):
+             fn = 'contour'
+         nargs = len(args)
+         if nargs <= 2:
+-            z = ma.asarray(args[0], dtype=np.float64)
++            raw_z = args[0]
++            raw_z_arr = np.asarray(raw_z)
++            z = ma.asarray(raw_z, dtype=np.float64)
+             x, y = self._initialize_x_y(z)
+             args = args[1:]
++            is_bool_z = (
++                not self.filled and self.levels is None and not args
++                and np.issubdtype(raw_z_arr.dtype, np.bool_)
++                and raw_z_arr.ndim == 2
++            )
+         elif nargs <= 4:
++            raw_z = args[2]
++            raw_z_arr = np.asarray(raw_z)
+             x, y, z = self._check_xyz(args[:3], kwargs)
+             args = args[3:]
++            is_bool_z = (
++                not self.filled and self.levels is None and not args
++                and np.issubdtype(raw_z_arr.dtype, np.bool_)
++                and raw_z_arr.ndim == 2
++            )
+         else:
+             raise _api.nargs_error(fn, takes="from 1 to 4", given=nargs)
++        if is_bool_z:
++            args = ([0.5],) + args
+         z = ma.masked_invalid(z, copy=False)
+         self.zmax = float(z.max())
+         self.zmin = float(z.min())
+@@ -1585,6 +1601,8 @@ levels : int or array-like, optional
+     If array-like, draw contour lines at the specified levels.
+     The values must be in increasing order.
+ 
++    For two-dimensional boolean *Z* in `.contour`, the default level is ``0.5``.
++
+ Returns
+ -------
+ `~.contour.QuadContourSet`

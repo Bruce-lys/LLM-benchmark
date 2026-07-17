@@ -1,0 +1,20 @@
+diff --git a/sympy/core/relational.py b/sympy/core/relational.py
+index f581bfa3c4..15514ca050 100644
+--- a/sympy/core/relational.py
++++ b/sympy/core/relational.py
+@@ -462,6 +462,15 @@ class Equality(Relational):
+ 
+     is_Equality = True
+ 
++    def _eval_as_set(self):
++        # Use solveset directly for equality so unsolvable equations return
++        # ConditionSet rather than raising NotImplementedError.
++        from sympy.solvers.solveset import solveset
++        syms = self.free_symbols
++        assert len(syms) == 1
++        x = syms.pop()
++        return solveset(self.lhs - self.rhs, x, S.Reals)
++
+     def __new__(cls, lhs, rhs=None, **options):
+         from sympy.core.add import Add
+         from sympy.core.containers import Tuple

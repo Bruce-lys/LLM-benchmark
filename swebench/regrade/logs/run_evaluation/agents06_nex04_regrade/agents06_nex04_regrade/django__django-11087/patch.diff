@@ -1,0 +1,147 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index 3a462f1c4c..0fc0879826 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -116,25 +116,9 @@ class Collector:
+             model, {}).setdefault(
+             (field, value), set()).update(objs)
+ 
+-    def can_fast_delete(self, objs, from_field=None):
+-        """
+-        Determine if the objects in the given queryset-like or single object
+-        can be fast-deleted. This can be done if there are no cascades, no
+-        parents and no signal listeners for the object class.
+-
+-        The 'from_field' tells where we are coming from - we need this to
+-        determine if the objects are in fact to be deleted. Allow also
+-        skipping parent -> child -> parent chain preventing fast delete of
+-        the child.
+-        """
++    def can_fast_delete_model(self, model, from_field=None):
+         if from_field and from_field.remote_field.on_delete is not CASCADE:
+             return False
+-        if hasattr(objs, '_meta'):
+-            model = type(objs)
+-        elif hasattr(objs, 'model') and hasattr(objs, '_raw_delete'):
+-            model = objs.model
+-        else:
+-            return False
+         if (signals.pre_delete.has_listeners(model) or
+                 signals.post_delete.has_listeners(model) or
+                 signals.m2m_changed.has_listeners(model)):
+@@ -154,6 +138,27 @@ class Collector:
+             )
+         )
+ 
++    def can_fast_delete(self, objs, from_field=None):
++        """
++        Determine if the objects in the given queryset-like or single object
++        can be fast-deleted. This can be done if there are no cascades, no
++        parents and no signal listeners for the object class.
++
++        The 'from_field' tells where we are coming from - we need this to
++        determine if the objects are in fact to be deleted. Allow also
++        skipping parent -> child -> parent chain preventing fast delete of
++        the child.
++        """
++        if from_field and from_field.remote_field.on_delete is not CASCADE:
++            return False
++        if hasattr(objs, '_meta'):
++            model = type(objs)
++        elif hasattr(objs, 'model') and hasattr(objs, '_raw_delete'):
++            model = objs.model
++        else:
++            return False
++        return self.can_fast_delete_model(model, from_field)
++
+     def get_del_batches(self, objs, field):
+         """
+         Return the objs in suitably sized batches for the used connection.
+@@ -166,6 +171,25 @@ class Collector:
+         else:
+             return [objs]
+ 
++    def materialize(self, model):
++        """
++        Load the model instances for this model from the database, replacing
++        partial instances with full ones.
++        """
++        instances = self.data.get(model)
++        if not instances:
++            return
++        if not any(getattr(obj, '_state', None).adding for obj in instances):
++            return
++        pks = [obj.pk for obj in instances if obj.pk is not None]
++        if not pks:
++            return
++        qs = model._base_manager.using(self.using).filter(pk__in=pks)
++        full_instances = {obj.pk: obj for obj in qs}
++        self.data[model] = {
++            full_instances[obj.pk] for obj in instances if obj.pk in full_instances
++        }
++
+     def collect(self, objs, source=None, nullable=False, collect_related=True,
+                 source_attr=None, reverse_dependency=False, keep_parents=False):
+         """
+@@ -195,6 +219,9 @@ class Collector:
+ 
+         model = new_objs[0].__class__
+ 
++        if not keep_parents and any(getattr(obj, '_state', None).adding for obj in new_objs):
++            self.materialize(model)
++
+         if not keep_parents:
+             # Recursively collect concrete model's parent models, but not their
+             # related objects. These will be found by meta.get_fields()
+@@ -217,24 +244,28 @@ class Collector:
+                     continue
+                 batches = self.get_del_batches(new_objs, field)
+                 for batch in batches:
+-                    sub_objs = self.related_objects(related, batch)
+-                    if self.can_fast_delete(sub_objs, from_field=field):
+-                        self.fast_deletes.append(sub_objs)
+-                    elif sub_objs:
+-                        field.remote_field.on_delete(self, field, sub_objs, self.using)
++                    if self.can_fast_delete_model(related.related_model, from_field=field):
++                        self.fast_deletes.append(self.related_objects(related, batch, only_pk=True))
++                    else:
++                        sub_objs = self.related_objects(related, batch)
++                        if sub_objs:
++                            field.remote_field.on_delete(self, field, sub_objs, self.using)
+             for field in model._meta.private_fields:
+                 if hasattr(field, 'bulk_related_objects'):
+                     # It's something like generic foreign key.
+                     sub_objs = field.bulk_related_objects(new_objs, self.using)
+                     self.collect(sub_objs, source=model, nullable=True)
+ 
+-    def related_objects(self, related, objs):
++    def related_objects(self, related, objs, only_pk=False):
+         """
+         Get a QuerySet of objects related to `objs` via the relation `related`.
+         """
+-        return related.related_model._base_manager.using(self.using).filter(
++        qs = related.related_model._base_manager.using(self.using).filter(
+             **{"%s__in" % related.field.name: objs}
+         )
++        if only_pk:
++            return qs.values_list(related.related_model._meta.pk.attname, flat=True)
++        return qs
+ 
+     def instances_with_model(self):
+         for model, instances in self.data.items():
+@@ -264,10 +295,15 @@ class Collector:
+         for model, instances in self.data.items():
+             self.data[model] = sorted(instances, key=attrgetter("pk"))
+ 
++        for model in self.data:
++            if any(getattr(obj, '_state', None).adding for obj in self.data[model]):
++                self.materialize(model)
++
+         # if possible, bring the models in an order suitable for databases that
+         # don't support transactions or cannot defer constraint checks until the
+         # end of a transaction.
+         self.sort()
++        self.data = {model: list(self.data[model]) for model in self.data}
+         # number of objects deleted for each model label
+         deleted_counter = Counter()
+ 

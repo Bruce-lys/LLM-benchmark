@@ -1,0 +1,37 @@
+diff --git a/sympy/physics/quantum/tensorproduct.py b/sympy/physics/quantum/tensorproduct.py
+index 9dd10d219..cc04f757c 100644
+--- a/sympy/physics/quantum/tensorproduct.py
++++ b/sympy/physics/quantum/tensorproduct.py
+@@ -382,12 +382,30 @@ def tensor_product_simp(e, **hints):
+     if isinstance(e, Add):
+         return Add(*[tensor_product_simp(arg) for arg in e.args])
+     elif isinstance(e, Pow):
+-        return tensor_product_simp(e.base) ** e.exp
++        if isinstance(e.base, TensorProduct) and e.exp.is_Integer and e.exp.is_positive:
++            return TensorProduct(*[arg**e.exp for arg in e.base.args])
++        else:
++            return tensor_product_simp(e.base) ** e.exp
+     elif isinstance(e, Mul):
+-        return tensor_product_simp_Mul(e)
++        # Recursively simplify arguments first (e.g., Pow of TensorProduct)
++        if not e.has(TensorProduct):
++            return e
++        new_args = [tensor_product_simp(arg) for arg in e.args]
++        return tensor_product_simp_Mul(Mul(*new_args, evaluate=False))
+     elif isinstance(e, Commutator):
+         return Commutator(*[tensor_product_simp(arg) for arg in e.args])
+     elif isinstance(e, AntiCommutator):
+         return AntiCommutator(*[tensor_product_simp(arg) for arg in e.args])
+     else:
+         return e
++
++
++def _eval_expand_tensorproduct_pow(self, **hints):
++    """Expand a Pow of TensorProducts for the tensorproduct expand hint."""
++    b = self.base
++    e = self.exp
++    if isinstance(b, TensorProduct) and e.is_Integer and e.is_positive:
++        return TensorProduct(*[arg**e for arg in b.args])
++    return self
++
++Pow._eval_expand_tensorproduct = _eval_expand_tensorproduct_pow

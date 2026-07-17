@@ -1,0 +1,44 @@
+diff --git a/django/conf/global_settings.py b/django/conf/global_settings.py
+index 09c9b95d26..5e30e02773 100644
+--- a/django/conf/global_settings.py
++++ b/django/conf/global_settings.py
+@@ -637,6 +637,6 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+ SECURE_HSTS_PRELOAD = False
+ SECURE_HSTS_SECONDS = 0
+ SECURE_REDIRECT_EXEMPT = []
+-SECURE_REFERRER_POLICY = None
++SECURE_REFERRER_POLICY = "same-origin"
+ SECURE_SSL_HOST = None
+ SECURE_SSL_REDIRECT = False
+diff --git a/docs/ref/settings.txt b/docs/ref/settings.txt
+index b4a5bdc48f..330bbaaf26 100644
+--- a/docs/ref/settings.txt
++++ b/docs/ref/settings.txt
+@@ -2395,7 +2395,7 @@ from URL paths, so patterns shouldn't include them, e.g.
+ 
+ .. versionadded:: 3.0
+ 
+-Default: ``None``
++Default: ``"same-origin"``
+ 
+ If configured, the :class:`~django.middleware.security.SecurityMiddleware` sets
+ the :ref:`referrer-policy` header on all responses that do not already have it
+diff --git a/docs/releases/3.1.txt b/docs/releases/3.1.txt
+index 4a165156e1..6b242b5959 100644
+--- a/docs/releases/3.1.txt
++++ b/docs/releases/3.1.txt
+@@ -376,6 +376,14 @@ backends.
+ Dropped support for MariaDB 10.1
+ --------------------------------
+ 
++Security
++--------
++
++* :setting:`SECURE_REFERRER_POLICY` now defaults to ``"same-origin"``. With
++  this enabled, :class:`~django.middleware.security.SecurityMiddleware` sets the
++  :ref:`Referrer-Policy <referrer-policy>` header on all responses that do not
++  already have it.
++
+ Upstream support for MariaDB 10.1 ends in October 2020. Django 3.1 supports
+ MariaDB 10.2 and higher.
+ 

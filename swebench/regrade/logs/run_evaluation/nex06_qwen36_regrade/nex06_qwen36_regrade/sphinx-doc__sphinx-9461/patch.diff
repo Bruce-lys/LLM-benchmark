@@ -1,0 +1,87 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 1cecb1f79..54d3c1071 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -25,7 +25,7 @@ from sphinx.config import ENUM, Config
+ from sphinx.deprecation import RemovedInSphinx50Warning, RemovedInSphinx60Warning
+ from sphinx.environment import BuildEnvironment
+ from sphinx.ext.autodoc.importer import (get_class_members, get_object_members, import_module,
+-                                         import_object)
++                                         import_object, mangle)
+ from sphinx.ext.autodoc.mock import ismock, mock, undecorate
+ from sphinx.locale import _, __
+ from sphinx.pycode import ModuleAnalyzer, PycodeError
+@@ -2663,6 +2663,24 @@ class PropertyDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):  #
+                             ) -> bool:
+         return inspect.isproperty(member) and isinstance(parent, ClassDocumenter)
+ 
++    def import_object(self, raiseerror: bool = False) -> bool:
++        ret = super().import_object(raiseerror)
++        if ret and self.parent and self.object_name:
++            for cls in getattr(self.parent, '__mro__', [self.parent]):
++                name = self.object_name
++                try:
++                    obj = safe_getattr(cls, '__dict__', {}).get(name)
++                except AttributeError:
++                    obj = None
++                if obj is None:
++                    obj = safe_getattr(cls, '__dict__', {}).get(mangle(cls, name))
++                if (obj is not None and isinstance(obj, classmethod) and
++                        isinstance(obj.__func__, property)):
++                    self.object = obj.__func__
++                    break
++
++        return ret
++
+     def document_members(self, all_members: bool = False) -> None:
+         pass
+ 
+diff --git a/sphinx/ext/autodoc/importer.py b/sphinx/ext/autodoc/importer.py
+index 1a8ea0973..6d04171aa 100644
+--- a/sphinx/ext/autodoc/importer.py
++++ b/sphinx/ext/autodoc/importer.py
+@@ -237,6 +237,16 @@ def get_object_members(subject: Any, objpath: List[str], attrgetter: Callable,
+     return members
+ 
+ 
++def _get_classmethod_property_descriptor(subject: Any, name: str):
++    """Return (property, class_) if *name* is a classmethod wrapping property."""
++    for cls in getmro(subject):
++        raw = safe_getattr(cls, '__dict__', {}).get(name)
++        if raw is not None and isinstance(raw, classmethod) and isinstance(raw.__func__, property):
++            return raw.__func__, cls
++
++    return None, None
++
++
+ def get_class_members(subject: Any, objpath: List[str], attrgetter: Callable
+                       ) -> Dict[str, "ObjectMember"]:
+     """Get members and attributes of target class."""
+@@ -278,12 +288,24 @@ def get_class_members(subject: Any, objpath: List[str], attrgetter: Callable
+             if ismock(value):
+                 value = undecorate(value)
+ 
++            if name in obj_dict:
++                class_ = subject
++            else:
++                class_ = None
++
+             unmangled = unmangle(subject, name)
+             if unmangled and unmangled not in members:
+-                if name in obj_dict:
+-                    members[unmangled] = ObjectMember(unmangled, value, class_=subject)
++                if class_ is subject:
++                    raw = obj_dict[name]
++                    if isinstance(raw, classmethod) and isinstance(raw.__func__, property):
++                        value = raw.__func__
+                 else:
+-                    members[unmangled] = ObjectMember(unmangled, value)
++                    prop, cls = _get_classmethod_property_descriptor(subject, name)
++                    if prop is not None:
++                        value = prop
++                        class_ = cls
++
++                members[unmangled] = ObjectMember(unmangled, value, class_=class_)
+         except AttributeError:
+             continue
+ 

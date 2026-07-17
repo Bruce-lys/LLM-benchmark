@@ -1,0 +1,26 @@
+diff --git a/sympy/codegen/ast.py b/sympy/codegen/ast.py
+index a02714b174..ca44bb9c94 100644
+--- a/sympy/codegen/ast.py
++++ b/sympy/codegen/ast.py
+@@ -896,8 +896,21 @@ class String(Token):
+     """
+     __slots__ = ('text',)
+     not_in_args = ['text']
++
+     is_Atom = True
+ 
++    @property
++    def func(self):
++        """ Return a class that when instantiated reconstructs this string. """
++        text = self.text
++        orig_cls = self.__class__
++
++        class _ReconstructedString(orig_cls):
++            def __new__(cls, *args, **kwargs):
++                return orig_cls.__new__(orig_cls, text)
++
++        return _ReconstructedString
++
+     @classmethod
+     def _construct_text(cls, text):
+         if not isinstance(text, str):

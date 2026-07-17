@@ -1,0 +1,26 @@
+diff --git a/django/db/backends/postgresql/operations.py b/django/db/backends/postgresql/operations.py
+index 8d19872bea..1b9f7d04ed 100644
+--- a/django/db/backends/postgresql/operations.py
++++ b/django/db/backends/postgresql/operations.py
+@@ -1,4 +1,5 @@
+ from psycopg2.extras import Inet
++import re
+ 
+ from django.conf import settings
+ from django.db.backends.base.operations import BaseDatabaseOperations
+@@ -44,10 +45,11 @@ class DatabaseOperations(BaseDatabaseOperations):
+         return "DATE_TRUNC('%s', %s)" % (lookup_type, field_name)
+ 
+     def _prepare_tzname_delta(self, tzname):
+-        if '+' in tzname:
+-            return tzname.replace('+', '-')
+-        elif '-' in tzname:
+-            return tzname.replace('-', '+')
++        # For simple offset strings like '+10' or '-10', flip the sign.
++        # For other timezone names (like 'Etc/GMT-10' or 'America/New_York'),
++        # return them as-is since PostgreSQL understands them correctly.
++        if re.match(r'^[+-]\d+$', tzname):
++            return tzname.replace('+', '-') if '+' in tzname else tzname.replace('-', '+')
+         return tzname
+ 
+     def _convert_field_to_tz(self, field_name, tzname):

@@ -1,0 +1,94 @@
+diff --git a/django/db/models/fields/json.py b/django/db/models/fields/json.py
+index fdca700c9d..021a18105e 100644
+--- a/django/db/models/fields/json.py
++++ b/django/db/models/fields/json.py
+@@ -126,16 +126,20 @@ class JSONField(CheckFieldDefaultMixin, Field):
+         )
+ 
+ 
+-def compile_json_path(key_transforms, include_root=True):
++def compile_json_path(key_transforms, include_root=True, array_index=True):
+     path = ["$"] if include_root else []
+     for key_transform in key_transforms:
+-        try:
+-            num = int(key_transform)
+-        except ValueError:  # non-integer
+-            path.append(".")
+-            path.append(json.dumps(key_transform))
++        if array_index:
++            try:
++                num = int(key_transform)
++            except ValueError:  # non-integer
++                path.append(".")
++                path.append(json.dumps(key_transform))
++            else:
++                path.append("[%s]" % num)
+         else:
+-            path.append("[%s]" % num)
++            path.append(".")
++            path.append(json.dumps(str(key_transform)))
+     return "".join(path)
+ 
+ 
+@@ -172,13 +176,19 @@ class ContainedBy(PostgresOperatorLookup):
+ class HasKeyLookup(PostgresOperatorLookup):
+     logical_operator = None
+ 
+-    def as_sql(self, compiler, connection, template=None):
++    def as_sql(
++        self, compiler, connection, template=None, array_index=True,
++        literal_key_as_array=False,
++    ):
++        # array_index treats numeric key transforms as array indices.
++        # literal_key_as_array treats literal right-hand side keys as array
++        # indices. Literal keys are object members by default.
+         # Process JSON path from the left-hand side.
+         if isinstance(self.lhs, KeyTransform):
+             lhs, lhs_params, lhs_key_transforms = self.lhs.preprocess_lhs(
+                 compiler, connection
+             )
+-            lhs_json_path = compile_json_path(lhs_key_transforms)
++            lhs_json_path = compile_json_path(lhs_key_transforms, array_index=array_index)
+         else:
+             lhs, lhs_params = self.process_lhs(compiler, connection)
+             lhs_json_path = "$"
+@@ -191,15 +201,14 @@ class HasKeyLookup(PostgresOperatorLookup):
+         for key in rhs:
+             if isinstance(key, KeyTransform):
+                 *_, rhs_key_transforms = key.preprocess_lhs(compiler, connection)
++                json_path = compile_json_path(
++                    rhs_key_transforms, include_root=False, array_index=array_index
++                )
+             else:
+-                rhs_key_transforms = [key]
+-            rhs_params.append(
+-                "%s%s"
+-                % (
+-                    lhs_json_path,
+-                    compile_json_path(rhs_key_transforms, include_root=False),
++                json_path = compile_json_path(
++                    [key], include_root=False, array_index=literal_key_as_array
+                 )
+-            )
++            rhs_params.append("%s%s" % (lhs_json_path, json_path))
+         # Add condition for each key.
+         if self.logical_operator:
+             sql = "(%s)" % self.logical_operator.join([sql] * len(rhs_params))
+@@ -390,7 +399,7 @@ class KeyTransformIsNull(lookups.IsNull):
+         sql, params = HasKey(
+             self.lhs.lhs,
+             self.lhs.key_name,
+-        ).as_oracle(compiler, connection)
++        ).as_oracle(compiler, connection, array_index=True, literal_key_as_array=True)
+         if not self.rhs:
+             return sql, params
+         # Column doesn't have a key or IS NULL.
+@@ -405,6 +414,8 @@ class KeyTransformIsNull(lookups.IsNull):
+             compiler,
+             connection,
+             template=template,
++            array_index=True,
++            literal_key_as_array=True,
+         )
+ 
+ 

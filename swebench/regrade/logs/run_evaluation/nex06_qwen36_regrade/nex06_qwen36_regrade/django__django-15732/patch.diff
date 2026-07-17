@@ -1,0 +1,31 @@
+diff --git a/django/db/backends/base/schema.py b/django/db/backends/base/schema.py
+index f2ca8c8df9..f6131ee7a1 100644
+--- a/django/db/backends/base/schema.py
++++ b/django/db/backends/base/schema.py
+@@ -562,12 +562,26 @@ class BaseDatabaseSchemaEditor:
+         }
+         meta_index_names = {constraint.name for constraint in model._meta.indexes}
+         columns = [model._meta.get_field(field).column for field in fields]
++        # unique_together constraints are named like other unique constraints,
++        # but they can coexist with a primary key or field-level unique
++        # constraint on the same column. Prefer the unique_together name.
++        expected_name = None
++        if constraint_kwargs.get("unique"):
++            expected_name = self._create_index_name(
++                model._meta.db_table, columns, "_uniq"
++            )
+         constraint_names = self._constraint_names(
+             model,
+             columns,
+             exclude=meta_constraint_names | meta_index_names,
++            primary_key=False,
+             **constraint_kwargs,
+         )
++        if expected_name is not None:
++            constraint_names = [
++                name for name in constraint_names
++                if name.lower() == expected_name.lower()
++            ]
+         if len(constraint_names) != 1:
+             raise ValueError(
+                 "Found wrong number (%s) of constraints for %s(%s)"

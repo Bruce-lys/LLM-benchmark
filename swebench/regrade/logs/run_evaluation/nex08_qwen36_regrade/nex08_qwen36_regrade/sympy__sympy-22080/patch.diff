@@ -1,0 +1,67 @@
+diff --git a/sympy/printing/codeprinter.py b/sympy/printing/codeprinter.py
+index ba0e746f5d..173669a5ee 100644
+--- a/sympy/printing/codeprinter.py
++++ b/sympy/printing/codeprinter.py
+@@ -451,6 +451,9 @@ def _print_Not(self, expr):
+         PREC = precedence(expr)
+         return self._operators['not'] + self.parenthesize(expr.args[0], PREC)
+ 
++    def _parenthesize_mul_arg(self, item, prec):
++        return self.parenthesize(item, prec)
++
+     def _print_Mul(self, expr):
+ 
+         prec = precedence(expr)
+@@ -487,8 +490,8 @@ def _print_Mul(self, expr):
+ 
+         a = a or [S.One]
+ 
+-        a_str = [self.parenthesize(x, prec) for x in a]
+-        b_str = [self.parenthesize(x, prec) for x in b]
++        a_str = [self._parenthesize_mul_arg(x, prec) for x in a]
++        b_str = [self._parenthesize_mul_arg(x, prec) for x in b]
+ 
+         # To parenthesize Pow with exp = -1 and having more than one Symbol
+         for item in pow_paren:
+diff --git a/sympy/printing/pycode.py b/sympy/printing/pycode.py
+index b669a2c783..8149bc471e 100644
+--- a/sympy/printing/pycode.py
++++ b/sympy/printing/pycode.py
+@@ -6,6 +6,8 @@
+ from collections import defaultdict
+ from itertools import chain
+ from sympy.core import S
++from sympy.core.mod import Mod
++from sympy.core.power import Pow
+ from .precedence import precedence
+ from .codeprinter import CodePrinter
+ 
+@@ -85,6 +87,16 @@ class AbstractPythonCodePrinter(CodePrinter):
+     ))
+     _kc = {k: 'math.'+v for k, v in _known_constants_math.items()}
+     _operators = {'and': 'and', 'or': 'or', 'not': 'not'}
++
++    def _parenthesize_mul_arg(self, item, prec):
++        if isinstance(item, Mod):
++            return "(%s)" % self._print(item)
++        if isinstance(item, Pow) and isinstance(item.base, Mod):
++            if item.exp == S.NegativeOne:
++                return "(%s)" % self._print(item.base)
++            return "(%s)" % self._print(item)
++        return self.parenthesize(item, prec)
++
+     _default_settings = dict(
+         CodePrinter._default_settings,
+         user_functions={},
+@@ -421,7 +433,10 @@ def _hprint_Pow(self, expr, rational=False, sqrt='math.sqrt'):
+                 return "{num}/{func}({arg})".format(
+                     num=num, func=func, arg=arg)
+ 
+-        base_str = self.parenthesize(expr.base, PREC, strict=False)
++        if isinstance(expr.base, Mod):
++            base_str = "(%s)" % self._print(expr.base)
++        else:
++            base_str = self.parenthesize(expr.base, PREC, strict=False)
+         exp_str = self.parenthesize(expr.exp, PREC, strict=False)
+         return "{}**{}".format(base_str, exp_str)
+ 

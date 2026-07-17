@@ -1,0 +1,64 @@
+diff --git a/src/_pytest/mark/expression.py b/src/_pytest/mark/expression.py
+index 04c73411a..536d7cf97 100644
+--- a/src/_pytest/mark/expression.py
++++ b/src/_pytest/mark/expression.py
+@@ -38,6 +38,28 @@ __all__ = [
+     "ParseError",
+ ]
+ 
++# Names that are valid identifiers in the match expression grammar but
++# cannot be used as Python identifiers in an ast.Name node because they
++# conflict with constants handled by CPython's compiler (bpo-40870).
++_RESERVED_NAMES = ("True", "False", "None")
++
++
++def _transform_names(node: ast.expr) -> ast.expr:
++    """Replace reserved names with safe internal names.
++
++    Python 3.8+ does not allow ``ast.Name`` nodes with ids ``True``, ``False``
++    or ``None`` because the C compiler asserts against them (bpo-40870).
++    We work around this by renaming these names to safe internal identifiers
++    and translating them back in the matcher adapter.
++    """
++    mapping = {name: "_pytest_mark_expr_{}".format(name) for name in _RESERVED_NAMES}
++    class _NameRenamer(ast.NodeTransformer):
++        def visit_Name(self, node):
++            if node.id in mapping:
++                node.id = mapping[node.id]
++            return node
++    return _NameRenamer().visit(node)
++
+ 
+ class TokenType(enum.Enum):
+     LPAREN = "left parenthesis"
+@@ -129,7 +151,7 @@ class Scanner:
+ 
+ def expression(s: Scanner) -> ast.Expression:
+     if s.accept(TokenType.EOF):
+-        ret = ast.NameConstant(False)  # type: ast.expr
++        ret = ast.Constant(False)  # type: ast.expr
+     else:
+         ret = expr(s)
+         s.accept(TokenType.EOF, reject=True)
+@@ -171,8 +193,12 @@ class MatcherAdapter(Mapping[str, bool]):
+     def __init__(self, matcher: Callable[[str], bool]) -> None:
+         self.matcher = matcher
+ 
++    _RESERVED_NAME_MAPPING = {
++        "_pytest_mark_expr_{}".format(name): name for name in _RESERVED_NAMES
++    }
++
+     def __getitem__(self, key: str) -> bool:
+-        return self.matcher(key)
++        return self.matcher(self._RESERVED_NAME_MAPPING.get(key, key))
+ 
+     def __iter__(self) -> Iterator[str]:
+         raise NotImplementedError()
+@@ -199,6 +225,7 @@ class Expression:
+         :param input: The input expression - one line.
+         """
+         astexpr = expression(Scanner(input))
++        astexpr = _transform_names(astexpr)
+         code = compile(
+             astexpr, filename="<pytest match expression>", mode="eval",
+         )  # type: types.CodeType

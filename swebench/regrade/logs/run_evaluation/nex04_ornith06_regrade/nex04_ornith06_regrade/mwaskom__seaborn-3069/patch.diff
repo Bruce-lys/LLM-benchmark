@@ -1,0 +1,40 @@
+diff --git a/seaborn/_core/plot.py b/seaborn/_core/plot.py
+index 4f0290a4..d9dc4732 100644
+--- a/seaborn/_core/plot.py
++++ b/seaborn/_core/plot.py
+@@ -25,7 +25,7 @@ from seaborn._marks.base import Mark
+ from seaborn._stats.base import Stat
+ from seaborn._core.data import PlotData
+ from seaborn._core.moves import Move
+-from seaborn._core.scales import Scale
++from seaborn._core.scales import Scale, Nominal
+ from seaborn._core.subplots import Subplots
+ from seaborn._core.groupby import GroupBy
+ from seaborn._core.properties import PROPERTIES, Property
+@@ -1644,6 +1644,26 @@ class Plotter:
+                         hi = cast(float, hi) + 0.5
+                     ax.set(**{f"{axis}lim": (lo, hi)})
+ 
++                # Nominal scale adjustments
++                # Mirror categorical plot behavior:
++                # 1. Scale drawn to +/- 0.5 from first and last tick
++                # 2. No grid shown
++                # 3. Invert y axis if nominal is on y
++                if axis_key in self._scales and isinstance(
++                    self._scales[axis_key], Nominal
++                ):
++                    n_ticks = len(getattr(ax, f"get_{axis}ticks")())
++                    if n_ticks and axis_key not in p._limits:
++                        if axis == "x":
++                            ax.set_xlim(-0.5, n_ticks - 0.5, auto=None)
++                        else:
++                            ax.set_ylim(-0.5, n_ticks - 0.5, auto=None)
++                            ax.invert_yaxis()
++                    if axis == "x":
++                        ax.xaxis.grid(False)
++                    else:
++                        ax.yaxis.grid(False)
++
+         engine_default = None if p._target is not None else "tight"
+         layout_engine = p._layout_spec.get("engine", engine_default)
+         set_layout_engine(self._figure, layout_engine)

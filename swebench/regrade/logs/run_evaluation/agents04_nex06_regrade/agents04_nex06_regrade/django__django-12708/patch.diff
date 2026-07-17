@@ -1,0 +1,93 @@
+diff --git a/django/db/backends/base/schema.py b/django/db/backends/base/schema.py
+index 61f88401ab..e3fe93a714 100644
+--- a/django/db/backends/base/schema.py
++++ b/django/db/backends/base/schema.py
+@@ -403,9 +403,11 @@ class BaseDatabaseSchemaEditor:
+         meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+         meta_index_names = {constraint.name for constraint in model._meta.indexes}
+         columns = [model._meta.get_field(field).column for field in fields]
++        exclude = meta_constraint_names | meta_index_names
++        if constraint_kwargs.get('index'):
++            exclude |= set(self._constraint_names(model, columns, unique=True))
+         constraint_names = self._constraint_names(
+-            model, columns, exclude=meta_constraint_names | meta_index_names,
+-            **constraint_kwargs
++            model, columns, exclude=exclude, **constraint_kwargs
+         )
+         if len(constraint_names) != 1:
+             raise ValueError("Found wrong number (%s) of constraints for %s(%s)" % (
+diff --git a/django/db/migrations/operations/models.py b/django/db/migrations/operations/models.py
+index 8c06c4d157..1cbc2907f7 100644
+--- a/django/db/migrations/operations/models.py
++++ b/django/db/migrations/operations/models.py
+@@ -545,6 +545,35 @@ class AlterIndexTogether(AlterTogetherOptionOperation):
+     """
+     option_name = "index_together"
+ 
++    def _index_together_matches_index(self, schema_editor, model, fields):
++        columns = [model._meta.get_field(field).column for field in fields]
++        name = schema_editor._create_index_name(model._meta.db_table, columns, suffix="_idx")
++        return any(
++            index.name == name and
++            [model._meta.get_field(field_name).column for field_name, _ in index.fields_orders] == columns and
++            index.fields_orders == [(field, '') for field in fields] and
++            not index.db_tablespace and
++            not index.opclasses and
++            index.condition is None
++            for index in model._meta.indexes
++        )
++
++    def database_forwards(self, app_label, schema_editor, from_state, to_state):
++        new_model = to_state.apps.get_model(app_label, self.name)
++        if self.allow_migrate_model(schema_editor.connection.alias, new_model):
++            old_model = from_state.apps.get_model(app_label, self.name)
++            old_index_together = getattr(old_model._meta, self.option_name, ()) or ()
++            old_index_together = tuple(
++                fields for fields in old_index_together
++                if not self._index_together_matches_index(schema_editor, new_model, fields)
++            )
++            alter_together = getattr(schema_editor, 'alter_%s' % self.option_name)
++            alter_together(
++                new_model,
++                old_index_together,
++                getattr(new_model._meta, self.option_name, set()),
++            )
++
+     def __init__(self, name, index_together):
+         super().__init__(name, index_together)
+ 
+@@ -714,6 +743,24 @@ class AddIndex(IndexOperation):
+             )
+         self.index = index
+ 
++    def _index_matches_index_together(self, schema_editor, model, from_model_state):
++        columns = [
++            model._meta.get_field(field_name).column
++            for field_name, _ in self.index.fields_orders
++        ]
++        name = schema_editor._create_index_name(model._meta.db_table, columns, suffix="_idx")
++        if self.index.name != name:
++            return False
++        old_index_together = from_model_state.options.get('index_together') or ()
++        return any(
++            tuple(model._meta.get_field(field).column for field in fields) == tuple(columns) and
++            self.index.fields_orders == [(field, '') for field in fields] and
++            not self.index.db_tablespace and
++            not self.index.opclasses and
++            self.index.condition is None
++            for fields in old_index_together
++        )
++
+     def state_forwards(self, app_label, state):
+         model_state = state.models[app_label, self.model_name_lower]
+         model_state.options[self.option_name] = [*model_state.options[self.option_name], self.index.clone()]
+@@ -722,6 +769,9 @@ class AddIndex(IndexOperation):
+     def database_forwards(self, app_label, schema_editor, from_state, to_state):
+         model = to_state.apps.get_model(app_label, self.model_name)
+         if self.allow_migrate_model(schema_editor.connection.alias, model):
++            from_model_state = from_state.models[app_label, self.model_name_lower]
++            if self._index_matches_index_together(schema_editor, model, from_model_state):
++                return
+             schema_editor.add_index(model, self.index)
+ 
+     def database_backwards(self, app_label, schema_editor, from_state, to_state):

@@ -1,0 +1,57 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index 1f4c98284..204041c19 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -1987,14 +1987,19 @@ class DataDocumenter(GenericAliasMixin, NewTypeMixin, TypeVarMixin,
+         return real_modname or self.modname
+ 
+     def get_module_comment(self, attrname: str) -> Optional[List[str]]:
+-        try:
+-            analyzer = ModuleAnalyzer.for_module(self.modname)
+-            analyzer.analyze()
++        analyzer = getattr(self, '_module_analyzer', None)
++        if analyzer is None:
++            try:
++                modname = getattr(self, 'real_modname', None) or self.modname
++                analyzer = ModuleAnalyzer.for_module(modname)
++                analyzer.analyze()
++            except PycodeError:
++                return None
++
++        if analyzer is not None:
+             key = ('', attrname)
+             if key in analyzer.attr_docs:
+                 return list(analyzer.attr_docs[key])
+-        except PycodeError:
+-            pass
+ 
+         return None
+ 
+@@ -2008,15 +2013,20 @@ class DataDocumenter(GenericAliasMixin, NewTypeMixin, TypeVarMixin,
+ 
+     def add_content(self, more_content: Optional[StringList], no_docstring: bool = False
+                     ) -> None:
+-        # Disable analyzing variable comment on Documenter.add_content() to control it on
+-        # DataDocumenter.add_content()
++        # Keep the analyzer available for get_doc() while disabling it for
++        # Documenter.add_content() to avoid duplicate attribute docstrings.
++        analyzer = self.analyzer
++        self._module_analyzer = analyzer
+         self.analyzer = None
++        try:
++            if not more_content:
++                more_content = StringList()
+ 
+-        if not more_content:
+-            more_content = StringList()
+-
+-        self.update_content(more_content)
+-        super().add_content(more_content, no_docstring=no_docstring)
++            self.update_content(more_content)
++            super().add_content(more_content, no_docstring=no_docstring)
++        finally:
++            self.analyzer = analyzer
++            self._module_analyzer = None
+ 
+ 
+ class NewTypeDataDocumenter(DataDocumenter):

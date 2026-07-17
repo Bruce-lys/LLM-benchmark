@@ -1,0 +1,257 @@
+diff --git a/pylint/pyreverse/diagrams.py b/pylint/pyreverse/diagrams.py
+index bf9f67af..bc2738de 100644
+--- a/pylint/pyreverse/diagrams.py
++++ b/pylint/pyreverse/diagrams.py
+@@ -16,7 +16,7 @@
+ import astroid
+ 
+ from pylint.checkers.utils import decorated_with_property
+-from pylint.pyreverse.utils import FilterMixIn, is_interface
++from pylint.pyreverse.utils import FilterMixIn, format_annotation, is_interface
+ 
+ 
+ class Figure:
+@@ -76,14 +76,23 @@ class ClassDiagram(Figure, FilterMixIn):
+                 return rel
+         raise KeyError(relation_type)
+ 
++    @staticmethod
++    def _annotation_for_nodes(nodes):
++        """Return the first annotation found for a node list."""
++        for node in nodes:
++            annotation = getattr(node, "type_annotation", None)
++            if annotation is not None and annotation is not astroid.Uninferable:
++                return format_annotation(annotation)
++        return None
++
+     def get_attrs(self, node):
+         """return visible attributes, possibly with class name"""
+-        attrs = []
+         properties = [
+             (n, m)
+             for n, m in node.items()
+             if isinstance(m, astroid.FunctionDef) and decorated_with_property(m)
+         ]
++        attrs = {}
+         for node_name, associated_nodes in (
+             list(node.instance_attrs_type.items())
+             + list(node.locals_type.items())
+@@ -91,11 +100,25 @@ class ClassDiagram(Figure, FilterMixIn):
+         ):
+             if not self.show_attr(node_name):
+                 continue
++            attrs.setdefault(node_name, []).extend(associated_nodes)
++        for node_name, associated_nodes in attrs.items():
++            annotation = (
++                getattr(node, "instance_attrs_type_annotations", {}).get(node_name)
++                or getattr(node, "locals_type_annotations", {}).get(node_name)
++            )
++            if annotation is None:
++                annotation = self._annotation_for_nodes(associated_nodes)
++            if annotation is not None:
++                attrs[node_name] = "{} : {}".format(
++                    node_name, format_annotation(annotation)
++                )
++                continue
+             names = self.class_names(associated_nodes)
+             if names:
+-                node_name = "{} : {}".format(node_name, ", ".join(names))
+-            attrs.append(node_name)
+-        return sorted(attrs)
++                attrs[node_name] = "{} : {}".format(node_name, ", ".join(names))
++            else:
++                attrs[node_name] = node_name
++        return sorted(attrs.values())
+ 
+     def get_methods(self, node):
+         """return visible methods"""
+diff --git a/pylint/pyreverse/inspector.py b/pylint/pyreverse/inspector.py
+index 8fa12202..04000fd0 100644
+--- a/pylint/pyreverse/inspector.py
++++ b/pylint/pyreverse/inspector.py
+@@ -153,6 +153,7 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+         if hasattr(node, "locals_type"):
+             return
+         node.locals_type = collections.defaultdict(list)
++        node.locals_type_annotations = {}
+         if self.tag:
+             node.uid = self.generate_id()
+         # resolve ancestors
+@@ -162,6 +163,7 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+             baseobj.specializations = specializations
+         # resolve instance attributes
+         node.instance_attrs_type = collections.defaultdict(list)
++        node.instance_attrs_type_annotations = {}
+         for assignattrs in node.instance_attrs.values():
+             for assignattr in assignattrs:
+                 if not isinstance(assignattr, astroid.Unknown):
+@@ -205,6 +207,13 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+             # the name has been defined as 'global' in the frame and belongs
+             # there.
+             frame = node.root()
++        annotation = None
++        if (
++            isinstance(node.parent, astroid.AnnAssign)
++            and node.parent.annotation is not None
++        ):
++            annotation = node.parent.annotation
++            node.type_annotation = annotation
+         try:
+             if not hasattr(frame, "locals_type"):
+                 # If the frame doesn't have a locals_type yet,
+@@ -219,19 +228,57 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+ 
+             current = frame.locals_type[node.name]
+             values = set(node.infer())
++            if annotation is not None:
++                for inferred_value in values:
++                    inferred_value.type_annotation = annotation
++                if isinstance(frame, astroid.ClassDef):
++                    frame.locals_type_annotations[node.name] = annotation
+             frame.locals_type[node.name] = list(set(current) | values)
+         except astroid.InferenceError:
+             pass
+ 
++    @staticmethod
++    def _annotation_for_assignattr(node):
++        """Return the annotation for an instance attribute assignattr."""
++        parent = getattr(node, "parent", None)
++        if isinstance(parent, astroid.AnnAssign) and parent.annotation is not None:
++            return parent.annotation
++        grandparent = getattr(parent, "parent", None)
++        if not isinstance(grandparent, astroid.FunctionDef):
++            return None
++        func = grandparent
++        vararg = func.args.vararg
++        if node.attrname == getattr(vararg, "name", vararg):
++            return func.args.varargannotation
++        kwarg = func.args.kwarg
++        if node.attrname == getattr(kwarg, "name", kwarg):
++            return func.args.kwargannotation
++        for args, annotations in (
++            (func.args.posonlyargs, func.args.posonlyargs_annotations),
++            (func.args.args, func.args.annotations),
++            (func.args.kwonlyargs, func.args.kwonlyargs_annotations),
++        ):
++            for arg, annotation in zip(args, annotations):
++                if arg is not None and getattr(arg, "name", None) == node.attrname:
++                    return annotation
++        return None
++
+     @staticmethod
+     def handle_assignattr_type(node, parent):
+         """handle an astroid.assignattr node
+ 
+         handle instance_attrs_type
+         """
++        annotation = Linker._annotation_for_assignattr(node)
++        if annotation is not None:
++            node.type_annotation = annotation
++            parent.instance_attrs_type_annotations[node.attrname] = annotation
+         try:
+             values = set(node.infer())
+             current = set(parent.instance_attrs_type[node.attrname])
++            for inferred_value in current | values:
++                if annotation is not None:
++                    inferred_value.type_annotation = annotation
+             parent.instance_attrs_type[node.attrname] = list(current | values)
+         except astroid.InferenceError:
+             pass
+diff --git a/pylint/pyreverse/utils.py b/pylint/pyreverse/utils.py
+index a24d227e..072b21ad 100644
+--- a/pylint/pyreverse/utils.py
++++ b/pylint/pyreverse/utils.py
+@@ -69,6 +69,16 @@ ABSTRACT = re.compile(r"^.*Abstract.*")
+ FINAL = re.compile(r"^[^\W\da-z]*$")
+ 
+ 
++def format_annotation(annotation):
++    """Return a string representation of an annotation node."""
++    if annotation is None:
++        return None
++    try:
++        return annotation.as_string()
++    except AttributeError:
++        return None
++
++
+ def is_abstract(node):
+     """return true if the given class node correspond to an abstract class
+     definition
+diff --git a/pylint/pyreverse/writer.py b/pylint/pyreverse/writer.py
+index 0d80bb9c..f1923081 100644
+--- a/pylint/pyreverse/writer.py
++++ b/pylint/pyreverse/writer.py
+@@ -19,7 +19,7 @@
+ import os
+ 
+ from pylint.graph import DotBackend
+-from pylint.pyreverse.utils import is_exception
++from pylint.pyreverse.utils import format_annotation, is_exception
+ from pylint.pyreverse.vcgutils import VCGPrinter
+ 
+ 
+@@ -94,6 +94,51 @@ class DiagramWriter:
+         """get label and shape for classes."""
+         raise NotImplementedError
+ 
++    @staticmethod
++    def _format_arg(arg, annotation):
++        """Format an argument with its optional type annotation."""
++        name = getattr(arg, "name", arg)
++        formatted = name
++        annotation = format_annotation(annotation)
++        if annotation is not None:
++            formatted += ": " + annotation
++        return formatted
++
++    @classmethod
++    def _format_args(cls, func):
++        """Format a function's arguments with optional type annotations."""
++        args = []
++        args.extend(
++            cls._format_arg(arg, annotation)
++            for arg, annotation in zip(
++                func.args.posonlyargs, func.args.posonlyargs_annotations
++            )
++            if arg.name != "self" and annotation is not None
++        )
++        args.extend(
++            cls._format_arg(arg, annotation)
++            for arg, annotation in zip(func.args.args, func.args.annotations)
++            if arg.name != "self"
++        )
++        vararg = func.args.vararg
++        if vararg is not None and func.args.varargannotation is not None:
++            args.append(
++                "*" + cls._format_arg(vararg, func.args.varargannotation)
++            )
++        args.extend(
++            cls._format_arg(arg, annotation)
++            for arg, annotation in zip(
++                func.args.kwonlyargs, func.args.kwonlyargs_annotations
++            )
++            if annotation is not None
++        )
++        kwarg = func.args.kwarg
++        if kwarg is not None and func.args.kwargannotation is not None:
++            args.append(
++                "**" + cls._format_arg(kwarg, func.args.kwargannotation)
++            )
++        return args
++
+     def close_graph(self):
+         """finalize the graph"""
+         raise NotImplementedError
+@@ -134,10 +179,7 @@ class DotWriter(DiagramWriter):
+         if not self.config.only_classnames:
+             label = r"{}|{}\l|".format(label, r"\l".join(obj.attrs))
+             for func in obj.methods:
+-                if func.args.args:
+-                    args = [arg.name for arg in func.args.args if arg.name != "self"]
+-                else:
+-                    args = []
++                args = self._format_args(func)
+                 label = r"{}{}({})\l".format(label, func.name, ", ".join(args))
+             label = "{%s}" % label
+         if is_exception(obj.node):

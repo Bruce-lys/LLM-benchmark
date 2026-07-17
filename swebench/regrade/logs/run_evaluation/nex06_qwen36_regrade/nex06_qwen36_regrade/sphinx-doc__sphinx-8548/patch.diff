@@ -1,0 +1,96 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index ddfd2b365..00c850ee6 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -555,6 +555,52 @@ class Documenter:
+             return [prepare_docstring(docstring, ignore, tab_width)]
+         return []
+ 
++    def _get_attr_doc(self, attrname: str, cls: Any = None,
++                       namespace: Optional[str] = None) -> Optional[List[str]]:
++        """Get docstring for an attribute from source comments.
++
++        Searches the current namespace first, then base class namespaces.
++        """
++        if not self.analyzer:
++            return None
++
++        # current namespace
++        if namespace is None:
++            namespace = '.'.join(self.objpath[:-1]) if self.objpath else ''
++        key = (namespace, attrname)
++        if key in self.analyzer.attr_docs:
++            return self.analyzer.attr_docs[key]
++
++        # base class namespaces
++        if cls is None:
++            return None
++        for basecls in inspect.getmro(cls):
++            if basecls is cls:
++                continue
++            try:
++                qualname = basecls.__qualname__
++            except AttributeError:
++                continue
++            key = (qualname, attrname)
++            if key in self.analyzer.attr_docs:
++                return self.analyzer.attr_docs[key]
++
++            # base class may be defined in another module
++            try:
++                module = basecls.__module__
++            except AttributeError:
++                continue
++            if module and self.analyzer.modname != module:
++                try:
++                    analyzer = ModuleAnalyzer.for_module(module)
++                    analyzer.analyze()
++                    if key in analyzer.attr_docs:
++                        return analyzer.attr_docs[key]
++                except PycodeError:
++                    pass
++
++        return None
++
+     def process_doc(self, docstrings: List[List[str]]) -> Iterator[str]:
+         """Let the user process the docstrings before adding them."""
+         for docstringlines in docstrings:
+@@ -595,14 +641,13 @@ class Documenter:
+         # set sourcename and add content from attribute documentation
+         sourcename = self.get_sourcename()
+         if self.analyzer:
+-            attr_docs = self.analyzer.find_attr_docs()
+             if self.objpath:
+-                key = ('.'.join(self.objpath[:-1]), self.objpath[-1])
+-                if key in attr_docs:
++                attr_doc = self._get_attr_doc(self.objpath[-1], self.parent)
++                if attr_doc:
+                     no_docstring = True
+                     # make a copy of docstring for attributes to avoid cache
+                     # the change of autodoc-process-docstring event.
+-                    docstrings = [list(attr_docs[key])]
++                    docstrings = [list(attr_doc)]
+ 
+                     for i, line in enumerate(self.process_doc(docstrings)):
+                         self.add_line(line, sourcename, i)
+@@ -684,11 +729,6 @@ class Documenter:
+         # search for members in source code too
+         namespace = '.'.join(self.objpath)  # will be empty for modules
+ 
+-        if self.analyzer:
+-            attr_docs = self.analyzer.find_attr_docs()
+-        else:
+-            attr_docs = {}
+-
+         # process members and determine which to skip
+         for obj in members:
+             membername, member = obj
+@@ -746,7 +786,7 @@ class Documenter:
+                         keep = has_doc or self.options.undoc_members
+                 else:
+                     keep = False
+-            elif (namespace, membername) in attr_docs:
++            elif self._get_attr_doc(membername, self.object, namespace):
+                 if want_all and isprivate:
+                     if self.options.private_members is None:
+                         keep = False

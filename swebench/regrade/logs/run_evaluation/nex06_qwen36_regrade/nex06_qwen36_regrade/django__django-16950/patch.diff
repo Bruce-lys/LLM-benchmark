@@ -1,0 +1,25 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 3fa04b821f..26de58c96a 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1089,6 +1089,7 @@ class BaseInlineFormSet(BaseModelFormSet):
+         queryset=None,
+         **kwargs,
+     ):
++        self._instance_is_provided = instance is not None
+         if instance is None:
+             self.instance = self.fk.remote_field.model()
+         else:
+@@ -1170,9 +1171,9 @@ class BaseInlineFormSet(BaseModelFormSet):
+         if self.fk.remote_field.field_name != self.fk.remote_field.model._meta.pk.name:
+             kwargs["to_field"] = self.fk.remote_field.field_name
+ 
+-        # If we're adding a new object, ignore a parent's auto-generated key
+-        # as it will be regenerated on the save request.
+-        if self.instance._state.adding:
++        # If no parent instance is provided, ignore a parent's auto-generated
++        # key as it will be regenerated on the save request.
++        if self.instance._state.adding and not self._instance_is_provided:
+             if kwargs.get("to_field") is not None:
+                 to_field = self.instance._meta.get_field(kwargs["to_field"])
+             else:

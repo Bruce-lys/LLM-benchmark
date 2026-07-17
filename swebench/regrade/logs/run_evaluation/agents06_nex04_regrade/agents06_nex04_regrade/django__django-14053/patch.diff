@@ -1,0 +1,50 @@
+diff --git a/django/contrib/staticfiles/storage.py b/django/contrib/staticfiles/storage.py
+index 494890cc23..9780d138c1 100644
+--- a/django/contrib/staticfiles/storage.py
++++ b/django/contrib/staticfiles/storage.py
+@@ -226,21 +226,37 @@ class HashedFilesMixin:
+             path for path in paths
+             if matches_patterns(path, self._patterns)
+         ]
++        adjustable_paths_set = set(adjustable_paths)
+         # Do a single pass first. Post-process all files once, then repeat for
+-        # adjustable files.
+-        for name, hashed_name, processed, _ in self._post_process(paths, adjustable_paths, hashed_files):
+-            yield name, hashed_name, processed
++        # adjustable files. Only non-adjustable files are yielded immediately;
++        # adjustable files are yielded once after the final pass.
++        substitutions = False
++        last_results = {}
++        for name, hashed_name, processed, passed_substitutions in self._post_process(paths, adjustable_paths, hashed_files):
++            if name in adjustable_paths_set:
++                if isinstance(processed, Exception):
++                    yield name, hashed_name, processed
++                else:
++                    substitutions = substitutions or passed_substitutions
++                    last_results[name] = (name, hashed_name, processed)
++            else:
++                yield name, hashed_name, processed
+ 
+         paths = {path: paths[path] for path in adjustable_paths}
+ 
+         for i in range(self.max_post_process_passes):
+-            substitutions = False
+-            for name, hashed_name, processed, subst in self._post_process(paths, adjustable_paths, hashed_files):
+-                yield name, hashed_name, processed
+-                substitutions = substitutions or subst
+-
+             if not substitutions:
+                 break
++            substitutions = False
++            for name, hashed_name, processed, passed_substitutions in self._post_process(paths, adjustable_paths, hashed_files):
++                if isinstance(processed, Exception):
++                    yield name, hashed_name, processed
++                else:
++                    substitutions = substitutions or passed_substitutions
++                    last_results[name] = (name, hashed_name, processed)
++
++        for name in adjustable_paths:
++            yield last_results[name]
+ 
+         if substitutions:
+             yield 'All', None, RuntimeError('Max post-process passes exceeded.')

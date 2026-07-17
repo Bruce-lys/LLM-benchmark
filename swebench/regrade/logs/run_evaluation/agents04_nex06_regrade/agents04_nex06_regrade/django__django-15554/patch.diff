@@ -1,0 +1,72 @@
+diff --git a/django/db/models/query_utils.py b/django/db/models/query_utils.py
+index fde686b2cd..2b6744845a 100644
+--- a/django/db/models/query_utils.py
++++ b/django/db/models/query_utils.py
+@@ -326,6 +326,9 @@ class FilteredRelation:
+         clone.path = self.path[:]
+         return clone
+ 
++    def __hash__(self):
++        return hash((self.relation_name, self.alias, self.condition))
++
+     def resolve_expression(self, *args, **kwargs):
+         """
+         QuerySet.annotate() only accepts expression-like arguments
+diff --git a/django/db/models/sql/datastructures.py b/django/db/models/sql/datastructures.py
+index 1edf040e82..f017259b3f 100644
+--- a/django/db/models/sql/datastructures.py
++++ b/django/db/models/sql/datastructures.py
+@@ -162,8 +162,17 @@ class Join:
+         return hash(self.identity)
+ 
+     def equals(self, other):
+-        # Ignore filtered_relation in equality check.
+-        return self.identity[:-1] == other.identity[:-1]
++        # A plain join can reuse a filtered join when building that filtered
++        # relation's condition. Two filtered joins are equal only when they
++        # have the same FilteredRelation.
++        return (
++            self.identity[:-1] == other.identity[:-1]
++            and (
++                self.filtered_relation is None
++                or other.filtered_relation is None
++                or self.filtered_relation == other.filtered_relation
++            )
++        )
+ 
+     def demote(self):
+         new = self.relabeled_clone({})
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 54f3258eac..2cf71d4813 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -805,7 +805,11 @@ class Query(BaseExpression):
+ 
+         # Create a new alias for this table.
+         if alias_list:
+-            alias = "%s%d" % (self.alias_prefix, len(self.alias_map) + 1)
++            alias = (
++                filtered_relation.alias
++                if filtered_relation is not None
++                else "%s%d" % (self.alias_prefix, len(self.alias_map) + 1)
++            )
+             alias_list.append(alias)
+         else:
+             # The first occurrence of a table uses the table name directly.
+@@ -1027,7 +1031,15 @@ class Query(BaseExpression):
+         reuse_aliases = [
+             a
+             for a, j in self.alias_map.items()
+-            if (reuse is None or a in reuse) and j.equals(join)
++            if (
++                (reuse is None or a in reuse)
++                and j.equals(join)
++                and (
++                    # A new filtered join must not reuse an existing plain join.
++                    join.filtered_relation is None
++                    or j.filtered_relation is not None
++                )
++            )
+         ]
+         if reuse_aliases:
+             if join.table_alias in reuse_aliases:

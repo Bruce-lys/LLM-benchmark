@@ -1,0 +1,15 @@
+diff --git a/django/db/backends/postgresql/client.py b/django/db/backends/postgresql/client.py
+index cf4df76882..3e54fb0a9b 100644
+--- a/django/db/backends/postgresql/client.py
++++ b/django/db/backends/postgresql/client.py
+@@ -24,6 +24,10 @@ class DatabaseClient(BaseDatabaseClient):
+             args += ['-h', host]
+         if port:
+             args += ['-p', str(port)]
++        for option in ('sslmode', 'sslrootcert', 'sslcert', 'sslkey'):
++            value = conn_params.get(option)
++            if value:
++                args += ['--%s=%s' % (option, value)]
+         args += [dbname]
+ 
+         sigint_handler = signal.getsignal(signal.SIGINT)

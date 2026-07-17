@@ -1,0 +1,54 @@
+diff --git a/sympy/polys/polytools.py b/sympy/polys/polytools.py
+index c9e77a901f..4ece6714c0 100644
+--- a/sympy/polys/polytools.py
++++ b/sympy/polys/polytools.py
+@@ -5895,6 +5895,28 @@ def _factors_product(factors):
+     return Mul(*[f.as_expr()**k for f, k in factors])
+ 
+ 
++def _combine_sqf_factors(factors):
++    """Combine factors with the same exponent for square-free factorization. """
++    grouped = {}
++    for f, k in factors:
++        grouped.setdefault(k, []).append(f)
++
++    result = []
++    for k, fs in grouped.items():
++        if all(
++                getattr(f, 'is_Poly', False)
++                and f.gens == fs[0].gens
++                and f.domain == fs[0].domain for f in fs):
++            f = fs[0]
++            for other in fs[1:]:
++                f = f * other
++            result.append((f, k))
++        else:
++            result.extend([(f, k) for f in fs])
++
++    return result
++
++
+ def _symbolic_factor_list(expr, opt, method):
+     """Helper function for :func:`_symbolic_factor`. """
+     coeff, factors = S.One, []
+@@ -5950,6 +5972,9 @@ def _symbolic_factor_list(expr, opt, method):
+ 
+                 factors.append((_factors_product(other), exp))
+ 
++    if method == 'sqf':
++        factors = _combine_sqf_factors(factors)
++
+     return coeff, factors
+ 
+ 
+@@ -5995,6 +6020,10 @@ def _generic_factor_list(expr, gens, args, method):
+                     f, _ = _poly_from_expr(f, _opt)
+                     factors[i] = (f, k)
+ 
++        if method == 'sqf':
++            for factors in (fp, fq):
++                factors[:] = _combine_sqf_factors(factors)
++
+         fp = _sorted_factors(fp, method)
+         fq = _sorted_factors(fq, method)
+ 

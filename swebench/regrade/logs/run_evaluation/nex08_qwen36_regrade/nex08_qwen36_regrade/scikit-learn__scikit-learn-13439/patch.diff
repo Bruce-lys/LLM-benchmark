@@ -1,0 +1,15 @@
+diff --git a/sklearn/pipeline.py b/sklearn/pipeline.py
+index 7eaf9a46f..5d9ef0e39 100644
+--- a/sklearn/pipeline.py
++++ b/sklearn/pipeline.py
+@@ -187,6 +187,10 @@ class Pipeline(_BaseComposition):
+                 "or be the string 'passthrough'. "
+                 "'%s' (type %s) doesn't" % (estimator, type(estimator)))
+ 
++    def __len__(self):
++        """Return the number of steps in this pipeline."""
++        return len(self.steps)
++
+     def _iter(self, with_final=True):
+         """
+         Generate (name, trans) tuples excluding 'passthrough' transformers

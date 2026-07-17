@@ -1,0 +1,38 @@
+diff --git a/lib/matplotlib/dates.py b/lib/matplotlib/dates.py
+index 4d8ddf3ee5..26ad9781e4 100644
+--- a/lib/matplotlib/dates.py
++++ b/lib/matplotlib/dates.py
+@@ -797,7 +797,7 @@ class ConciseDateFormatter(ticker.Formatter):
+         # 3: hours, 4: minutes, 5: seconds, 6: microseconds
+         for level in range(5, -1, -1):
+             if len(np.unique(tickdate[:, level])) > 1:
+-                if level < 2:
++                if level == 0 or (level == 1 and 1 in tickdate[:, level]):
+                     show_offset = False
+                 break
+             elif level == 0:
+diff --git a/lib/matplotlib/tests/test_dates.py b/lib/matplotlib/tests/test_dates.py
+index a78c39c560..5d16de6a15 100644
+--- a/lib/matplotlib/tests/test_dates.py
++++ b/lib/matplotlib/tests/test_dates.py
+@@ -1323,3 +1323,20 @@ def test_usetex_newline():
+     fig, ax = plt.subplots()
+     ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m\n%Y'))
+     fig.canvas.draw()
++
++
++def test_concise_formatter_show_offset_no_january():
++    # Regression test for #21859: show year in offset when January is not
++    # included in tick labels and the level is months.
++    d1 = datetime.datetime(2021, 2, 14)
++    d2 = d1 + datetime.timedelta(days=199)
++
++    fig, ax = plt.subplots()
++    locator = mdates.AutoDateLocator()
++    formatter = mdates.ConciseDateFormatter(locator)
++    ax.xaxis.set_major_locator(locator)
++    ax.xaxis.set_major_formatter(formatter)
++
++    ax.plot([d1, d2], [0, 0])
++    fig.canvas.draw()
++    assert formatter.get_offset() == '2021'

@@ -1,0 +1,25 @@
+diff --git a/django/template/defaultfilters.py b/django/template/defaultfilters.py
+index 1c844580c6..021f9c229e 100644
+--- a/django/template/defaultfilters.py
++++ b/django/template/defaultfilters.py
+@@ -9,6 +9,7 @@ from pprint import pformat
+ from urllib.parse import quote
+ 
+ from django.utils import formats
++from django.utils.functional import Promise
+ from django.utils.dateformat import format, time_format
+ from django.utils.encoding import iri_to_uri
+ from django.utils.html import (
+@@ -679,6 +680,12 @@ def add(value, arg):
+     except (ValueError, TypeError):
+         try:
+             return value + arg
++        except TypeError:
++            if isinstance(arg, Promise) and isinstance(value, (str, Promise)):
++                return value + str(arg)
++            if isinstance(value, Promise) and isinstance(arg, str):
++                return str(value) + arg
++            return ''
+         except Exception:
+             return ''
+ 

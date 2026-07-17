@@ -1,0 +1,53 @@
+diff --git a/django/db/models/expressions.py b/django/db/models/expressions.py
+index 81f8f79c71..5b79dde707 100644
+--- a/django/db/models/expressions.py
++++ b/django/db/models/expressions.py
+@@ -1039,7 +1039,17 @@ class When(Expression):
+         connection.ops.check_expression_support(self)
+         template_params = extra_context
+         sql_params = []
+-        condition_sql, condition_params = compiler.compile(self.condition)
++        try:
++            condition_sql, condition_params = compiler.compile(self.condition)
++        except EmptyResultSet:
++            empty_result_set_value = getattr(
++                self.condition, 'empty_result_set_value', NotImplemented,
++            )
++            if empty_result_set_value is NotImplemented:
++                raise
++            condition_sql, condition_params = compiler.compile(
++                Value(empty_result_set_value),
++            )
+         template_params['condition'] = condition_sql
+         sql_params.extend(condition_params)
+         result_sql, result_params = compiler.compile(self.result)
+@@ -1209,6 +1219,10 @@ class Exists(Subquery):
+         clone.negated = not self.negated
+         return clone
+ 
++    @property
++    def empty_result_set_value(self):
++        return self.negated
++
+     def as_sql(self, compiler, connection, template=None, **extra_context):
+         query = self.query.exists(using=connection.alias)
+         sql, params = super().as_sql(
+diff --git a/django/db/models/sql/where.py b/django/db/models/sql/where.py
+index 50ff13be75..d0b20b329f 100644
+--- a/django/db/models/sql/where.py
++++ b/django/db/models/sql/where.py
+@@ -80,7 +80,13 @@ class WhereNode(tree.Node):
+             try:
+                 sql, params = compiler.compile(child)
+             except EmptyResultSet:
+-                empty_needed -= 1
++                empty_result_set_value = getattr(child, 'empty_result_set_value', NotImplemented)
++                if empty_result_set_value is NotImplemented and hasattr(child, 'lhs'):
++                    empty_result_set_value = getattr(child.lhs, 'empty_result_set_value', NotImplemented)
++                if empty_result_set_value is NotImplemented or not empty_result_set_value:
++                    empty_needed -= 1
++                else:
++                    full_needed -= 1
+             else:
+                 if sql:
+                     result.append(sql)

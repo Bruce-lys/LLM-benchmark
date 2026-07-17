@@ -1,0 +1,59 @@
+diff --git a/astropy/io/fits/diff.py b/astropy/io/fits/diff.py
+index 100cdf1b8..eab4bf3c5 100644
+--- a/astropy/io/fits/diff.py
++++ b/astropy/io/fits/diff.py
+@@ -55,6 +55,37 @@ _COL_ATTRS = [
+ ]
+ 
+ 
++def _vla_element_equal(a, b, rtol, atol):
++    """
++    Compare two variable-length array elements, accounting for tolerances
++    when comparing floating-point values.
++    """
++    if a is None or b is None:
++        return a is b
++
++    if a.shape != b.shape:
++        return False
++
++    if (
++        np.issubdtype(a.dtype, np.floating)
++        or np.issubdtype(b.dtype, np.floating)
++        or np.issubdtype(a.dtype, np.complexfloating)
++        or np.issubdtype(b.dtype, np.complexfloating)
++    ):
++        # Match the behavior of where_not_allclose for non-finite values:
++        # INF and NaN are treated as equivalent.
++        if not np.all(np.isfinite(a)):
++            a = np.ma.fix_invalid(a).data
++        if not np.all(np.isfinite(b)):
++            b = np.ma.fix_invalid(b).data
++
++        if atol == 0.0 and rtol == 0.0:
++            return np.array_equal(a, b)
++        return np.all(np.abs(a - b) <= (atol + rtol * np.abs(b)))
++
++    return np.array_equal(a, b)
++
++
+ class _BaseDiff:
+     """
+     Base class for all FITS diff objects.
+@@ -1449,13 +1480,13 @@ class TableDataDiff(_BaseDiff):
+                 arrb.dtype, np.floating
+             ):
+                 diffs = where_not_allclose(arra, arrb, rtol=self.rtol, atol=self.atol)
+-            elif "P" in col.format:
++            elif getattr(col.format, "format", None) in ("P", "Q"):
+                 diffs = (
+                     [
+                         idx
+                         for idx in range(len(arra))
+-                        if not np.allclose(
+-                            arra[idx], arrb[idx], rtol=self.rtol, atol=self.atol
++                        if not _vla_element_equal(
++                            arra[idx], arrb[idx], self.rtol, self.atol
+                         )
+                     ],
+                 )

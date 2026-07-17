@@ -1,0 +1,99 @@
+diff --git a/sympy/codegen/ast.py b/sympy/codegen/ast.py
+index a02714b174..ab2db3eb1a 100644
+--- a/sympy/codegen/ast.py
++++ b/sympy/codegen/ast.py
+@@ -869,6 +869,33 @@ def _construct_iterable(cls, itr):
+         return _sympify(itr)
+ 
+ 
++class _StringArg(Basic):
++    """Basic argument representation preserving :class:`String` atomicity."""
++
++    __slots__ = ('text',)
++    is_Atom = True
++
++    def __new__(cls, text):
++        if not isinstance(text, str):
++            raise TypeError("Argument text is not a string type.")
++        obj = Basic.__new__(cls)
++        obj.text = text
++        return obj
++
++    @property
++    def args(self):
++        return ()
++
++    def _hashable_content(self):
++        return (self.text,)
++
++    def _sympystr(self, printer, *args, **kwargs):
++        return self.text
++
++    def __getnewargs__(self):
++        return (self.text,)
++
++
+ class String(Token):
+     """ SymPy object representing a string.
+ 
+@@ -900,10 +927,47 @@ class String(Token):
+ 
+     @classmethod
+     def _construct_text(cls, text):
++        if isinstance(text, _StringArg):
++            return text.text
+         if not isinstance(text, str):
+             raise TypeError("Argument text is not a string type.")
+         return text
+ 
++    def __new__(cls, *args, **kwargs):
++        if len(args) == 1 and not kwargs and isinstance(args[0], cls):
++            return args[0]
++
++        if len(args) > 1:
++            raise ValueError(
++                "Too many arguments (%d), expected at most 1" % len(args))
++
++        if args:
++            text = args[0]
++            if 'text' in kwargs:
++                raise TypeError(
++                    'Got multiple values for attribute %r' % 'text')
++        elif 'text' in kwargs:
++            text = kwargs.pop('text')
++        else:
++            raise TypeError(
++                'No value for %r given and attribute has no default' % 'text')
++
++        if kwargs:
++            raise ValueError(
++                "Unknown keyword arguments: %s" % ' '.join(kwargs))
++
++        text = cls._construct_text(text)
++        obj = Basic.__new__(cls, _StringArg(text))
++        obj.text = text
++        obj._args = (_StringArg(text),)
++        return obj
++
++    def atoms(self, *types):
++        if not types:
++            return {self}
++        types = tuple(t if isinstance(t, type) else type(t) for t in types)
++        return {node for node in (self,) if isinstance(node, types)}
++
+     def _sympystr(self, printer, *args, **kwargs):
+         return self.text
+ 
+diff --git a/sympy/codegen/tests/test_ast.py b/sympy/codegen/tests/test_ast.py
+index 00c5d4cf28..dad7b4dd37 100644
+--- a/sympy/codegen/tests/test_ast.py
++++ b/sympy/codegen/tests/test_ast.py
+@@ -267,6 +267,8 @@ def test_String():
+     assert st == String('foobar')
+     assert st.text == 'foobar'
+     assert st.func(**st.kwargs()) == st
++    assert st.func(*st.args) == st
++    assert st.atoms() == {st}
+ 
+ 
+     class Signifier(String):

@@ -1,0 +1,25 @@
+diff --git a/django/db/models/functions/datetime.py b/django/db/models/functions/datetime.py
+index 20161bef38..483ee73a07 100644
+--- a/django/db/models/functions/datetime.py
++++ b/django/db/models/functions/datetime.py
+@@ -25,6 +25,20 @@ class TimezoneMixin:
+                 tzname = timezone.get_current_timezone_name()
+             else:
+                 tzname = timezone._get_timezone_name(self.tzinfo)
++            if tzname and tzname.startswith('Etc/GMT'):
++                # Etc/GMT time zones use POSIX-style signs; convert them to
++                # an explicit offset so backend-specific offset handling is used.
++                sign = tzname[7:8]
++                if sign in '+-':
++                    parts = tzname[8:].split(':', 1)
++                    hours = int(parts[0])
++                    minutes = int(parts[1]) if len(parts) > 1 else 0
++                    offset = hours * 60 + minutes
++                    if sign == '+':
++                        offset = -offset
++                    tzname = ('+' if offset >= 0 else '-') + '%02d:%02d' % (
++                        abs(offset) // 60, abs(offset) % 60,
++                    )
+         return tzname
+ 
+ 

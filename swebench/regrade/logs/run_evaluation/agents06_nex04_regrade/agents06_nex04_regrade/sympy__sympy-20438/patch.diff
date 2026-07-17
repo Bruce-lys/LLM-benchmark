@@ -1,0 +1,87 @@
+diff --git a/sympy/core/relational.py b/sympy/core/relational.py
+index e2e0b7fbcc..80be48c565 100644
+--- a/sympy/core/relational.py
++++ b/sympy/core/relational.py
+@@ -556,28 +556,12 @@ def binary_symbols(self):
+         return set()
+ 
+     def _eval_simplify(self, **kwargs):
+-        from .add import Add
+-        from sympy.solvers.solveset import linear_coeffs
+-        # standard simplify
+-        e = super()._eval_simplify(**kwargs)
+-        if not isinstance(e, Equality):
+-            return e
+-        free = self.free_symbols
+-        if len(free) == 1:
+-            try:
+-                x = free.pop()
+-                m, b = linear_coeffs(
+-                    e.rewrite(Add, evaluate=False), x)
+-                if m.is_zero is False:
+-                    enew = e.func(x, -b / m)
+-                else:
+-                    enew = e.func(m * x, -b)
+-                measure = kwargs['measure']
+-                if measure(enew) <= kwargs['ratio'] * measure(e):
+-                    e = enew
+-            except ValueError:
+-                pass
+-        return e.canonical
++        from sympy.sets.sets import Set
++        if isinstance(self.lhs, Set) and isinstance(self.rhs, Set):
++            r = self.func(*[i.simplify(**kwargs) for i in self.args])
++            if r.is_Relational:
++                return r.canonical
++        return super()._eval_simplify(**kwargs)
+ 
+     def integrate(self, *args, **kwargs):
+         """See the integrate function in sympy.integrals"""
+diff --git a/sympy/sets/handlers/comparison.py b/sympy/sets/handlers/comparison.py
+index 6f7a19fccf..890e89d61d 100644
+--- a/sympy/sets/handlers/comparison.py
++++ b/sympy/sets/handlers/comparison.py
+@@ -49,6 +49,20 @@ def _eval_is_eq(lhs, rhs): # noqa: F811
+     return tfn[fuzzy_and(map(fuzzy_bool, eqs))]
+ 
+ 
++@dispatch(ProductSet, FiniteSet) # type:ignore
++def _eval_is_eq(lhs, rhs): # noqa: F811
++    if lhs.is_finite_set is True:
++        return tfn[fuzzy_and(rhs._contains(e) for e in lhs)]
++    return None
++
++
++@dispatch(FiniteSet, ProductSet) # type:ignore
++def _eval_is_eq(lhs, rhs): # noqa: F811
++    if rhs.is_finite_set is True:
++        return tfn[fuzzy_and(lhs._contains(e) for e in rhs)]
++    return None
++
++
+ @dispatch(Set, Basic) # type:ignore
+ def _eval_is_eq(lhs, rhs): # noqa: F811
+     return False
+diff --git a/sympy/sets/sets.py b/sympy/sets/sets.py
+index 3c4aa86e36..45a514e083 100644
+--- a/sympy/sets/sets.py
++++ b/sympy/sets/sets.py
+@@ -775,6 +775,18 @@ def _flatten(sets):
+                     yield s
+         return ProductSet(*_flatten(self.sets))
+ 
++    def _eval_is_subset(self, other):
++        if (self.is_finite_set is True and other.is_finite_set
++                and not isinstance(other, ProductSet)):
++            return fuzzy_and(other._contains(Tuple(*e) if isinstance(e, tuple) else e)
++                for e in self)
++        return None
++
++    def _eval_rewrite_as_FiniteSet(self, *args, **kwargs):
++        if self.is_finite_set is True and self.is_iterable:
++            return FiniteSet(*self)
++        return None
++
+ 
+ 
+     def _contains(self, element):

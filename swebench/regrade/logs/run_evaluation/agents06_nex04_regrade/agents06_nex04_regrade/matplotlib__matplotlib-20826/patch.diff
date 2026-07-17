@@ -1,0 +1,34 @@
+diff --git a/lib/matplotlib/axes/_base.py b/lib/matplotlib/axes/_base.py
+index 802fd3c997..72bcd5c899 100644
+--- a/lib/matplotlib/axes/_base.py
++++ b/lib/matplotlib/axes/_base.py
+@@ -1192,6 +1192,13 @@ class _AxesBase(martist.Artist):
+         xaxis_visible = self.xaxis.get_visible()
+         yaxis_visible = self.yaxis.get_visible()
+ 
++        # Stash the current tick parameters so that clearing an Axes does not
++        # reset the tick visibility used by shared subplots.
++        xaxis_tick_kw = (self.xaxis._major_tick_kw.copy(),
++                         self.xaxis._minor_tick_kw.copy())
++        yaxis_tick_kw = (self.yaxis._major_tick_kw.copy(),
++                         self.yaxis._minor_tick_kw.copy())
++
+         self.xaxis.clear()
+         self.yaxis.clear()
+ 
+@@ -1218,6 +1225,15 @@ class _AxesBase(martist.Artist):
+             except TypeError:
+                 pass
+ 
++        self.xaxis.set_tick_params(
++            which="minor", reset=True, **xaxis_tick_kw[1])
++        self.xaxis.set_tick_params(
++            which="major", reset=True, **xaxis_tick_kw[0])
++        self.yaxis.set_tick_params(
++            which="minor", reset=True, **yaxis_tick_kw[1])
++        self.yaxis.set_tick_params(
++            which="major", reset=True, **yaxis_tick_kw[0])
++
+         # update the minor locator for x and y axis based on rcParams
+         if mpl.rcParams['xtick.minor.visible']:
+             self.xaxis.set_minor_locator(mticker.AutoMinorLocator())

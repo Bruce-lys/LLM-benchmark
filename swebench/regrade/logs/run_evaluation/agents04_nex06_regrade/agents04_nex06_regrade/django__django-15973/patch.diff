@@ -1,0 +1,274 @@
+diff --git a/django/db/backends/base/schema.py b/django/db/backends/base/schema.py
+index 09785e8586..741fbc7a4b 100644
+--- a/django/db/backends/base/schema.py
++++ b/django/db/backends/base/schema.py
+@@ -20,6 +20,15 @@ from django.utils import timezone
+ logger = logging.getLogger("django.db.backends.schema")
+ 
+ 
++def _field_is_auto_created_m2m(field):
++    """Return whether a field's M2M table is auto-created."""
++    through = getattr(field, "through", None) or (
++        getattr(field, "remote_field", None)
++        and getattr(field.remote_field, "through", None)
++    )
++    return through and getattr(through, "_meta", None) and through._meta.auto_created
++
++
+ def _is_relevant_relation(relation, altered_field):
+     """
+     When altering the given field, must constraints on its model from the given
+@@ -450,14 +459,14 @@ class BaseDatabaseSchemaEditor:
+ 
+         # Make M2M tables
+         for field in model._meta.local_many_to_many:
+-            if field.remote_field.through._meta.auto_created:
++            if _field_is_auto_created_m2m(field):
+                 self.create_model(field.remote_field.through)
+ 
+     def delete_model(self, model):
+         """Delete a model from the database."""
+         # Handle auto-created intermediary models
+         for field in model._meta.local_many_to_many:
+-            if field.remote_field.through._meta.auto_created:
++            if _field_is_auto_created_m2m(field):
+                 self.delete_model(field.remote_field.through)
+ 
+         # Delete the table
+@@ -630,7 +639,7 @@ class BaseDatabaseSchemaEditor:
+         involve adding a table instead (for M2M fields).
+         """
+         # Special-case implicit M2M tables
+-        if field.many_to_many and field.remote_field.through._meta.auto_created:
++        if field.many_to_many and _field_is_auto_created_m2m(field):
+             return self.create_model(field.remote_field.through)
+         # Get the column's definition
+         definition, params = self.column_sql(model, field, include_default=True)
+@@ -658,9 +667,9 @@ class BaseDatabaseSchemaEditor:
+                 namespace, _ = split_identifier(model._meta.db_table)
+                 definition += " " + self.sql_create_column_inline_fk % {
+                     "name": self._fk_constraint_name(model, field, constraint_suffix),
+-                    "namespace": "%s." % self.quote_name(namespace)
+-                    if namespace
+-                    else "",
++                    "namespace": (
++                        "%s." % self.quote_name(namespace) if namespace else ""
++                    ),
+                     "column": self.quote_name(field.column),
+                     "to_table": self.quote_name(to_table),
+                     "to_column": self.quote_name(to_column),
+@@ -704,7 +713,7 @@ class BaseDatabaseSchemaEditor:
+         but for M2Ms may involve deleting a table.
+         """
+         # Special-case implicit M2M tables
+-        if field.many_to_many and field.remote_field.through._meta.auto_created:
++        if field.many_to_many and _field_is_auto_created_m2m(field):
+             return self.delete_model(field.remote_field.through)
+         # It might not actually have a column behind it
+         if field.db_parameters(connection=self.connection)["type"] is None:
+@@ -759,8 +768,8 @@ class BaseDatabaseSchemaEditor:
+             and (
+                 old_field.remote_field.through
+                 and new_field.remote_field.through
+-                and old_field.remote_field.through._meta.auto_created
+-                and new_field.remote_field.through._meta.auto_created
++                and _field_is_auto_created_m2m(old_field)
++                and _field_is_auto_created_m2m(new_field)
+             )
+         ):
+             return self._alter_many_to_many(model, old_field, new_field, strict)
+@@ -770,8 +779,8 @@ class BaseDatabaseSchemaEditor:
+             and (
+                 old_field.remote_field.through
+                 and new_field.remote_field.through
+-                and not old_field.remote_field.through._meta.auto_created
+-                and not new_field.remote_field.through._meta.auto_created
++                and not _field_is_auto_created_m2m(old_field)
++                and not _field_is_auto_created_m2m(new_field)
+             )
+         ):
+             # Both sides have through models; this is a no-op.
+@@ -1237,9 +1246,9 @@ class BaseDatabaseSchemaEditor:
+             % {
+                 "column": self.quote_name(new_field.column),
+                 "type": new_type,
+-                "collation": " " + self._collate_sql(new_collation)
+-                if new_collation
+-                else "",
++                "collation": (
++                    " " + self._collate_sql(new_collation) if new_collation else ""
++                ),
+             },
+             [],
+         )
+diff --git a/django/db/backends/sqlite3/schema.py b/django/db/backends/sqlite3/schema.py
+index 6c106ae868..577cea9ecc 100644
+--- a/django/db/backends/sqlite3/schema.py
++++ b/django/db/backends/sqlite3/schema.py
+@@ -3,7 +3,10 @@ from decimal import Decimal
+ 
+ from django.apps.registry import Apps
+ from django.db import NotSupportedError
+-from django.db.backends.base.schema import BaseDatabaseSchemaEditor
++from django.db.backends.base.schema import (
++    BaseDatabaseSchemaEditor,
++    _field_is_auto_created_m2m,
++)
+ from django.db.backends.ddl_references import Statement
+ from django.db.backends.utils import strip_quotes
+ from django.db.models import UniqueConstraint
+@@ -191,6 +194,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
+           4. Rename the "new__app_model" table to "app_model"
+           5. Restore any index of the previous "app_model" table.
+         """
++
+         # Self-referential fields must be recreated rather than copied from
+         # the old model to ensure their remote_field.field_name doesn't refer
+         # to an altered field.
+@@ -256,10 +260,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
+             del body[delete_field.name]
+             del mapping[delete_field.column]
+             # Remove any implicit M2M tables
+-            if (
+-                delete_field.many_to_many
+-                and delete_field.remote_field.through._meta.auto_created
+-            ):
++            if delete_field.many_to_many and _field_is_auto_created_m2m(delete_field):
+                 return self.delete_model(delete_field.remote_field.through)
+         # Work inside a new app registry
+         apps = Apps()
+@@ -403,7 +404,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
+         # M2M fields are a special case
+         if field.many_to_many:
+             # For implicit M2M tables, delete the auto-created table
+-            if field.remote_field.through._meta.auto_created:
++            if _field_is_auto_created_m2m(field):
+                 self.delete_model(field.remote_field.through)
+             # For explicit "through" M2M fields, do nothing
+         elif (
+@@ -470,14 +471,14 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
+                 if not remote_field.many_to_many:
+                     if remote_field.field_name == new_field.name:
+                         related_models.add(remote_field.related_model)
+-                elif new_field.primary_key and remote_field.through._meta.auto_created:
++                elif new_field.primary_key and _field_is_auto_created_m2m(remote_field):
+                     related_models.add(remote_field.through)
+             if new_field.primary_key:
+                 for many_to_many in opts.many_to_many:
+                     # Ignore self-relationship since the table was already rebuilt.
+                     if many_to_many.related_model == model:
+                         continue
+-                    if many_to_many.remote_field.through._meta.auto_created:
++                    if _field_is_auto_created_m2m(many_to_many):
+                         related_models.add(many_to_many.remote_field.through)
+             for related_model in related_models:
+                 self._remake_table(related_model)
+diff --git a/django/db/migrations/operations/models.py b/django/db/migrations/operations/models.py
+index 75a3b8b030..ab31098726 100644
+--- a/django/db/migrations/operations/models.py
++++ b/django/db/migrations/operations/models.py
+@@ -18,6 +18,15 @@ def _check_for_duplicates(arg_name, objs):
+         used_vals.add(val)
+ 
+ 
++def _field_is_auto_created_m2m(field):
++    """Return whether a field's M2M table is auto-created."""
++    through = getattr(field, "through", None) or (
++        getattr(field, "remote_field", None)
++        and getattr(field.remote_field, "through", None)
++    )
++    return through and getattr(through, "_meta", None) and through._meta.auto_created
++
++
+ class ModelOperation(Operation):
+     def __init__(self, name):
+         self.name = name
+@@ -55,11 +64,11 @@ class CreateModel(ModelOperation):
+         _check_for_duplicates(
+             "bases",
+             (
+-                base._meta.label_lower
+-                if hasattr(base, "_meta")
+-                else base.lower()
+-                if isinstance(base, str)
+-                else base
++                (
++                    base._meta.label_lower
++                    if hasattr(base, "_meta")
++                    else base.lower() if isinstance(base, str) else base
++                )
+                 for base in self.bases
+             ),
+         )
+@@ -401,11 +410,11 @@ class RenameModel(ModelOperation):
+             fields = zip(
+                 old_model._meta.local_many_to_many, new_model._meta.local_many_to_many
+             )
+-            for (old_field, new_field) in fields:
++            for old_field, new_field in fields:
+                 # Skip self-referential fields as these are renamed above.
+                 if (
+                     new_field.model == new_field.related_model
+-                    or not new_field.remote_field.through._meta.auto_created
++                    or not _field_is_auto_created_m2m(new_field)
+                 ):
+                     continue
+                 # Rename the M2M table that's based on this model's name.
+@@ -506,10 +515,10 @@ class AlterModelTable(ModelOptionOperation):
+                 new_model._meta.db_table,
+             )
+             # Rename M2M fields whose name is based on this model's db_table
+-            for (old_field, new_field) in zip(
++            for old_field, new_field in zip(
+                 old_model._meta.local_many_to_many, new_model._meta.local_many_to_many
+             ):
+-                if new_field.remote_field.through._meta.auto_created:
++                if _field_is_auto_created_m2m(new_field):
+                     schema_editor.alter_db_table(
+                         new_field.remote_field.through,
+                         old_field.remote_field.through._meta.db_table,
+diff --git a/tests/migrations/test_operations.py b/tests/migrations/test_operations.py
+index f2edf6ac73..aeeddb5e74 100644
+--- a/tests/migrations/test_operations.py
++++ b/tests/migrations/test_operations.py
+@@ -29,6 +29,40 @@ class OperationTests(OperationTestBase):
+     both forwards and backwards.
+     """
+ 
++    def test_create_model_with_unresolved_m2m_through(self):
++        fields = {
++            "id": models.AutoField(primary_key=True),
++            "nome": models.TextField(unique=True),
++        }
++        # Simulate an explicit through model that has not been rendered into
++        # the migration state yet (for example, another app's model).
++        m2m = models.ManyToManyField("variavel.VariavelModel", through="auth.Group")
++        for name, field in fields.items():
++            field.column = field.name = name
++
++        class Meta:
++            app_label = "test_m2m_unresolved"
++            managed = True
++            proxy = False
++            swapped = False
++            db_table = "fontes"
++            db_tablespace = ""
++            unique_together = ()
++            constraints = ()
++            indexes = ()
++            index_together = ()
++
++            def get_field(self, name):
++                return fields[name]
++
++        model = type("FonteModel", (), {"_meta": Meta})()
++        model._meta.local_fields = list(fields.values())
++        model._meta.local_many_to_many = [m2m]
++
++        with connection.schema_editor() as editor:
++            editor.create_model(model)
++        self.assertTableExists("fontes")
++
+     def test_create_model(self):
+         """
+         Tests the CreateModel operation.

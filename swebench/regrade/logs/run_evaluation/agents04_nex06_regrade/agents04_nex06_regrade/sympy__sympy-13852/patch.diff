@@ -1,0 +1,35 @@
+diff --git a/sympy/functions/special/zeta_functions.py b/sympy/functions/special/zeta_functions.py
+index b8e2b6619..ac5a5b76c 100644
+--- a/sympy/functions/special/zeta_functions.py
++++ b/sympy/functions/special/zeta_functions.py
+@@ -248,12 +248,13 @@ class polylog(Function):
+ 
+     If :math:`s` is a negative integer, :math:`0` or :math:`1`, the
+     polylogarithm can be expressed using elementary functions. This can be
+-    done using expand_func():
++    done using expand_func(). For example, :math:`\operatorname{Li}_{2}(1/2)`
++    can also be expressed using elementary functions.
+ 
+     >>> from sympy import expand_func
+     >>> from sympy.abc import z
+     >>> expand_func(polylog(1, z))
+-    -log(z*exp_polar(-I*pi) + 1)
++    -log(1 - z)
+     >>> expand_func(polylog(0, z))
+     z/(-z + 1)
+ 
+@@ -288,10 +289,12 @@ def _eval_rewrite_as_lerchphi(self, s, z):
+         return z*lerchphi(z, s, 1)
+ 
+     def _eval_expand_func(self, **hints):
+-        from sympy import log, expand_mul, Dummy, exp_polar, I
++        from sympy import expand_mul, Dummy, exp_polar, I
+         s, z = self.args
+         if s == 1:
+-            return -log(1 + exp_polar(-I*pi)*z)
++            return -log(1 - z)
++        if s == 2 and z == S(1)/2:
++            return pi**2/12 - log(2)**2/2
+         if s.is_Integer and s <= 0:
+             u = Dummy('u')
+             start = u/(1 - u)

@@ -1,0 +1,48 @@
+diff --git a/sphinx/ext/viewcode.py b/sphinx/ext/viewcode.py
+index a7d52a91c..789673dbf 100644
+--- a/sphinx/ext/viewcode.py
++++ b/sphinx/ext/viewcode.py
+@@ -50,6 +50,23 @@ def _get_full_modname(app: Sphinx, modname: str, attribute: str) -> Optional[str
+         return None
+ 
+ 
++def _remove_viewcode_links(doctree: Node) -> None:
++    for node in list(doctree.traverse(nodes.inline)):
++        if 'viewcode-link' in node.get('classes', []):
++            parent = node.parent
++            while parent is not None and not isinstance(parent, nodes.reference):
++                parent = parent.parent
++            if isinstance(parent, nodes.reference):
++                parent.replace_self([])
++
++
++def _doctree_resolved(app: Sphinx, doctree: Node, docname: str) -> None:
++    if app.builder.name == "singlehtml":
++        _remove_viewcode_links(doctree)
++    elif app.builder.name.startswith("epub") and not app.config.viewcode_enable_epub:
++        _remove_viewcode_links(doctree)
++
++
+ def doctree_read(app: Sphinx, doctree: Node) -> None:
+     env = app.builder.env
+     if not hasattr(env, '_viewcode_modules'):
+@@ -182,6 +199,11 @@ def collect_pages(app: Sphinx) -> Generator[Tuple[str, Dict[str, Any], str], Non
+     env = app.builder.env
+     if not hasattr(env, '_viewcode_modules'):
+         return
++    if app.builder.name == "singlehtml":
++        return
++    if app.builder.name.startswith("epub") and not env.config.viewcode_enable_epub:
++        return
++
+     highlighter = app.builder.highlighter  # type: ignore
+     urito = app.builder.get_relative_uri
+ 
+@@ -281,6 +303,7 @@ def setup(app: Sphinx) -> Dict[str, Any]:
+     app.add_config_value('viewcode_enable_epub', False, False)
+     app.add_config_value('viewcode_follow_imported_members', True, False)
+     app.connect('doctree-read', doctree_read)
++    app.connect('doctree-resolved', _doctree_resolved)
+     app.connect('env-merge-info', env_merge_info)
+     app.connect('html-collect-pages', collect_pages)
+     app.connect('missing-reference', missing_reference)

@@ -1,0 +1,55 @@
+diff --git a/lib/matplotlib/contour.py b/lib/matplotlib/contour.py
+index 144eadeae2..79b20322df 100644
+--- a/lib/matplotlib/contour.py
++++ b/lib/matplotlib/contour.py
+@@ -1446,6 +1446,7 @@ class QuadContourSet(ContourSet):
+         else:
+             fn = 'contour'
+         nargs = len(args)
++        orig_args = args
+         if nargs <= 2:
+             z = ma.asarray(args[0], dtype=np.float64)
+             x, y = self._initialize_x_y(z)
+@@ -1455,6 +1456,10 @@ class QuadContourSet(ContourSet):
+             args = args[3:]
+         else:
+             raise _api.nargs_error(fn, takes="from 1 to 4", given=nargs)
++        has_positional_levels = (nargs > 1) if nargs <= 2 else (nargs > 3)
++        if (self.levels is None and not self.filled and not has_positional_levels
++                and self._is_bool_z_input(orig_args)):
++            self.levels = [0.5]
+         z = ma.masked_invalid(z, copy=False)
+         self.zmax = float(z.max())
+         self.zmin = float(z.min())
+@@ -1465,6 +1470,20 @@ class QuadContourSet(ContourSet):
+         self._process_contour_level_args(args)
+         return (x, y, z)
+ 
++    def _is_bool_z_input(self, args):
++        if len(args) <= 2:
++            z = args[0]
++        elif len(args) <= 4:
++            z = args[2]
++        else:
++            return False
++        if isinstance(z, QuadContourSet):
++            return False
++        try:
++            return np.issubdtype(np.asarray(z).dtype, np.bool_)
++        except TypeError:
++            return False
++
+     def _check_xyz(self, args, kwargs):
+         """
+         Check that the shapes of the input arrays match; if x and y are 1D,
+@@ -1580,7 +1599,9 @@ levels : int or array-like, optional
+ 
+     If an int *n*, use `~matplotlib.ticker.MaxNLocator`, which tries
+     to automatically choose no more than *n+1* "nice" contour levels
+-    between minimum and maximum numeric values of *Z*.
++    between minimum and maximum numeric values of *Z*. For
++    `~.Axes.contour`, if *Z* is a boolean array and *levels* is not specified,
++    the default level is ``[0.5]``.
+ 
+     If array-like, draw contour lines at the specified levels.
+     The values must be in increasing order.

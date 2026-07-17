@@ -1,0 +1,59 @@
+diff --git a/lib/matplotlib/backend_bases.py b/lib/matplotlib/backend_bases.py
+index 9ae2982c62..6e0a9a3528 100644
+--- a/lib/matplotlib/backend_bases.py
++++ b/lib/matplotlib/backend_bases.py
+@@ -1652,8 +1652,10 @@ class FigureCanvasBase:
+         self.mouse_grabber = None  # the Axes currently grabbing mouse
+         self.toolbar = None  # NavigationToolbar2 will set me
+         self._is_idle_drawing = False
+-        # We don't want to scale up the figure DPI more than once.
+-        figure._original_dpi = figure.dpi
++        # We don't want to scale up the figure DPI more than once, and
++        # preserve the original DPI when reattaching a canvas.
++        if not hasattr(figure, "_original_dpi"):
++            figure._original_dpi = figure.dpi
+         self._device_pixel_ratio = 1
+         super().__init__()  # Typically the GUI widget init (if any).
+ 
+diff --git a/src/_macosx.m b/src/_macosx.m
+index 5dbcd3278b..6af652579f 100755
+--- a/src/_macosx.m
++++ b/src/_macosx.m
+@@ -327,25 +327,14 @@ static CGFloat _get_device_scale(CGContextRef cr)
+ }
+ 
+ static int
+-FigureCanvas_init(FigureCanvas *self, PyObject *args, PyObject *kwds)
++FigureCanvas_init(FigureCanvas *self, PyObject *unused_args, PyObject *unused_kwds)
+ {
+     if (!self->view) {
+         PyErr_SetString(PyExc_RuntimeError, "NSView* is NULL");
+         return -1;
+     }
+-    PyObject *builtins = NULL,
+-             *super_obj = NULL,
+-             *super_init = NULL,
+-             *init_res = NULL,
+-             *wh = NULL;
+-    // super(FigureCanvasMac, self).__init__(*args, **kwargs)
+-    if (!(builtins = PyImport_AddModule("builtins"))  // borrowed.
+-            || !(super_obj = PyObject_CallMethod(builtins, "super", "OO", &FigureCanvasType, self))
+-            || !(super_init = PyObject_GetAttrString(super_obj, "__init__"))
+-            || !(init_res = PyObject_Call(super_init, args, kwds))) {
+-        goto exit;
+-    }
+     int width, height;
++    PyObject *wh = NULL;
+     if (!(wh = PyObject_CallMethod((PyObject*)self, "get_width_height", ""))
+             || !PyArg_ParseTuple(wh, "ii", &width, &height)) {
+         goto exit;
+@@ -363,9 +352,6 @@ static CGFloat _get_device_scale(CGContextRef cr)
+     [self->view setCanvas: (PyObject*)self];
+ 
+ exit:
+-    Py_XDECREF(super_obj);
+-    Py_XDECREF(super_init);
+-    Py_XDECREF(init_res);
+     Py_XDECREF(wh);
+     return PyErr_Occurred() ? -1 : 0;
+ }

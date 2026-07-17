@@ -1,0 +1,26 @@
+diff --git a/src/_pytest/logging.py b/src/_pytest/logging.py
+index a4f4214b1..2104d05ca 100644
+--- a/src/_pytest/logging.py
++++ b/src/_pytest/logging.py
+@@ -440,7 +440,20 @@ class LogCaptureFixture:
+ 
+     def clear(self) -> None:
+         """Reset the list of log records and the captured log text."""
+-        self.handler.reset()
++        handler = self.handler
++        records_key = self._item.stash.get(caplog_records_key, None)
++        if records_key is not None:
++            current_records = handler.records
++            phase = None
++            for key, records in records_key.items():
++                if records is current_records:
++                    phase = key
++                    break
++            handler.reset()
++            if phase is not None:
++                records_key[phase] = handler.records
++        else:
++            handler.reset()
+ 
+     def set_level(self, level: Union[int, str], logger: Optional[str] = None) -> None:
+         """Set the level of a logger for the duration of a test.

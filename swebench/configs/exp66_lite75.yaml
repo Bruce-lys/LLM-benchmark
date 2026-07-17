@@ -1,0 +1,25 @@
+# EXP-66_Nex-0.2_Ornith-0.4_Qwen3.5-0.4 lite75, 干净口径(GDN内核bug规避: 不用top_k/presence)
+run:
+  tag: aiden_exp66_lite75_t085
+  output_root: /home/ubuntu/swebench/swebench_runs
+  dataset: lite75
+  workers: 64
+  max_passes: 3
+  retry_empty: true
+model:
+  path: /dev/null
+  served_name: EXP-66_Nex-0.2_Ornith-0.4_Qwen3.5-0.4
+sampling:
+  temperature: 0.85
+  top_p: 0.95
+agent:
+  step_limit: 250
+serve:
+  manage: false
+  gpus: "0"
+  endpoint: http://10.0.3.53:8302/v1
+grade:
+  enabled: true
+  rolling: false
+  max_workers: 48
+  namespace: swebench

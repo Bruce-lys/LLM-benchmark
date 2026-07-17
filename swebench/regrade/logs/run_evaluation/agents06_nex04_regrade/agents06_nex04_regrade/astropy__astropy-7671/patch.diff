@@ -1,0 +1,55 @@
+diff --git a/astropy/utils/introspection.py b/astropy/utils/introspection.py
+index 3e784f9fc..996274a36 100644
+--- a/astropy/utils/introspection.py
++++ b/astropy/utils/introspection.py
+@@ -8,6 +8,16 @@ import types
+ import importlib
+ from distutils.version import LooseVersion
+ 
++try:
++    from pkg_resources import parse_version as pkg_resources_parse_version
++except (ImportError, AttributeError):
++    pkg_resources_parse_version = None
++
++try:
++    from packaging.version import parse as packaging_parse
++except (ImportError, AttributeError):
++    packaging_parse = None
++
+ 
+ __all__ = ['resolve_name', 'minversion', 'find_current_module',
+            'isinstancemethod']
+@@ -139,10 +149,29 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
+     else:
+         have_version = resolve_name(module.__name__, version_path)
+ 
+-    if inclusive:
+-        return LooseVersion(have_version) >= LooseVersion(version)
+-    else:
+-        return LooseVersion(have_version) > LooseVersion(version)
++    # pkg_resources.parse_version and packaging.parse_version handle the
++    # LooseVersion bug where comparing versions with mixed string/integer
++    # components raises a TypeError (e.g. 1.14.3 vs 1.14dev).
++    for parse_version in (
++            pkg_resources_parse_version, packaging_parse):
++        if parse_version is not None:
++            try:
++                have_version = parse_version(str(have_version))
++                version = parse_version(str(version))
++                return ((have_version >= version)
++                        if inclusive else (have_version > version))
++            except Exception:
++                pass
++
++    have_version = LooseVersion(have_version)
++    version = LooseVersion(version)
++    try:
++        return ((have_version >= version)
++                if inclusive else (have_version > version))
++    except TypeError:
++        # Fallback for extremely unusual version strings.
++        return ((str(have_version) >= str(version))
++                if inclusive else (str(have_version) > str(version)))
+ 
+ 
+ def find_current_module(depth=1, finddiff=False):

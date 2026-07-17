@@ -1,0 +1,27 @@
+diff --git a/django/contrib/admin/options.py b/django/contrib/admin/options.py
+index 5240b07cd6..1af08b9212 100644
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -464,11 +464,18 @@ class BaseModelAdmin(metaclass=forms.MediaDefiningClass):
+             # It is allowed to filter on values that would be found from local
+             # model anyways. For example, if you filter on employee__department__id,
+             # then the id value would be found already from employee__department_id.
+-            if not prev_field or (
+-                prev_field.is_relation
+-                and field not in prev_field.path_infos[-1].target_fields
+-            ):
++            # Target fields are usually redundant, but primary-key relation
++            # target fields are part of the relation path.
++            if not prev_field:
+                 relation_parts.append(part)
++            elif prev_field.is_relation:
++                target_fields = prev_field.path_infos[-1].target_fields
++                if field not in target_fields or (
++                    field.is_relation
++                    and field.primary_key
++                    and not field.remote_field.parent_link
++                ):
++                    relation_parts.append(part)
+             if not getattr(field, "path_infos", None):
+                 # This is not a relational field, so further parts
+                 # must be transforms.

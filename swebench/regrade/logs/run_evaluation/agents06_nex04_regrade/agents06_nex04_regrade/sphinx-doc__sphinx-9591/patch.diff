@@ -1,0 +1,67 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index e8330e81c..7274d2014 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -861,7 +861,8 @@ class PyProperty(PyObject):
+ 
+         typ = self.options.get('type')
+         if typ:
+-            signode += addnodes.desc_annotation(typ, ': ' + typ)
++            signode += addnodes.desc_annotation(typ, ': ',
++                                                *_parse_annotation(typ, self.env))
+ 
+         return fullname, prefix
+ 
+diff --git a/tests/test_domain_py.py b/tests/test_domain_py.py
+index 8b72f8b7a..6a4a82a74 100644
+--- a/tests/test_domain_py.py
++++ b/tests/test_domain_py.py
+@@ -822,29 +822,29 @@ def test_pyproperty(app):
+             "      :type: str\n")
+     domain = app.env.get_domain('py')
+     doctree = restructuredtext.parse(app, text)
+-    assert_node(doctree, (addnodes.index,
+-                          [desc, ([desc_signature, ([desc_annotation, "class "],
+-                                                    [desc_name, "Class"])],
+-                                  [desc_content, (addnodes.index,
+-                                                  desc,
+-                                                  addnodes.index,
+-                                                  desc)])]))
+-    assert_node(doctree[1][1][0], addnodes.index,
+-                entries=[('single', 'prop1 (Class property)', 'Class.prop1', '', None)])
+-    assert_node(doctree[1][1][1], ([desc_signature, ([desc_annotation, "abstract property "],
+-                                                     [desc_name, "prop1"],
+-                                                     [desc_annotation, ": str"])],
+-                                   [desc_content, ()]))
+-    assert_node(doctree[1][1][2], addnodes.index,
+-                entries=[('single', 'prop2 (Class property)', 'Class.prop2', '', None)])
+-    assert_node(doctree[1][1][3], ([desc_signature, ([desc_annotation, "class property "],
+-                                                     [desc_name, "prop2"],
+-                                                     [desc_annotation, ": str"])],
+-                                   [desc_content, ()]))
++    refnodes = list(doctree.traverse(pending_xref))
++    assert len(refnodes) == 2
++    for node in refnodes:
++        assert node.get('reftarget') == 'str'
++        assert node.get('py:class') == 'Class'
+     assert 'Class.prop1' in domain.objects
+     assert domain.objects['Class.prop1'] == ('index', 'Class.prop1', 'property', False)
+     assert 'Class.prop2' in domain.objects
+     assert domain.objects['Class.prop2'] == ('index', 'Class.prop2', 'property', False)
++    assert doctree[1][1][1][0][0].astext().rstrip() == 'abstract property'
++    assert doctree[1][1][3][0][0].astext().rstrip() == 'class property'
++
++
++def test_pyproperty_type_xref(app):
++    text = (".. py:class:: Class\n"
++            "\n"
++            "   .. py:property:: prop\n"
++            "      :type: Optional[str]\n")
++    doctree = restructuredtext.parse(app, text)
++    refnodes = list(doctree.traverse(pending_xref))
++    assert [node.get('reftarget') for node in refnodes] == ['Optional', 'str']
++    for node in refnodes:
++        assert node.get('py:class') == 'Class'
+ 
+ 
+ def test_pydecorator_signature(app):

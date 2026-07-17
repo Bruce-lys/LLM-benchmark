@@ -1,0 +1,35 @@
+diff --git a/xarray/coding/variables.py b/xarray/coding/variables.py
+index b035ff82..938752c4 100644
+--- a/xarray/coding/variables.py
++++ b/xarray/coding/variables.py
+@@ -316,6 +316,14 @@ class UnsignedIntegerCoder(VariableCoder):
+                     if "_FillValue" in attrs:
+                         new_fill = unsigned_dtype.type(attrs["_FillValue"])
+                         attrs["_FillValue"] = new_fill
++            elif data.dtype.kind == "u":
++                if unsigned == "false":
++                    signed_dtype = np.dtype("i%s" % data.dtype.itemsize)
++                    transform = partial(np.asarray, dtype=signed_dtype)
++                    data = lazy_elemwise_func(data, transform, signed_dtype)
++                    if "_FillValue" in attrs:
++                        new_fill = signed_dtype.type(attrs["_FillValue"])
++                        attrs["_FillValue"] = new_fill
+             else:
+                 warnings.warn(
+                     "variable %r has _Unsigned attribute but is not "
+diff --git a/xarray/conventions.py b/xarray/conventions.py
+index bb0cc5cd..4a7a0db2 100644
+--- a/xarray/conventions.py
++++ b/xarray/conventions.py
+@@ -309,8 +309,9 @@ def decode_cf_variable(
+         example: ["h", "e", "l", "l", "o"] -> "hello"
+     mask_and_scale : bool
+         Lazily scale (using scale_factor and add_offset) and mask
+-        (using _FillValue). If the _Unsigned attribute is present
+-        treat integer arrays as unsigned.
++        (using _FillValue). If the _Unsigned attribute is "true", treat
++        integer arrays as unsigned; if it is "false", treat unsigned integer
++        arrays as signed.
+     decode_times : bool
+         Decode cf times ("hours since 2000-01-01") to np.datetime64.
+     decode_endianness : bool

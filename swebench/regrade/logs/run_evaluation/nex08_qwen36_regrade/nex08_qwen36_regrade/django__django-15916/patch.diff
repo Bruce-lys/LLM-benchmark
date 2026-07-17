@@ -1,0 +1,58 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 192d9fad94..a3cacf716e 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -253,17 +253,26 @@ class ModelFormOptions:
+         self.help_texts = getattr(options, "help_texts", None)
+         self.error_messages = getattr(options, "error_messages", None)
+         self.field_classes = getattr(options, "field_classes", None)
++        self.formfield_callback = getattr(options, "formfield_callback", None)
+ 
+ 
+ class ModelFormMetaclass(DeclarativeFieldsMetaclass):
+     def __new__(mcs, name, bases, attrs):
+         base_formfield_callback = None
+         for b in bases:
++            if hasattr(b, "_meta") and hasattr(b._meta, "formfield_callback"):
++                base_formfield_callback = b._meta.formfield_callback
++                break
+             if hasattr(b, "Meta") and hasattr(b.Meta, "formfield_callback"):
+                 base_formfield_callback = b.Meta.formfield_callback
+                 break
+ 
+-        formfield_callback = attrs.pop("formfield_callback", base_formfield_callback)
++        formfield_callback = attrs.pop("formfield_callback", None)
++        meta = attrs.get("Meta")
++        if formfield_callback is None:
++            formfield_callback = getattr(meta, "formfield_callback", None)
++        if formfield_callback is None:
++            formfield_callback = base_formfield_callback
+ 
+         new_class = super().__new__(mcs, name, bases, attrs)
+ 
+@@ -271,6 +280,7 @@ class ModelFormMetaclass(DeclarativeFieldsMetaclass):
+             return new_class
+ 
+         opts = new_class._meta = ModelFormOptions(getattr(new_class, "Meta", None))
++        opts.formfield_callback = formfield_callback
+ 
+         # We check if a string was passed to `fields` or `exclude`,
+         # which is likely to be a mistake where the user typed ('foo') instead
+@@ -630,13 +640,15 @@ def modelform_factory(
+     # creating needs to inherit from the parent's inner meta.
+     bases = (form.Meta,) if hasattr(form, "Meta") else ()
+     Meta = type("Meta", bases, attrs)
+-    if formfield_callback:
++    if formfield_callback is not None:
+         Meta.formfield_callback = staticmethod(formfield_callback)
+     # Give this new form class a reasonable name.
+     class_name = model.__name__ + "Form"
+ 
+     # Class attributes for the new form class.
+-    form_class_attrs = {"Meta": Meta, "formfield_callback": formfield_callback}
++    form_class_attrs = {"Meta": Meta}
++    if formfield_callback is not None:
++        form_class_attrs["formfield_callback"] = formfield_callback
+ 
+     if getattr(Meta, "fields", None) is None and getattr(Meta, "exclude", None) is None:
+         raise ImproperlyConfigured(

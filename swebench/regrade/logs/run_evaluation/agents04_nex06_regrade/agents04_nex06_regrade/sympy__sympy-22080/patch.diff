@@ -1,0 +1,129 @@
+diff --git a/sympy/printing/codeprinter.py b/sympy/printing/codeprinter.py
+index ba0e746f5d..0d4a173410 100644
+--- a/sympy/printing/codeprinter.py
++++ b/sympy/printing/codeprinter.py
+@@ -451,6 +451,9 @@ def _print_Not(self, expr):
+         PREC = precedence(expr)
+         return self._operators['not'] + self.parenthesize(expr.args[0], PREC)
+ 
++    def _print_factor(self, expr, prec):
++        return self.parenthesize(expr, prec)
++
+     def _print_Mul(self, expr):
+ 
+         prec = precedence(expr)
+@@ -487,8 +490,8 @@ def _print_Mul(self, expr):
+ 
+         a = a or [S.One]
+ 
+-        a_str = [self.parenthesize(x, prec) for x in a]
+-        b_str = [self.parenthesize(x, prec) for x in b]
++        a_str = [self._print_factor(x, prec) for x in a]
++        b_str = [self._print_factor(x, prec) for x in b]
+ 
+         # To parenthesize Pow with exp = -1 and having more than one Symbol
+         for item in pow_paren:
+diff --git a/sympy/printing/lambdarepr.py b/sympy/printing/lambdarepr.py
+index 02f89a6746..d29369e4c1 100644
+--- a/sympy/printing/lambdarepr.py
++++ b/sympy/printing/lambdarepr.py
+@@ -64,6 +64,11 @@ def _print_NumberSymbol(self, expr):
+         return str(expr)
+ 
+     def _print_Pow(self, expr, **kwargs):
++        from sympy.core import Mod
++
++        if expr.base.func is Mod:
++            return PythonCodePrinter._print_Pow(self, expr, **kwargs)
++
+         # XXX Temporary workaround. Should python math printer be
+         # isolated from PythonCodePrinter?
+         return super(PythonCodePrinter, self)._print_Pow(expr, **kwargs)
+diff --git a/sympy/printing/pycode.py b/sympy/printing/pycode.py
+index b669a2c783..bade52ded5 100644
+--- a/sympy/printing/pycode.py
++++ b/sympy/printing/pycode.py
+@@ -5,7 +5,7 @@
+ """
+ from collections import defaultdict
+ from itertools import chain
+-from sympy.core import S
++from sympy.core import Mod, Pow, S
+ from .precedence import precedence
+ from .codeprinter import CodePrinter
+ 
+@@ -232,10 +232,23 @@ def _print_NegativeInfinity(self, expr):
+     def _print_ComplexInfinity(self, expr):
+         return self._print_NaN(expr)
+ 
+-    def _print_Mod(self, expr):
++    def _print_mod(self, expr):
+         PREC = precedence(expr)
+         return ('{} % {}'.format(*map(lambda x: self.parenthesize(x, PREC), expr.args)))
+ 
++    def _print_pow_base(self, expr, prec, strict=False):
++        if expr.func is Mod:
++            return '({})'.format(self._print(expr))
++        return self.parenthesize(expr, prec, strict=strict)
++
++    def _print_factor(self, expr, prec):
++        if expr.func is Mod or (expr.func is Pow and expr.base.func is Mod):
++            return '({})'.format(self._print(expr))
++        return self.parenthesize(expr, prec)
++
++    def _print_Mod(self, expr):
++        return self._print_mod(expr)
++
+     def _print_Piecewise(self, expr):
+         result = []
+         i = 0
+@@ -410,24 +423,27 @@ def _hprint_Pow(self, expr, rational=False, sqrt='math.sqrt'):
+ 
+         if expr.exp == S.Half and not rational:
+             func = self._module_format(sqrt)
+-            arg = self._print(expr.base)
++            arg = self._print_pow_base(expr.base, PREC, strict=False)
+             return '{func}({arg})'.format(func=func, arg=arg)
+ 
+         if expr.is_commutative:
+             if -expr.exp is S.Half and not rational:
+                 func = self._module_format(sqrt)
+                 num = self._print(S.One)
+-                arg = self._print(expr.base)
++                arg = self._print_pow_base(expr.base, PREC, strict=False)
+                 return "{num}/{func}({arg})".format(
+                     num=num, func=func, arg=arg)
+ 
+-        base_str = self.parenthesize(expr.base, PREC, strict=False)
++        base_str = self._print_pow_base(expr.base, PREC, strict=False)
+         exp_str = self.parenthesize(expr.exp, PREC, strict=False)
+         return "{}**{}".format(base_str, exp_str)
+ 
+ 
+ class PythonCodePrinter(AbstractPythonCodePrinter):
+ 
++    def _print_Pow(self, expr, rational=False):
++        return self._hprint_Pow(expr, rational=rational)
++
+     def _print_sign(self, e):
+         return '(0.0 if {e} == 0 else {f}(1, {e}))'.format(
+             f=self._module_format('math.copysign'), e=self._print(e.args[0]))
+@@ -441,9 +457,6 @@ def _print_Indexed(self, expr):
+         index = expr.args[1:]
+         return "{}[{}]".format(str(base), ", ".join([self._print(ind) for ind in index]))
+ 
+-    def _print_Pow(self, expr, rational=False):
+-        return self._hprint_Pow(expr, rational=rational)
+-
+     def _print_Rational(self, expr):
+         if self.standard == 'python2':
+             return '{}./{}.'.format(expr.p, expr.q)
+@@ -630,7 +643,7 @@ def _print_Integral(self, e):
+     setattr(MpmathPrinter, '_print_%s' % k, _print_known_const)
+ 
+ 
+-class SymPyPrinter(AbstractPythonCodePrinter):
++class SymPyPrinter(PythonCodePrinter):
+ 
+     language = "Python with SymPy"
+ 

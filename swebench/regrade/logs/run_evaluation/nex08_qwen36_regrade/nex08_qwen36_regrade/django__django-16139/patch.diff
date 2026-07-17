@@ -1,0 +1,83 @@
+diff --git a/django/contrib/auth/admin.py b/django/contrib/auth/admin.py
+index 5424711643..b471f261b5 100644
+--- a/django/contrib/auth/admin.py
++++ b/django/contrib/auth/admin.py
+@@ -1,6 +1,7 @@
+ from django.conf import settings
+ from django.contrib import admin, messages
+-from django.contrib.admin.options import IS_POPUP_VAR
++from django.contrib.admin.exceptions import DisallowedModelAdminToField
++from django.contrib.admin.options import IS_POPUP_VAR, TO_FIELD_VAR
+ from django.contrib.admin.utils import unquote
+ from django.contrib.auth import update_session_auth_hash
+ from django.contrib.auth.forms import (
+@@ -15,6 +16,7 @@ from django.http import Http404, HttpResponseRedirect
+ from django.template.response import TemplateResponse
+ from django.urls import path, reverse
+ from django.utils.decorators import method_decorator
++from django.utils.http import urlencode
+ from django.utils.html import escape
+ from django.utils.translation import gettext
+ from django.utils.translation import gettext_lazy as _
+@@ -95,7 +97,16 @@ class UserAdmin(admin.ModelAdmin):
+         if obj is None:
+             defaults["form"] = self.add_form
+         defaults.update(kwargs)
+-        return super().get_form(request, obj, **defaults)
++        form = super().get_form(request, obj, **defaults)
++        if obj is not None:
++            to_field = request.POST.get(TO_FIELD_VAR, request.GET.get(TO_FIELD_VAR))
++            if to_field:
++                password = form.base_fields.get("password")
++                if password:
++                    password.help_text = password.help_text.format(
++                        "../password/?_to_field=%s" % to_field
++                    )
++        return form
+ 
+     def get_urls(self):
+         return [
+@@ -148,7 +159,13 @@ class UserAdmin(admin.ModelAdmin):
+ 
+     @sensitive_post_parameters_m
+     def user_change_password(self, request, id, form_url=""):
+-        user = self.get_object(request, unquote(id))
++        to_field = request.GET.get(TO_FIELD_VAR)
++        if to_field and not self.to_field_allowed(request, to_field):
++            raise DisallowedModelAdminToField(
++                "The field %s cannot be referenced." % to_field
++            )
++
++        user = self.get_object(request, unquote(id), to_field)
+         if not self.has_change_permission(request, user):
+             raise PermissionDenied
+         if user is None:
+@@ -168,17 +185,18 @@ class UserAdmin(admin.ModelAdmin):
+                 msg = gettext("Password changed successfully.")
+                 messages.success(request, msg)
+                 update_session_auth_hash(request, form.user)
+-                return HttpResponseRedirect(
+-                    reverse(
+-                        "%s:%s_%s_change"
+-                        % (
+-                            self.admin_site.name,
+-                            user._meta.app_label,
+-                            user._meta.model_name,
+-                        ),
+-                        args=(user.pk,),
+-                    )
++                change_url = reverse(
++                    "%s:%s_%s_change"
++                    % (
++                        self.admin_site.name,
++                        user._meta.app_label,
++                        user._meta.model_name,
++                    ),
++                    args=(unquote(id),),
+                 )
++                if to_field:
++                    change_url += "?" + urlencode({TO_FIELD_VAR: to_field})
++                return HttpResponseRedirect(change_url)
+         else:
+             form = self.change_password_form(user)
+ 

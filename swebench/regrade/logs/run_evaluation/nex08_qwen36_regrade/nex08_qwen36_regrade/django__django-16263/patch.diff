@@ -1,0 +1,122 @@
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index 9735ce10c8..501b6b75dd 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -545,12 +545,117 @@ class Query(BaseExpression):
+ 
+         return dict(zip(outer_query.annotation_select, result))
+ 
++    def _get_count_annotation_aliases(self):
++        """
++        Return aliases of annotations that must be retained for the
++        count() query.
++        """
++        annotations = self.annotations
++        if not annotations:
++            return set()
++
++        id_to_alias = {
++            id(annotation): alias
++            for alias, annotation in annotations.items()
++        }
++        refs = set()
++        seen = set()
++
++        def add_refs_from_expr(expr, include_root=True):
++            if expr is None:
++                return
++            expr_id = id(expr)
++            if expr_id in seen:
++                return
++            seen.add(expr_id)
++            if include_root:
++                alias = id_to_alias.get(expr_id)
++                if alias is not None:
++                    refs.add(alias)
++            if isinstance(expr, Ref) and expr.refs in annotations:
++                refs.add(expr.refs)
++            elif isinstance(expr, F) and expr.name in annotations:
++                refs.add(expr.name)
++            elif isinstance(expr, str) and expr in annotations:
++                refs.add(expr)
++            elif isinstance(expr, Node):
++                for child in expr.children:
++                    add_refs_from_expr(child)
++            elif hasattr(expr, "get_source_expressions"):
++                for source in expr.get_source_expressions():
++                    add_refs_from_expr(source)
++
++        if self.where:
++            add_refs_from_expr(self.where)
++
++        for annotation in annotations.values():
++            add_refs_from_expr(annotation, include_root=False)
++
++        if self.group_by and self.group_by is not True:
++            for expr in self.group_by:
++                add_refs_from_expr(expr)
++
++        for expr in chain(self.order_by, self.extra_order_by):
++            add_refs_from_expr(expr)
++
++        return refs
++
+     def get_count(self, using):
+         """
+         Perform a COUNT() query using the current filter constraints.
+         """
+         obj = self.clone()
+         obj.add_annotation(Count("*"), alias="__count", is_summary=True)
++        needed = self._get_count_annotation_aliases()
++        needed.add("__count")
++        has_aggregate_needed = any(
++            annotation.contains_aggregate
++            for alias, annotation in self.annotations.items()
++            if alias != "__count" and alias in needed
++        )
++        # Non-aggregate annotations can affect row multiplication for aggregate
++        # annotations, so keep them if an aggregate annotation is required.
++        if has_aggregate_needed:
++            for alias, annotation in self.annotations.items():
++                if (
++                    alias != "__count"
++                    and not annotation.contains_aggregate
++                    and alias not in needed
++                ):
++                    needed.add(alias)
++        obj.set_annotation_mask(needed)
++        for alias in list(obj.annotations):
++            if alias not in needed:
++                del obj.annotations[alias]
++
++        needed_aliases = {obj.get_initial_alias()}
++
++        def add_col_aliases_from_expr(expr):
++            if isinstance(expr, Node):
++                for child in expr.children:
++                    add_col_aliases_from_expr(child)
++            elif isinstance(expr, Ref):
++                needed_aliases.add(expr.refs)
++                for source in expr.get_source_expressions():
++                    add_col_aliases_from_expr(source)
++            elif hasattr(expr, "get_source_expressions"):
++                needed_aliases.update(Query._gen_col_aliases([expr]))
++                for source in expr.get_source_expressions():
++                    add_col_aliases_from_expr(source)
++
++        if obj.where:
++            add_col_aliases_from_expr(obj.where)
++        if obj.group_by and obj.group_by is not True:
++            for expr in obj.group_by:
++                add_col_aliases_from_expr(expr)
++        for expr in chain(obj.order_by, obj.extra_order_by):
++            add_col_aliases_from_expr(expr)
++        for annotation in obj.annotations.values():
++            add_col_aliases_from_expr(annotation)
++        for alias, join in obj.alias_map.items():
++            if alias not in needed_aliases:
++                obj.alias_refcount[alias] = 0
++
+         return obj.get_aggregation(using, ["__count"])["__count"]
+ 
+     def has_filters(self):

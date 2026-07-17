@@ -1,0 +1,102 @@
+diff --git a/sympy/physics/quantum/tensorproduct.py b/sympy/physics/quantum/tensorproduct.py
+index 9dd10d219..f428c85e3 100644
+--- a/sympy/physics/quantum/tensorproduct.py
++++ b/sympy/physics/quantum/tensorproduct.py
+@@ -2,7 +2,7 @@
+ 
+ from __future__ import print_function, division
+ 
+-from sympy import Expr, Add, Mul, Matrix, Pow, sympify
++from sympy import Expr, Add, Mul, Matrix, Pow, S, sympify
+ from sympy.core.compatibility import range
+ from sympy.core.trace import Tr
+ from sympy.printing.pretty.stringpict import prettyForm
+@@ -268,6 +268,15 @@ def _eval_trace(self, **kwargs):
+                          for idx, value in enumerate(exp.args)])
+ 
+ 
++def _is_tensorproduct_product(e):
++    if isinstance(e, TensorProduct):
++        return True
++    if isinstance(e, Mul):
++        _, nc_part = e.args_cnc()
++        return all(isinstance(arg, TensorProduct) for arg in nc_part)
++    return False
++
++
+ def tensor_product_simp_Mul(e):
+     """Simplify a Mul with TensorProducts.
+ 
+@@ -321,7 +330,7 @@ def tensor_product_simp_Mul(e):
+     elif e.has(TensorProduct):
+         current = nc_part[0]
+         if not isinstance(current, TensorProduct):
+-            raise TypeError('TensorProduct expected, got: %r' % current)
++            return e
+         n_terms = len(current.args)
+         new_args = list(current.args)
+         for next in nc_part[1:]:
+@@ -334,11 +343,13 @@ def tensor_product_simp_Mul(e):
+                     )
+                 for i in range(len(new_args)):
+                     new_args[i] = new_args[i] * next.args[i]
+-            else:
++            elif next.is_Atom:
+                 # this won't quite work as we don't want next in the
+                 # TensorProduct
+                 for i in range(len(new_args)):
+                     new_args[i] = new_args[i] * next
++            else:
++                return e
+             current = next
+         return Mul(*c_part) * TensorProduct(*new_args)
+     else:
+@@ -349,9 +360,9 @@ def tensor_product_simp(e, **hints):
+     """Try to simplify and combine TensorProducts.
+ 
+     In general this will try to pull expressions inside of ``TensorProducts``.
+-    It currently only works for relatively simple cases where the products have
+-    only scalars, raw ``TensorProducts``, not ``Add``, ``Pow``, ``Commutators``
+-    of ``TensorProducts``. It is best to see what it does by showing examples.
++    It currently only works for relatively simple cases where products contain
++    only scalars and raw ``TensorProducts``. It also works inside powers, sums,
++    commutators and anticommutators.
+ 
+     Examples
+     ========
+@@ -382,8 +393,18 @@ def tensor_product_simp(e, **hints):
+     if isinstance(e, Add):
+         return Add(*[tensor_product_simp(arg) for arg in e.args])
+     elif isinstance(e, Pow):
+-        return tensor_product_simp(e.base) ** e.exp
++        base = tensor_product_simp(e.base)
++        if e.exp.is_Integer and e.exp >= 0 and _is_tensorproduct_product(base):
++            if e.exp == 0:
++                return S.One
++            if e.exp == 1:
++                return base
++            return tensor_product_simp(Mul(*([base] * int(e.exp)), evaluate=False))
++        return base ** e.exp
+     elif isinstance(e, Mul):
++        new_args = [tensor_product_simp(arg) for arg in e.args]
++        if any(arg != new_arg for arg, new_arg in zip(e.args, new_args)):
++            e = Mul(*new_args, evaluate=False)
+         return tensor_product_simp_Mul(e)
+     elif isinstance(e, Commutator):
+         return Commutator(*[tensor_product_simp(arg) for arg in e.args])
+@@ -391,3 +412,15 @@ def tensor_product_simp(e, **hints):
+         return AntiCommutator(*[tensor_product_simp(arg) for arg in e.args])
+     else:
+         return e
++
++
++def _eval_expand_tensorproduct_Mul(self, **hints):
++    return tensor_product_simp(self)
++
++
++def _eval_expand_tensorproduct_Pow(self, **hints):
++    return tensor_product_simp(self)
++
++
++Mul._eval_expand_tensorproduct = _eval_expand_tensorproduct_Mul
++Pow._eval_expand_tensorproduct = _eval_expand_tensorproduct_Pow

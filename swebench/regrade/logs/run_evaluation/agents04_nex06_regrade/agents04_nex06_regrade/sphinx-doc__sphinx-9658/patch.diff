@@ -1,0 +1,70 @@
+diff --git a/sphinx/ext/autodoc/__init__.py b/sphinx/ext/autodoc/__init__.py
+index a255c0691..373f553e0 100644
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -1651,7 +1651,11 @@ class ClassDocumenter(DocstringSignatureMixin, ModuleLevelDocumenter):  # type:
+ 
+         # add inheritance info, if wanted
+         if not self.doc_as_attr and self.options.show_inheritance:
+-            if hasattr(self.object, '__orig_bases__') and len(self.object.__orig_bases__):
++            if (hasattr(self.object, '__orig_bases__') and
++                    len(self.object.__orig_bases__) and
++                    # Inheriting from mocked objects can leave __orig_bases__
++                    # set to mock instances, which lack __qualname__.
++                    not any(ismock(base) for base in self.object.__orig_bases__)):
+                 # A subclass of generic types
+                 # refs: PEP-560 <https://www.python.org/dev/peps/pep-0560/>
+                 bases = list(self.object.__orig_bases__)
+diff --git a/sphinx/ext/autodoc/mock.py b/sphinx/ext/autodoc/mock.py
+index b562f47fd..66b8969c8 100644
+--- a/sphinx/ext/autodoc/mock.py
++++ b/sphinx/ext/autodoc/mock.py
+@@ -168,7 +168,7 @@ def ismock(subject: Any) -> bool:
+     try:
+         # check the object is mocked object
+         __mro__ = safe_getattr(type(subject), '__mro__', [])
+-        if len(__mro__) > 2 and __mro__[1] is _MockObject:
++        if any(base is _MockObject for base in __mro__):
+             return True
+     except AttributeError:
+         pass
+diff --git a/sphinx/util/typing.py b/sphinx/util/typing.py
+index 87707d48f..8677ff97b 100644
+--- a/sphinx/util/typing.py
++++ b/sphinx/util/typing.py
+@@ -192,7 +192,10 @@ def _restify_py37(cls: Optional[Type]) -> str:
+     elif isinstance(cls, typing._SpecialForm):
+         return ':py:obj:`~%s.%s`' % (cls.__module__, cls._name)
+     elif hasattr(cls, '__qualname__'):
+-        if cls.__module__ == 'typing':
++        if not cls.__qualname__ and hasattr(cls, '__display_name__'):
++            # Mocked objects may have an empty __qualname__.
++            return ':py:class:`%s`' % cls.__display_name__
++        elif cls.__module__ == 'typing':
+             return ':py:class:`~%s.%s`' % (cls.__module__, cls.__qualname__)
+         else:
+             return ':py:class:`%s.%s`' % (cls.__module__, cls.__qualname__)
+@@ -220,7 +223,10 @@ def _restify_py36(cls: Optional[Type]) -> str:
+         else:
+             qualname = repr(cls).replace('typing.', '')
+     elif hasattr(cls, '__qualname__'):
+-        qualname = '%s.%s' % (module, cls.__qualname__)
++        if not cls.__qualname__ and hasattr(cls, '__display_name__'):
++            qualname = cls.__display_name__
++        else:
++            qualname = '%s.%s' % (module, cls.__qualname__)
+     else:
+         qualname = repr(cls)
+ 
+@@ -274,7 +280,10 @@ def _restify_py36(cls: Optional[Type]) -> str:
+         else:
+             return ':py:obj:`Union`'
+     elif hasattr(cls, '__qualname__'):
+-        if cls.__module__ == 'typing':
++        if not cls.__qualname__ and hasattr(cls, '__display_name__'):
++            # Mocked objects may have an empty __qualname__.
++            return ':py:class:`%s`' % cls.__display_name__
++        elif cls.__module__ == 'typing':
+             return ':py:class:`~%s.%s`' % (cls.__module__, cls.__qualname__)
+         else:
+             return ':py:class:`%s.%s`' % (cls.__module__, cls.__qualname__)

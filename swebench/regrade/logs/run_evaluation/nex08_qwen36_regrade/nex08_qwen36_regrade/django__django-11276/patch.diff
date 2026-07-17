@@ -1,0 +1,83 @@
+diff --git a/django/utils/html.py b/django/utils/html.py
+index 9c519978f5..bc29328fcf 100644
+--- a/django/utils/html.py
++++ b/django/utils/html.py
+@@ -1,5 +1,6 @@
+ """HTML utilities suitable for global use."""
+ 
++import html
+ import json
+ import re
+ from html.parser import HTMLParser
+@@ -24,14 +25,6 @@ word_split_re = re.compile(r'''([\s<>"']+)''')
+ simple_url_re = re.compile(r'^https?://\[?\w', re.IGNORECASE)
+ simple_url_2_re = re.compile(r'^www\.|^(?!http)\w[^@]+\.(com|edu|gov|int|mil|net|org)($|/.*)$', re.IGNORECASE)
+ 
+-_html_escapes = {
+-    ord('&'): '&amp;',
+-    ord('<'): '&lt;',
+-    ord('>'): '&gt;',
+-    ord('"'): '&quot;',
+-    ord("'"): '&#39;',
+-}
+-
+ 
+ @keep_lazy(str, SafeString)
+ def escape(text):
+@@ -43,7 +36,7 @@ def escape(text):
+     This may result in double-escaping. If this is a concern, use
+     conditional_escape() instead.
+     """
+-    return mark_safe(str(text).translate(_html_escapes))
++    return mark_safe(html.escape(str(text)))
+ 
+ 
+ _js_escapes = {
+@@ -266,7 +259,7 @@ def urlize(text, trim_url_limit=None, nofollow=False, autoescape=False):
+         http://example.com?x=1&amp;y=&lt;2&gt; => http://example.com?x=1&y=<2>
+         """
+         return text.replace('&amp;', '&').replace('&lt;', '<').replace(
+-            '&gt;', '>').replace('&quot;', '"').replace('&#39;', "'")
++            '&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&#x27;', "'")
+ 
+     def trim_punctuation(lead, middle, trail):
+         """
+diff --git a/docs/intro/tutorial05.txt b/docs/intro/tutorial05.txt
+index 42891a6ecd..c59a0db155 100644
+--- a/docs/intro/tutorial05.txt
++++ b/docs/intro/tutorial05.txt
+@@ -387,7 +387,7 @@ With that ready, we can ask the client to do some work for us::
+     >>> response.status_code
+     200
+     >>> response.content
+-    b'\n    <ul>\n    \n        <li><a href="/polls/1/">What&#39;s up?</a></li>\n    \n    </ul>\n\n'
++    b'\n    <ul>\n    \n        <li><a href="/polls/1/">What&#x27;s up?</a></li>\n    \n    </ul>\n\n'
+     >>> response.context['latest_question_list']
+     <QuerySet [<Question: What's up?>]>
+ 
+diff --git a/docs/ref/templates/builtins.txt b/docs/ref/templates/builtins.txt
+index 9509377a24..cd5476fd6f 100644
+--- a/docs/ref/templates/builtins.txt
++++ b/docs/ref/templates/builtins.txt
+@@ -1603,7 +1603,7 @@ Escapes a string's HTML. Specifically, it makes these replacements:
+ 
+ * ``<`` is converted to ``&lt;``
+ * ``>`` is converted to ``&gt;``
+-* ``'`` (single quote) is converted to ``&#39;``
++* ``'`` (single quote) is converted to ``&#x27;``
+ * ``"`` (double quote) is converted to ``&quot;``
+ * ``&`` is converted to ``&amp;``
+ 
+diff --git a/docs/ref/templates/language.txt b/docs/ref/templates/language.txt
+index 1287f012c2..33687fc49d 100644
+--- a/docs/ref/templates/language.txt
++++ b/docs/ref/templates/language.txt
+@@ -492,7 +492,7 @@ escaped:
+ 
+ * ``<`` is converted to ``&lt;``
+ * ``>`` is converted to ``&gt;``
+-* ``'`` (single quote) is converted to ``&#39;``
++* ``'`` (single quote) is converted to ``&#x27;``
+ * ``"`` (double quote) is converted to ``&quot;``
+ * ``&`` is converted to ``&amp;``
+ 

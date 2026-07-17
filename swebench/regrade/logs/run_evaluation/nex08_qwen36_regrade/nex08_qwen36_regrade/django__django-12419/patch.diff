@@ -1,0 +1,97 @@
+diff --git a/django/conf/global_settings.py b/django/conf/global_settings.py
+index 09c9b95d26..8bb59a4037 100644
+--- a/django/conf/global_settings.py
++++ b/django/conf/global_settings.py
+@@ -637,6 +637,6 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+ SECURE_HSTS_PRELOAD = False
+ SECURE_HSTS_SECONDS = 0
+ SECURE_REDIRECT_EXEMPT = []
+-SECURE_REFERRER_POLICY = None
++SECURE_REFERRER_POLICY = 'same-origin'
+ SECURE_SSL_HOST = None
+ SECURE_SSL_REDIRECT = False
+diff --git a/django/core/checks/security/base.py b/django/core/checks/security/base.py
+index b69c2a11da..afc5933e39 100644
+--- a/django/core/checks/security/base.py
++++ b/django/core/checks/security/base.py
+@@ -103,7 +103,7 @@ W021 = Warning(
+ )
+ 
+ W022 = Warning(
+-    'You have not set the SECURE_REFERRER_POLICY setting. Without this, your '
++    'You have set the SECURE_REFERRER_POLICY setting to None. Without this, your '
+     'site will not send a Referrer-Policy header. You should consider '
+     'enabling this header to protect user privacy.',
+     id='security.W022',
+diff --git a/docs/ref/checks.txt b/docs/ref/checks.txt
+index e7b0a5ec8c..ebf4bdc7cb 100644
+--- a/docs/ref/checks.txt
++++ b/docs/ref/checks.txt
+@@ -431,9 +431,9 @@ The following checks are run if you use the :option:`check --deploy` option:
+ * **security.W021**: You have not set the
+   :setting:`SECURE_HSTS_PRELOAD` setting to ``True``. Without this, your site
+   cannot be submitted to the browser preload list.
+-* **security.W022**: You have not set the :setting:`SECURE_REFERRER_POLICY`
+-  setting. Without this, your site will not send a Referrer-Policy header. You
+-  should consider enabling this header to protect user privacy.
++* **security.W022**: You have set the :setting:`SECURE_REFERRER_POLICY`
++  setting to ``None``. Without this, your site will not send a Referrer-Policy
++  header. You should consider enabling this header to protect user privacy.
+ * **security.E023**: You have set the :setting:`SECURE_REFERRER_POLICY` setting
+   to an invalid value.
+ 
+diff --git a/docs/ref/middleware.txt b/docs/ref/middleware.txt
+index 0e51dec75c..8675747a10 100644
+--- a/docs/ref/middleware.txt
++++ b/docs/ref/middleware.txt
+@@ -296,7 +296,8 @@ for:
+ ``SecurityMiddleware`` can set the ``Referrer-Policy`` header for you, based on
+ the :setting:`SECURE_REFERRER_POLICY` setting (note spelling: browsers send a
+ ``Referer`` header when a user clicks a link, but the header instructing a
+-browser whether to do so is spelled ``Referrer-Policy``). The valid values for
++browser whether to do so is spelled ``Referrer-Policy``). The default value
++is ``'same-origin'``. The valid values for
+ this setting are:
+ 
+ ``no-referrer``
+diff --git a/docs/ref/settings.txt b/docs/ref/settings.txt
+index b4a5bdc48f..e76a1016c8 100644
+--- a/docs/ref/settings.txt
++++ b/docs/ref/settings.txt
+@@ -2395,11 +2395,13 @@ from URL paths, so patterns shouldn't include them, e.g.
+ 
+ .. versionadded:: 3.0
+ 
+-Default: ``None``
++Default: ``'same-origin'``
+ 
+-If configured, the :class:`~django.middleware.security.SecurityMiddleware` sets
+-the :ref:`referrer-policy` header on all responses that do not already have it
+-to the value provided.
++By default, Django will instruct browsers to send a full URL referrer for
++same-origin links, but no referrer for cross-origin links. If configured to a different value,
++the :class:`~django.middleware.security.SecurityMiddleware` sets the
++:ref:`referrer-policy` header on all responses that do not already have
++it to the value provided.
+ 
+ .. setting:: SECURE_SSL_HOST
+ 
+diff --git a/docs/releases/3.1.txt b/docs/releases/3.1.txt
+index 4a165156e1..985756a9d5 100644
+--- a/docs/releases/3.1.txt
++++ b/docs/releases/3.1.txt
+@@ -354,6 +354,14 @@ Miscellaneous
+ * The :setting:`TIME_ZONE <DATABASE-TIME_ZONE>` setting is now allowed on
+   databases that support time zones.
+ 
++Security
++~~~~~~~~
++
++* The default :setting:`SECURE_REFERRER_POLICY` is now ``'same-origin'``. With
++  this, :class:`~django.middleware.security.SecurityMiddleware` sets the
++  :ref:`Referrer-Policy <referrer-policy>` header on all responses that do not
++  already have it.
++
+ .. _backwards-incompatible-3.1:
+ 
+ Backwards incompatible changes in 3.1

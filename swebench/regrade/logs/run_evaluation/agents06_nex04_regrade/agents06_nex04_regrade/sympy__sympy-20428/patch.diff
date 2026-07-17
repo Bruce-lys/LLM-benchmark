@@ -1,0 +1,28 @@
+diff --git a/sympy/polys/polyclasses.py b/sympy/polys/polyclasses.py
+index 238a0f0b25..862bb85256 100644
+--- a/sympy/polys/polyclasses.py
++++ b/sympy/polys/polyclasses.py
+@@ -57,7 +57,9 @@ def _perify_factors(per, result, include):
+     dmp_terms_gcd,
+     dmp_list_terms, dmp_exclude,
+     dmp_slice_in, dmp_permute,
+-    dmp_to_tuple,)
++    dmp_to_tuple,
++    _rec_strip, dmp_strip,
++)
+ 
+ from sympy.polys.densearith import (
+     dmp_add_ground,
+@@ -152,6 +154,12 @@ def __init__(self, rep, dom, lev=None, ring=None):
+                 rep = dmp_from_dict(rep, lev, dom)
+             elif type(rep) is not list:
+                 rep = dmp_ground(dom.convert(rep), lev)
++            else:
++                # Strip leading zero coefficients while preserving the level.
++                if lev == 0:
++                    rep = dup_strip(rep)
++                else:
++                    rep = dmp_strip([_rec_strip(c, lev - 1) for c in rep], lev)
+         else:
+             rep, lev = dmp_validate(rep)
+ 

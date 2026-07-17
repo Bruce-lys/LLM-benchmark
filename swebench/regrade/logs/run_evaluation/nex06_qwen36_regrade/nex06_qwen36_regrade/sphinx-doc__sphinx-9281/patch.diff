@@ -1,0 +1,16 @@
+diff --git a/sphinx/util/inspect.py b/sphinx/util/inspect.py
+index a415a7074..8d4e402ac 100644
+--- a/sphinx/util/inspect.py
++++ b/sphinx/util/inspect.py
+@@ -457,6 +457,11 @@ def object_description(object: Any) -> str:
+         else:
+             return "frozenset({%s})" % ", ".join(object_description(x)
+                                                  for x in sorted_values)
++    if isinstance(object, enum.Enum):
++        if object.name is not None:
++            return "%s.%s" % (object.__class__.__qualname__, object.name)
++        else:
++            return str(object)
+     try:
+         s = repr(object)
+     except Exception as exc:

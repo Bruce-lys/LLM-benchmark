@@ -1,0 +1,30 @@
+diff --git a/sphinx/pycode/parser.py b/sphinx/pycode/parser.py
+index a00b481ce..ee8fc2cf0 100644
+--- a/sphinx/pycode/parser.py
++++ b/sphinx/pycode/parser.py
+@@ -79,6 +79,16 @@ def get_lvar_names(node: ast.AST, self: ast.arg = None) -> List[str]:
+         raise NotImplementedError('Unexpected node name %r' % node_name)
+ 
+ 
++def is_string_literal(node: ast.AST) -> bool:
++    """Check if *node* represents a string literal."""
++    if isinstance(node, ast.Str):
++        return True
++    elif hasattr(ast, 'Constant') and isinstance(node, ast.Constant):
++        return isinstance(node.value, str)
++    else:
++        return False
++
++
+ def dedent_docstring(s: str) -> str:
+     """Remove common leading indentation from docstring."""
+     def dummy() -> None:
+@@ -401,7 +411,7 @@ class VariableCommentPicker(ast.NodeVisitor):
+     def visit_Expr(self, node: ast.Expr) -> None:
+         """Handles Expr node and pick up a comment if string."""
+         if (isinstance(self.previous, (ast.Assign, ast.AnnAssign)) and
+-                isinstance(node.value, ast.Str)):
++                is_string_literal(node.value)):
+             try:
+                 targets = get_assign_targets(self.previous)
+                 varnames = get_lvar_names(targets[0], self.get_self())

@@ -1,0 +1,32 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 3ce711f3f1..c6706c9a5b 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -1706,12 +1706,26 @@ class Model(metaclass=ModelBase):
+         for field in related_fields:
+             _cls = cls
+             fld = None
+-            for part in field.split(LOOKUP_SEP):
++            parts = field.split(LOOKUP_SEP)
++            for i, part in enumerate(parts):
+                 try:
+                     fld = _cls._meta.get_field(part)
+                     if fld.is_relation:
+                         _cls = fld.get_path_info()[-1].to_opts.model
+                 except (FieldDoesNotExist, AttributeError):
++                    if fld is not None and fld.is_relation and part == 'pk':
++                        # 'pk' is an alias and is only valid at the end of the
++                        # related field path.
++                        if i != len(parts) - 1:
++                            errors.append(
++                                checks.Error(
++                                    "'ordering' refers to the nonexistent field, "
++                                    "related field, or lookup '%s'." % field,
++                                    obj=cls,
++                                    id='models.E015',
++                                )
++                            )
++                        break
+                     if fld is None or fld.get_transform(part) is None:
+                         errors.append(
+                             checks.Error(

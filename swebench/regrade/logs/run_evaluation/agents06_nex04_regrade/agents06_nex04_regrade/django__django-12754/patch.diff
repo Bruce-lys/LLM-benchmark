@@ -1,0 +1,45 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 30616c0172..8deab8019e 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -371,6 +371,16 @@ class MigrationAutodetector:
+             for migration in migrations:
+                 migration.operations = MigrationOptimizer().optimize(migration.operations, app_label)
+ 
++    def _get_parent_model_keys(self, model_opts):
++        """Return the keys of all concrete parent models for a model."""
++        parent_keys = []
++        for parent in model_opts.parents:
++            parent_key = (parent._meta.app_label, parent._meta.model_name)
++            if parent_key not in parent_keys:
++                parent_keys.append(parent_key)
++                parent_keys.extend(self._get_parent_model_keys(parent._meta))
++        return parent_keys
++
+     def check_dependency(self, operation, dependency):
+         """
+         Return True if the given operation depends on the given dependency,
+@@ -525,6 +535,9 @@ class MigrationAutodetector:
+             sorted(added_models, key=self.swappable_first_key, reverse=True),
+             sorted(added_unmanaged_models, key=self.swappable_first_key, reverse=True)
+         )
++        removed_fields = {}
++        for app_label, model_name, field_name in self.old_field_keys - self.new_field_keys:
++            removed_fields.setdefault((app_label, model_name), set()).add(field_name)
+         for app_label, model_name in all_added_models:
+             model_state = self.to_state.models[app_label, model_name]
+             model_opts = self.new_apps.get_model(app_label, model_name)._meta
+@@ -563,6 +576,13 @@ class MigrationAutodetector:
+                 if isinstance(base, str) and "." in base:
+                     base_app_label, base_name = base.split(".", 1)
+                     dependencies.append((base_app_label, base_name, None, True))
++            # If a new model inherits from a model that has fields being removed,
++            # and it declares fields of the same names, the removal must happen
++            # before the new model is rendered.
++            for base_key in self._get_parent_model_keys(model_opts):
++                for field_name in removed_fields.get(base_key, ()):
++                    if field_name in model_state.fields and field_name not in related_fields:
++                        dependencies.append((base_key[0], base_key[1], field_name, False))
+             # Depend on the other end of the primary key if it's a relation
+             if primary_key_rel:
+                 dependencies.append((

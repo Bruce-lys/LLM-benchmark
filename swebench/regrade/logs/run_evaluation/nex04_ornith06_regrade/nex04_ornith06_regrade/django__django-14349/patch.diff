@@ -1,0 +1,14 @@
+diff --git a/django/core/validators.py b/django/core/validators.py
+index a385819510..d9df5dc592 100644
+--- a/django/core/validators.py
++++ b/django/core/validators.py
+@@ -105,6 +105,9 @@ class URLValidator(RegexValidator):
+         scheme = value.split('://')[0].lower()
+         if scheme not in self.schemes:
+             raise ValidationError(self.message, code=self.code, params={'value': value})
++        # Reject URLs containing forbidden characters (LF, CR, tab).
++        if any(c in value for c in '\n\r\t'):
++            raise ValidationError(self.message, code=self.code, params={'value': value})
+ 
+         # Then check full URL
+         try:

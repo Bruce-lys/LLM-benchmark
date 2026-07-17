@@ -1,0 +1,53 @@
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index f02199d97c..40eff04e18 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -6,7 +6,7 @@ from itertools import chain
+ from django.core.exceptions import EmptyResultSet, FieldError
+ from django.db import DatabaseError, NotSupportedError
+ from django.db.models.constants import LOOKUP_SEP
+-from django.db.models.expressions import F, OrderBy, RawSQL, Ref, Value
++from django.db.models.expressions import Col, F, OrderBy, RawSQL, Ref, Value
+ from django.db.models.functions import Cast, Random
+ from django.db.models.query_utils import Q, select_related_descend
+ from django.db.models.sql.constants import (
+@@ -1412,13 +1412,34 @@ class SQLInsertCompiler(SQLCompiler):
+             if not self.returning_fields:
+                 return []
+             if self.connection.features.can_return_rows_from_bulk_insert and len(self.query.objs) > 1:
+-                return self.connection.ops.fetch_returned_insert_rows(cursor)
++                return self._convert_insert_results(
++                    self.connection.ops.fetch_returned_insert_rows(cursor)
++                )
+             if self.connection.features.can_return_columns_from_insert:
+                 assert len(self.query.objs) == 1
+-                return [self.connection.ops.fetch_returned_insert_columns(cursor, self.returning_params)]
+-            return [(self.connection.ops.last_insert_id(
+-                cursor, self.query.get_meta().db_table, self.query.get_meta().pk.column
+-            ),)]
++                return self._convert_insert_results([
++                    self.connection.ops.fetch_returned_insert_columns(
++                        cursor, self.returning_params
++                    )
++                ])
++            return self._convert_insert_results([
++                (self.connection.ops.last_insert_id(
++                    cursor, self.query.get_meta().db_table, self.query.get_meta().pk.column
++                ),)
++            ])
++
++    def _convert_insert_results(self, rows):
++        converters = {}
++        for i, field in enumerate(self.returning_fields):
++            expression = Col(None, field)
++            converters[i] = (
++                self.connection.ops.get_db_converters(expression) +
++                field.get_db_converters(self.connection),
++                expression,
++            )
++        if not converters:
++            return rows
++        return list(self.apply_converters(rows, converters))
+ 
+ 
+ class SQLDeleteCompiler(SQLCompiler):

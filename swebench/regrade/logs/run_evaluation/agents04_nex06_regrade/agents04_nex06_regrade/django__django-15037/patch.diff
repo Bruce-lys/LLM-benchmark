@@ -1,0 +1,70 @@
+diff --git a/django/core/management/commands/inspectdb.py b/django/core/management/commands/inspectdb.py
+index f9b4bfb477..8a66070eac 100644
+--- a/django/core/management/commands/inspectdb.py
++++ b/django/core/management/commands/inspectdb.py
+@@ -58,6 +58,37 @@ class Command(BaseCommand):
+             known_models = []
+             table_info = connection.introspection.get_table_list(cursor)
+ 
++            column_to_field_name_by_table = {}
++            primary_key_column_by_table = {}
++
++            def get_column_to_field_name(table_name):
++                if table_name not in column_to_field_name_by_table:
++                    try:
++                        relations_for_table = connection.introspection.get_relations(cursor, table_name)
++                        table_description = connection.introspection.get_table_description(cursor, table_name)
++                    except Exception:
++                        column_to_field_name_by_table[table_name] = {}
++                        return column_to_field_name_by_table[table_name]
++
++                    used_column_names = []
++                    column_to_field_name = {}
++                    for row in table_description:
++                        field_name, _, _ = self.normalize_col_name(
++                            row.name, used_column_names, row.name in relations_for_table)
++                        used_column_names.append(field_name)
++                        column_to_field_name[row.name] = field_name
++                    column_to_field_name_by_table[table_name] = column_to_field_name
++                return column_to_field_name_by_table[table_name]
++
++            def get_primary_key_column(table_name):
++                if table_name not in primary_key_column_by_table:
++                    try:
++                        primary_key_column_by_table[table_name] = (
++                            connection.introspection.get_primary_key_column(cursor, table_name))
++                    except Exception:
++                        primary_key_column_by_table[table_name] = None
++                return primary_key_column_by_table[table_name]
++
+             # Determine types of tables and/or views to be introspected.
+             types = {'t'}
+             if options['include_partitions']:
+@@ -120,10 +151,17 @@ class Command(BaseCommand):
+                             rel_type = 'OneToOneField'
+                         else:
+                             rel_type = 'ForeignKey'
++                        rel_to_column, rel_to_table = relations[column_name]
+                         rel_to = (
+-                            "self" if relations[column_name][1] == table_name
+-                            else table2model(relations[column_name][1])
++                            "self" if rel_to_table == table_name
++                            else table2model(rel_to_table)
+                         )
++                        if rel_to_column != get_primary_key_column(rel_to_table):
++                            field_name = get_column_to_field_name(rel_to_table)[rel_to_column]
++                            if field_name:
++                                extra_params['to_fields'] = [field_name]
++                            else:
++                                extra_params['to_fields'] = [rel_to_column]
+                         if rel_to in known_models:
+                             field_type = '%s(%s' % (rel_type, rel_to)
+                         else:
+@@ -168,6 +206,7 @@ class Command(BaseCommand):
+                     if comment_notes:
+                         field_desc += '  # ' + ' '.join(comment_notes)
+                     yield '    %s' % field_desc
++                column_to_field_name_by_table[table_name] = column_to_field_name
+                 is_view = any(info.name == table_name and info.type == 'v' for info in table_info)
+                 is_partition = any(info.name == table_name and info.type == 'p' for info in table_info)
+                 yield from self.get_meta(table_name, constraints, column_to_field_name, is_view, is_partition)

@@ -1,0 +1,22 @@
+diff --git a/sympy/polys/polytools.py b/sympy/polys/polytools.py
+index c9e77a901f..18d21b5e87 100644
+--- a/sympy/polys/polytools.py
++++ b/sympy/polys/polytools.py
+@@ -5950,6 +5950,17 @@ def _symbolic_factor_list(expr, opt, method):
+ 
+                 factors.append((_factors_product(other), exp))
+ 
++
++    if method == 'sqf':
++        # Combine factors with the same multiplicity
++        combined = {}
++        for f, k in factors:
++            if k in combined:
++                combined[k] = combined[k] * f
++            else:
++                combined[k] = f
++        factors = [(combined[k], k) for k in sorted(combined, reverse=True)]
++
+     return coeff, factors
+ 
+ 

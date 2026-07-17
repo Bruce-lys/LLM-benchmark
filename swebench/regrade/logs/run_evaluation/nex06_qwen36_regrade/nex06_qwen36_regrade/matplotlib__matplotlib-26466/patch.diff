@@ -1,0 +1,14 @@
+diff --git a/lib/matplotlib/text.py b/lib/matplotlib/text.py
+index d4922fc517..ab84c07081 100644
+--- a/lib/matplotlib/text.py
++++ b/lib/matplotlib/text.py
+@@ -1456,7 +1456,8 @@ class _AnnotationBase:
+                  xycoords='data',
+                  annotation_clip=None):
+ 
+-        self.xy = xy
++        # Avoid mutating self.xy when the caller changes the input array.
++        self.xy = tuple(xy)
+         self.xycoords = xycoords
+         self.set_annotation_clip(annotation_clip)
+ 

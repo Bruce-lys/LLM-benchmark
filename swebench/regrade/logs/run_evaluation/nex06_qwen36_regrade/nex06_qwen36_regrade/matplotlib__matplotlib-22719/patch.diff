@@ -1,0 +1,66 @@
+diff --git a/lib/matplotlib/category.py b/lib/matplotlib/category.py
+index c823b68fd9..8b388934bb 100644
+--- a/lib/matplotlib/category.py
++++ b/lib/matplotlib/category.py
+@@ -54,16 +54,17 @@ class StrCategoryConverter(units.ConversionInterface):
+         # dtype = object preserves numerical pass throughs
+         values = np.atleast_1d(np.array(value, dtype=object))
+         # pass through sequence of non binary numbers
+-        with _api.suppress_matplotlib_deprecation_warning():
+-            is_numlike = all(units.ConversionInterface.is_numlike(v)
+-                             and not isinstance(v, (str, bytes))
+-                             for v in values)
+-        if is_numlike:
+-            _api.warn_deprecated(
+-                "3.5", message="Support for passing numbers through unit "
+-                "converters is deprecated since %(since)s and support will be "
+-                "removed %(removal)s; use Axis.convert_units instead.")
+-            return np.asarray(values, dtype=float)
++        if values.size:
++            with _api.suppress_matplotlib_deprecation_warning():
++                is_numlike = all(units.ConversionInterface.is_numlike(v)
++                                 and not isinstance(v, (str, bytes))
++                                 for v in values)
++            if is_numlike:
++                _api.warn_deprecated(
++                    "3.5", message="Support for passing numbers through unit "
++                    "converters is deprecated since %(since)s and support will be "
++                    "removed %(removal)s; use Axis.convert_units instead.")
++                return np.asarray(values, dtype=float)
+         # force an update so it also does type checking
+         unit.update(values)
+         return np.vectorize(unit._mapping.__getitem__, otypes=[float])(values)
+diff --git a/lib/matplotlib/tests/test_category.py b/lib/matplotlib/tests/test_category.py
+index f0e424bd8e..b384996b2e 100644
+--- a/lib/matplotlib/tests/test_category.py
++++ b/lib/matplotlib/tests/test_category.py
+@@ -112,6 +112,15 @@ class TestStrCategoryConverter:
+             actual = self.cc.convert(data, self.unit, self.ax)
+         np.testing.assert_allclose(actual, np.array([1., 2., 3.]))
+ 
++    def test_convert_empty_list(self):
++        actual = self.cc.convert([], self.unit, self.ax)
++        np.testing.assert_allclose(actual, np.array([]))
++
++    def test_convert_empty_array(self):
++        data = np.array([], dtype=float)
++        actual = self.cc.convert(data, self.unit, self.ax)
++        np.testing.assert_allclose(actual, np.array([]))
++
+     @pytest.mark.parametrize("fvals", fvalues, ids=fids)
+     def test_convert_fail(self, fvals):
+         with pytest.raises(TypeError):
+@@ -199,6 +208,13 @@ class TestPlotNumlike:
+                      ('string ndarray', np.array(['1', '11', '3'])),
+                      ('bytes list', [b'1', b'11', b'3']),
+                      ('bytes ndarray', np.array([b'1', b'11', b'3']))]
++
++    @pytest.mark.parametrize("plotter", PLOT_LIST, ids=PLOT_IDS)
++    def test_plot_empty(self, plotter):
++        ax = plt.figure().subplots()
++        ax.xaxis.update_units(['a', 'b'])
++        plotter(ax, [], [])
++
+     numlike_ids, numlike_data = zip(*numlike_cases)
+ 
+     @pytest.mark.parametrize("plotter", PLOT_LIST, ids=PLOT_IDS)

@@ -1,0 +1,107 @@
+diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py
+index d9fb088350..51b32b1cd8 100644
+--- a/django/core/management/commands/runserver.py
++++ b/django/core/management/commands/runserver.py
+@@ -51,6 +51,10 @@ class Command(BaseCommand):
+             '--noreload', action='store_false', dest='use_reloader',
+             help='Tells Django to NOT use the auto-reloader.',
+         )
++        parser.add_argument(
++            '--skip-checks', action='store_true',
++            help='Skip system checks.',
++        )
+ 
+     def execute(self, *args, **options):
+         if options['no_color']:
+@@ -114,11 +118,12 @@ class Command(BaseCommand):
+         shutdown_message = options.get('shutdown_message', '')
+         quit_command = 'CTRL-BREAK' if sys.platform == 'win32' else 'CONTROL-C'
+ 
+-        self.stdout.write("Performing system checks...\n\n")
+-        self.check(display_num_errors=True)
+-        # Need to check migrations here, so can't use the
+-        # requires_migrations_check attribute.
+-        self.check_migrations()
++        if not options['skip_checks']:
++            self.stdout.write("Performing system checks...\n\n")
++            self.check(display_num_errors=True)
++            # Need to check migrations here, so can't use the
++            # requires_migrations_check attribute.
++            self.check_migrations()
+         now = datetime.now().strftime('%B %d, %Y - %X')
+         self.stdout.write(now)
+         self.stdout.write((
+diff --git a/docs/man/django-admin.1 b/docs/man/django-admin.1
+index 2d13663c1e..664d758102 100644
+--- a/docs/man/django-admin.1
++++ b/docs/man/django-admin.1
+@@ -1331,6 +1331,12 @@ When you start the server, and each time you change Python code while the
+ server is running, the system check framework will check your entire Django
+ project for some common errors (see the \fI\%check\fP command). If any
+ errors are found, they will be printed to standard output.
++.INDENT 0.0
++.TP
++.B \-\-skip\-checks
++.UNINDENT
++.sp
++Skips system checks before starting the server and on each reload.
+ .sp
+ You can run as many concurrent servers as you want, as long as they\(aqre on
+ separate ports by executing \fBdjango\-admin runserver\fP more than once.
+diff --git a/docs/ref/django-admin.txt b/docs/ref/django-admin.txt
+index b7f6e175be..94eab2980f 100644
+--- a/docs/ref/django-admin.txt
++++ b/docs/ref/django-admin.txt
+@@ -970,6 +970,10 @@ server is running, the system check framework will check your entire Django
+ project for some common errors (see the :djadmin:`check` command). If any
+ errors are found, they will be printed to standard output.
+ 
++.. django-admin-option:: --skip-checks
++
++Skips system checks before starting the server and on each reload.
++
+ You can run as many concurrent servers as you want, as long as they're on
+ separate ports by executing ``django-admin runserver`` more than once.
+ 
+@@ -1838,10 +1842,9 @@ colored output to another command.
+ 
+ .. django-admin-option:: --skip-checks
+ 
+-Skips running system checks prior to running the command. This option is only
+-available if the
+-:attr:`~django.core.management.BaseCommand.requires_system_checks` command
+-attribute is not an empty list or tuple.
++Skips running system checks prior to running the command. This option is
++available for commands that run system checks by default. Commands that
++override the check behavior (such as :djadmin:`runserver`) may also provide it.
+ 
+ Example usage::
+ 
+diff --git a/docs/releases/4.0.txt b/docs/releases/4.0.txt
+index 52531c1266..5a4a26c8bf 100644
+--- a/docs/releases/4.0.txt
++++ b/docs/releases/4.0.txt
+@@ -153,7 +153,8 @@ Logging
+ Management Commands
+ ~~~~~~~~~~~~~~~~~~~
+ 
+-* ...
++* :djadmin:`runserver` gained a ``--skip-checks`` option to skip system
++  checks on startup and on each reload.
+ 
+ Migrations
+ ~~~~~~~~~~
+diff --git a/docs/topics/checks.txt b/docs/topics/checks.txt
+index 438139ad31..0e8bfa3b55 100644
+--- a/docs/topics/checks.txt
++++ b/docs/topics/checks.txt
+@@ -10,7 +10,8 @@ The framework is extensible so you can easily add your own checks.
+ 
+ Checks can be triggered explicitly via the :djadmin:`check` command. Checks are
+ triggered implicitly before most commands, including :djadmin:`runserver` and
+-:djadmin:`migrate`. For performance reasons, checks are not run as part of the
++:djadmin:`migrate` (although :djadmin:`runserver` can skip them using
++the ``--skip-checks`` option). For performance reasons, checks are not run as part of the
+ WSGI stack that is used in deployment. If you need to run system checks on your
+ deployment server, trigger them explicitly using :djadmin:`check`.
+ 

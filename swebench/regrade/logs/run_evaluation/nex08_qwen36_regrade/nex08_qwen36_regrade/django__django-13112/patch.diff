@@ -1,0 +1,86 @@
+diff --git a/django/db/migrations/state.py b/django/db/migrations/state.py
+index c8cb704aee..945462d966 100644
+--- a/django/db/migrations/state.py
++++ b/django/db/migrations/state.py
+@@ -259,7 +259,11 @@ class StateApps(Apps):
+                 self.real_models.append(ModelState.from_model(model, exclude_rels=True))
+         # Populate the app registry with a stub for each application.
+         app_labels = {model_state.app_label for model_state in models.values()}
+-        app_configs = [AppConfigStub(label) for label in sorted([*real_apps, *app_labels])]
++        app_label_values = sorted([*real_apps, *app_labels])
++        app_configs = [AppConfigStub(label) for label in app_label_values]
++        self._canonical_app_labels = {}
++        for label in app_label_values:
++            self._canonical_app_labels.setdefault(label.lower(), label)
+         super().__init__(app_configs)
+ 
+         # These locks get in the way of copying as implemented in clone(),
+@@ -315,11 +319,60 @@ class StateApps(Apps):
+                     )
+                 unrendered_models = new_unrendered_models
+ 
++    def get_app_config(self, app_label):
++        if app_label == app_label.lower():
++            app_config = self.app_configs.get(app_label)
++            if app_config is not None:
++                return app_config
++            canonical_label = self._canonical_app_labels.get(app_label)
++            if canonical_label is not None:
++                return self.app_configs[canonical_label]
++        return super().get_app_config(app_label)
++
++    def get_registered_model(self, app_label, model_name):
++        if app_label == app_label.lower():
++            lowered_model_name = model_name.lower()
++            app_models = (
++                self.all_models[app_label]
++                if app_label in self.all_models else None
++            )
++            if app_models:
++                model = app_models.get(lowered_model_name)
++                if model is not None:
++                    return model
++            canonical_label = self._canonical_app_labels.get(app_label)
++            if canonical_label is not None:
++                app_models = self.all_models.get(canonical_label)
++                if app_models is not None:
++                    model = app_models.get(lowered_model_name)
++                    if model is not None:
++                        return model
++        try:
++            return super().get_registered_model(app_label, model_name)
++        except LookupError:
++            raise LookupError("Model '%s.%s' not registered." % (
++                app_label, model_name
++            ))
++
++    def do_pending_operations(self, model):
++        # ForeignKey deconstruction lowercases app labels, so lazy model
++        # operations may be registered under the lowercase app label. Also
++        # execute those pending operations when the canonical model for that
++        # lowercase app label is registered.
++        key = model._meta.app_label, model._meta.model_name
++        for function in self._pending_operations.pop(key, []):
++            function(model)
++        lower_key = model._meta.app_label.lower(), model._meta.model_name
++        if self._canonical_app_labels.get(lower_key[0]) == model._meta.app_label:
++            for function in self._pending_operations.pop(lower_key, []):
++                function(model)
++
+     def clone(self):
+         """Return a clone of this registry."""
+         clone = StateApps([], {})
+         clone.all_models = copy.deepcopy(self.all_models)
+         clone.app_configs = copy.deepcopy(self.app_configs)
++        clone._canonical_app_labels = copy.deepcopy(self._canonical_app_labels)
+         # Set the pointer to the correct app registry.
+         for app_config in clone.app_configs.values():
+             app_config.apps = clone
+@@ -333,6 +386,7 @@ class StateApps(Apps):
+             self.app_configs[app_label] = AppConfigStub(app_label)
+             self.app_configs[app_label].apps = self
+             self.app_configs[app_label].models = {}
++        self._canonical_app_labels.setdefault(app_label.lower(), app_label)
+         self.app_configs[app_label].models[model._meta.model_name] = model
+         self.do_pending_operations(model)
+         self.clear_cache()

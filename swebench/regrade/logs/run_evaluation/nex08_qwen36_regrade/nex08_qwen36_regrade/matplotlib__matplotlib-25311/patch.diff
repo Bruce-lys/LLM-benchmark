@@ -1,0 +1,91 @@
+diff --git a/lib/matplotlib/figure.py b/lib/matplotlib/figure.py
+index 10a4072328..3b8a9e070f 100644
+--- a/lib/matplotlib/figure.py
++++ b/lib/matplotlib/figure.py
+@@ -3201,6 +3201,27 @@ None}, default: None
+             pylab_helpers.Gcf._set_new_active_manager(mgr)
+             plt.draw_if_interactive()
+ 
++        # Canvas callbacks are recreated in DraggableBase.__setstate__ when
++        # possible, but figure-level artists may be restored after their
++        # draggable helpers have been unpickled, so reconnect here as well.
++        def _reconnect_draggable(artist):
++            if hasattr(artist, "_reconnect_draggable"):
++                artist._reconnect_draggable()
++            if hasattr(artist, "_draggable"):
++                draggable = artist._draggable
++                if (draggable is not None
++                        and hasattr(draggable, "_reconnect_draggable")):
++                    draggable._reconnect_draggable()
++            try:
++                children = artist.get_children()
++            except AttributeError:
++                children = []
++            for child in children:
++                _reconnect_draggable(child)
++
++        for artist in self.get_children():
++            _reconnect_draggable(artist)
++
+         self.stale = True
+ 
+     def add_axobserver(self, func):
+diff --git a/lib/matplotlib/offsetbox.py b/lib/matplotlib/offsetbox.py
+index 1dee8a23d9..944e12998e 100644
+--- a/lib/matplotlib/offsetbox.py
++++ b/lib/matplotlib/offsetbox.py
+@@ -1505,8 +1505,24 @@ class DraggableBase:
+         if not ref_artist.pickable():
+             ref_artist.set_picker(True)
+         self.got_artist = False
+-        self.canvas = self.ref_artist.figure.canvas
+-        self._use_blit = use_blit and self.canvas.supports_blit
++        # Keep the original blit request so we can recompute _use_blit
++        # against the current canvas after unpickling.
++        self.use_blit = use_blit
++        self._use_blit = use_blit
++        self._pending_reconnect = False
++        self._reconnect()
++
++    def _reconnect(self):
++        if hasattr(self, "cids"):
++            self.disconnect()
++        figure = getattr(self.ref_artist, "figure", None)
++        if figure is None:
++            self._pending_reconnect = True
++            self.cids = []
++            return
++        self._pending_reconnect = False
++        self.canvas = figure.canvas
++        self._use_blit = self.use_blit and self.canvas.supports_blit
+         self.cids = [
+             self.canvas.callbacks._connect_picklable(
+                 'pick_event', self.on_pick),
+@@ -1514,6 +1530,27 @@ class DraggableBase:
+                 'button_release_event', self.on_release),
+         ]
+ 
++    def _reconnect_draggable(self):
++        self._reconnect()
++
++    def __getstate__(self):
++        state = self.__dict__.copy()
++        # The canvas and its callback ids are backend-specific and should be
++        # recreated on the figure's new canvas after unpickling.
++        state.pop("canvas", None)
++        state.pop("cids", None)
++        state["_pending_reconnect"] = (
++            getattr(self.ref_artist, "figure", None) is None)
++        return state
++
++    def __setstate__(self, state):
++        self.__dict__.update(state)
++        figure = getattr(self.ref_artist, "figure", None)
++        self._pending_reconnect = (
++            state.get("_pending_reconnect", figure is None))
++        if figure is not None:
++            self._reconnect()
++
+     def on_motion(self, evt):
+         if self._check_still_parented() and self.got_artist:
+             dx = evt.x - self.mouse_x

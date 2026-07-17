@@ -1,0 +1,104 @@
+diff --git a/sphinx/ext/graphviz.py b/sphinx/ext/graphviz.py
+index 8b21d9e3b..0db144b7e 100644
+--- a/sphinx/ext/graphviz.py
++++ b/sphinx/ext/graphviz.py
+@@ -218,7 +218,7 @@ class GraphvizSimple(SphinxDirective):
+ 
+ 
+ def fix_svg_relative_paths(self: SphinxTranslator, filepath: str) -> None:
+-    """Change relative links in generated svg files to be relative to imgpath."""
++    """Change relative links in generated svg files to be relative to image_dir."""
+     tree = ET.parse(filepath)  # NoQA: S314
+     root = tree.getroot()
+     ns = {'svg': 'http://www.w3.org/2000/svg', 'xlink': 'http://www.w3.org/1999/xlink'}
+@@ -229,15 +229,18 @@ def fix_svg_relative_paths(self: SphinxTranslator, filepath: str) -> None:
+         root.findall('.//svg:image[@xlink:href]', ns),
+         root.findall('.//svg:a[@xlink:href]', ns),
+     ):
+-        scheme, hostname, url, query, fragment = urlsplit(element.attrib[href_name])
+-        if hostname:
++        parsed = urlsplit(element.attrib[href_name])
++        scheme, hostname, url, query, fragment = parsed
++        if parsed.scheme or hostname or url.startswith('/'):
+             # not a relative link
+             continue
+ 
+         old_path = path.join(self.builder.outdir, url)
++        # The SVG file is written to imagedir; imgpath is relative to the
++        # current document.
+         new_path = path.relpath(
+             old_path,
+-            start=path.join(self.builder.outdir, self.builder.imgpath),
++            start=path.join(self.builder.outdir, self.builder.imagedir),
+         )
+         modified_url = urlunsplit((scheme, hostname, new_path, query, fragment))
+ 
+diff --git a/sphinx/ext/inheritance_diagram.py b/sphinx/ext/inheritance_diagram.py
+index 6e3985512..fd63849c8 100644
+--- a/sphinx/ext/inheritance_diagram.py
++++ b/sphinx/ext/inheritance_diagram.py
+@@ -33,7 +33,9 @@ from __future__ import annotations
+ import builtins
+ import hashlib
+ import inspect
++import posixpath
+ import re
++from urllib.parse import urlsplit, urlunsplit
+ from collections.abc import Iterable
+ from importlib import import_module
+ from typing import Any, cast
+@@ -395,6 +397,27 @@ def get_graph_hash(node: inheritance_diagram) -> str:
+     return hashlib.md5(encoded, usedforsecurity=False).hexdigest()[-10:]
+ 
+ 
++def _relative_url_from_svg(
++    self: HTML5Translator, refuri: str, current_filename: str
++) -> str:
++    """Return *refuri* as a URL relative to the output directory."""
++    split = urlsplit(refuri)
++
++    # Absolute URLs and site-root-relative URLs are already valid from the SVG.
++    if split.scheme or split.netloc or refuri.startswith('/'):
++        return refuri
++
++    if not split.path:
++        target = current_filename
++    else:
++        target = posixpath.normpath(
++            posixpath.join(posixpath.dirname(current_filename), split.path))
++        if target == '.':
++            target = current_filename
++
++    return urlunsplit(('', '', target, split.query, split.fragment))
++
++
+ def html_visit_inheritance_diagram(self: HTML5Translator, node: inheritance_diagram) -> None:
+     """
+     Output the graph for HTML.  This will insert a PNG with clickable
+@@ -413,14 +436,22 @@ def html_visit_inheritance_diagram(self: HTML5Translator, node: inheritance_diag
+     for child in pending_xrefs:
+         if child.get('refuri') is not None:
+             if graphviz_output_format == 'SVG':
+-                urls[child['reftitle']] = "../" + child.get('refuri')
++                urls[child['reftitle']] = _relative_url_from_svg(
++                    self, child.get('refuri'), current_filename)
+             else:
+                 urls[child['reftitle']] = child.get('refuri')
+-        elif child.get('refid') is not None:
++        elif child.get('refid') is not None and child['reftitle'] not in urls:
+             if graphviz_output_format == 'SVG':
+-                urls[child['reftitle']] = '../' + current_filename + '#' + child.get('refid')
++                refid = child.get('refid') or ''
++                if refid.startswith('#'):
++                    refid = refid[1:]
++                urls[child['reftitle']] = urlunsplit(
++                    ('', '', current_filename, '', refid))
+             else:
+-                urls[child['reftitle']] = '#' + child.get('refid')
++                refid = child.get('refid') or ''
++                if refid.startswith('#'):
++                    refid = refid[1:]
++                urls[child['reftitle']] = '#' + refid
+ 
+     dotcode = graph.generate_dot(name, urls, env=self.builder.env)
+     render_dot_html(self, node, dotcode, {}, 'inheritance', 'inheritance',

@@ -1,0 +1,260 @@
+diff --git a/sympy/core/function.py b/sympy/core/function.py
+index 3f7374fe6..a31bc623e 100644
+--- a/sympy/core/function.py
++++ b/sympy/core/function.py
+@@ -81,6 +81,10 @@ def _coeff_isneg(a):
+ 
+     if a.is_Mul:
+         a = a.args[0]
++    elif getattr(a, 'is_MatMul', False):
++        from sympy import Mul
++        scalars = [x for x in a.args if not x.is_Matrix]
++        a = Mul(*scalars) if scalars else S.One
+     return a.is_Number and a.is_negative
+ 
+ 
+diff --git a/sympy/matrices/expressions/matadd.py b/sympy/matrices/expressions/matadd.py
+index bef8e1e9e..1c35b0385 100644
+--- a/sympy/matrices/expressions/matadd.py
++++ b/sympy/matrices/expressions/matadd.py
+@@ -53,6 +53,9 @@ def _eval_trace(self):
+         from .trace import trace
+         return Add(*[trace(arg) for arg in self.args]).doit()
+ 
++    def as_ordered_terms(self, order=None):
++        return list(self.args)
++
+     def doit(self, **kwargs):
+         deep = kwargs.get('deep', True)
+         if deep:
+diff --git a/sympy/printing/latex.py b/sympy/printing/latex.py
+index 8253b2f68..79fd2234a 100644
+--- a/sympy/printing/latex.py
++++ b/sympy/printing/latex.py
+@@ -1476,19 +1476,64 @@ def _print_Adjoint(self, expr):
+         else:
+             return r"%s^\dagger" % self._print(mat)
+ 
+-    def _print_MatAdd(self, expr):
+-        terms = list(expr.args)
+-        tex = " + ".join(map(self._print, terms))
++    def _print_MatAdd(self, expr, order=None):
++        from sympy.matrices.expressions.matmul import MatMul
++        from sympy import S
++        if self.order == 'none':
++            terms = list(expr.args)
++        else:
++            terms = self._as_ordered_terms(expr, order=order)
++
++        tex = ""
++        for i, term in enumerate(terms):
++            if i == 0:
++                pass
++            elif _coeff_isneg(term):
++                tex += " - "
++                if term.is_MatMul:
++                    c, m = term.as_coeff_matrices()
++                    if c.is_Number and c < 0:
++                        c = -c
++                        if c is S.One and len(m) > 0:
++                            term = m[0] if len(m) == 1 else MatMul(*m)
++                else:
++                    term = -term
++            else:
++                tex += " + "
++            term_tex = self._print(term)
++            if self._needs_add_brackets(term):
++                term_tex = r"\left(%s\right)" % term_tex
++            tex += term_tex
++
+         return tex
+ 
+     def _print_MatMul(self, expr):
+-        from sympy import Add, MatAdd, HadamardProduct
++        from sympy import Add, MatAdd, HadamardProduct, S
++        from sympy.core.function import _coeff_isneg
++
++        sign = ""
++        if _coeff_isneg(expr):
++            sign = "- "
++
++        c, m = expr.as_coeff_matrices()
++        if c.is_Number and c < 0:
++            c = -c
++        if c is S.One and len(m) > 0:
++            args = m
++        elif len(m) == 0:
++            return sign + self._print(c)
++        else:
++            args = [c] + m
+ 
+         def parens(x):
+             if isinstance(x, (Add, MatAdd, HadamardProduct)):
+                 return r"\left(%s\right)" % self._print(x)
+             return self._print(x)
+-        return ' '.join(map(parens, expr.args))
++
++        if c.is_Number and c > 1 and _coeff_isneg(expr):
++            # For negative integer coefficients like -2, attach the sign directly
++            return "-" + self._print(c) + ' ' + ' '.join(map(parens, m))
++        return sign + ' '.join(map(parens, args))
+ 
+     def _print_Mod(self, expr, exp=None):
+         if exp is not None:
+diff --git a/sympy/printing/pretty/pretty.py b/sympy/printing/pretty/pretty.py
+index db24f4c61..7dd9c76bd 100644
+--- a/sympy/printing/pretty/pretty.py
++++ b/sympy/printing/pretty/pretty.py
+@@ -818,8 +818,90 @@ def _print_BlockMatrix(self, B):
+             return self._print(B.blocks[0, 0])
+         return self._print(B.blocks)
+ 
+-    def _print_MatAdd(self, expr):
+-        return self._print_seq(expr.args, None, None, ' + ')
++    def _print_MatAdd(self, expr, order=None):
++        from sympy.matrices.expressions.matmul import MatMul
++        from sympy import S, Mul
++        if self.order == 'none':
++            terms = list(expr.args)
++        else:
++            terms = self._as_ordered_terms(expr, order=order)
++        pforms, indices = [], []
++
++        def pretty_negative(pform, index):
++            """Prepend a minus sign to a pretty form. """
++            #TODO: Move this code to prettyForm
++            if index == 0:
++                if pform.height() > 1:
++                    pform_neg = '- '
++                else:
++                    pform_neg = '-'
++            else:
++                pform_neg = ' - '
++
++            if (pform.binding > prettyForm.NEG
++                or pform.binding == prettyForm.ADD):
++                p = stringPict(*pform.parens())
++            else:
++                p = pform
++            p = stringPict.next(pform_neg, p)
++            # Lower the binding to NEG, even if it was higher. Otherwise, it
++            # will print as a + ( - (b)), instead of a - (b).
++            return prettyForm(binding=prettyForm.NEG, *p)
++
++        for i, term in enumerate(terms):
++            if (term.is_Mul or term.is_MatMul) and _coeff_isneg(term):
++                if term.is_MatMul:
++                    coeff, other = term.as_coeff_matrices()
++                    if coeff.is_Number and coeff < 0:
++                        coeff = -coeff
++                    if coeff is S.One:
++                        pform = self._print(other[0] if len(other) == 1 else MatMul(*other, evaluate=False))
++                    else:
++                        if len(other) == 1:
++                            pform = self._print(Mul(-coeff, other[0], evaluate=False))
++                        else:
++                            pform = self._print(Mul(-coeff, MatMul(*other, evaluate=False), evaluate=False))
++                else:
++                    coeff, other = term.as_coeff_mul(rational=False)
++                    pform = self._print(Mul(-coeff, *other, evaluate=False))
++                pforms.append(pretty_negative(pform, i))
++            elif term.is_Rational and term.q > 1:
++                pforms.append(None)
++                indices.append(i)
++            elif term.is_Number and term < 0:
++                pform = self._print(-term)
++                pforms.append(pretty_negative(pform, i))
++            elif term.is_Relational:
++                pforms.append(prettyForm(*self._print(term).parens()))
++            else:
++                pforms.append(self._print(term))
++
++        if indices:
++            large = True
++
++            for pform in pforms:
++                if pform is not None and pform.height() > 1:
++                    break
++            else:
++                large = False
++
++            for i in indices:
++                term, negative = terms[i], False
++
++                if term < 0:
++                    term, negative = -term, True
++
++                if large:
++                    pform = prettyForm(str(term.p))/prettyForm(str(term.q))
++                else:
++                    pform = self._print(term)
++
++                if negative:
++                    pform = pretty_negative(pform, i)
++
++                pforms[i] = pform
++
++        return prettyForm.__add__(*pforms)
+ 
+     def _print_MatMul(self, expr):
+         args = list(expr.args)
+diff --git a/sympy/printing/str.py b/sympy/printing/str.py
+index 0baefe0f7..1060a41b8 100644
+--- a/sympy/printing/str.py
++++ b/sympy/printing/str.py
+@@ -304,16 +304,50 @@ def _print_Mul(self, expr):
+             return sign + '*'.join(a_str) + "/(%s)" % '*'.join(b_str)
+ 
+     def _print_MatMul(self, expr):
+-        return '*'.join([self.parenthesize(arg, precedence(expr))
+-            for arg in expr.args])
++        from sympy.core.function import _coeff_isneg
++        from sympy import S
++        sign = ""
++        if _coeff_isneg(expr):
++            sign = "-"
++        c, m = expr.as_coeff_matrices()
++        if c.is_Number and c < 0:
++            c = -c
++        if c is S.One and len(m) > 0:
++            args = m
++        elif len(m) == 0:
++            return sign + self._print(c)
++        else:
++            args = [c] + m
++        return sign + '*'.join([self.parenthesize(arg, precedence(expr))
++            for arg in args])
+ 
+     def _print_HadamardProduct(self, expr):
+         return '.*'.join([self.parenthesize(arg, precedence(expr))
+             for arg in expr.args])
+ 
+-    def _print_MatAdd(self, expr):
+-        return ' + '.join([self.parenthesize(arg, precedence(expr))
+-            for arg in expr.args])
++    def _print_MatAdd(self, expr, order=None):
++        if self.order == 'none':
++            terms = list(expr.args)
++        else:
++            terms = self._as_ordered_terms(expr, order=order)
++
++        PREC = precedence(expr)
++        l = []
++        for term in terms:
++            t = self._print(term)
++            if t.startswith('-'):
++                sign = "-"
++                t = t[1:]
++            else:
++                sign = "+"
++            if precedence(term) < PREC:
++                l.extend([sign, "(%s)" % t])
++            else:
++                l.extend([sign, t])
++        sign = l.pop(0)
++        if sign == '+':
++            sign = ""
++        return sign + ' '.join(l)
+ 
+     def _print_NaN(self, expr):
+         return 'nan'

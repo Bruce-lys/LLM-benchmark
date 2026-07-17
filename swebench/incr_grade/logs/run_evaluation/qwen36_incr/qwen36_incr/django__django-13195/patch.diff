@@ -1,0 +1,16 @@
+    def delete_cookie(self, key, path='/', domain=None):
+        # Most browsers ignore the Set-Cookie header if the cookie name starts
+        # with __Host- or __Secure- and the cookie doesn't use the secure flag.
+        secure = key.startswith(('__Secure-', '__Host-'))
+        # Preserve the cookie's samesite attribute if the cookie has already
+        # been set in this response (e.g., by set_cookie() or another call to
+        # delete_cookie()). Otherwise, use the samesite from SESSION_COOKIE_SAMESITE.
+        samesite = settings.SESSION_COOKIE_SAMESITE
+        if key in self.cookies:
+            samesite = self.cookies[key].get('samesite', samesite)
+        self.set_cookie(
+            key, max_age=0, path=path, domain=domain, secure=secure,
+            expires='Thu, 01 Jan 1970 00:00:00 GMT', samesite=samesite,
+        )
+
+    # Common methods used by subclasses

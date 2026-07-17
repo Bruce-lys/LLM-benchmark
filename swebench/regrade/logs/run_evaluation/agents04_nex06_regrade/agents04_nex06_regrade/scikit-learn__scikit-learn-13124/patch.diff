@@ -1,0 +1,30 @@
+diff --git a/sklearn/model_selection/_split.py b/sklearn/model_selection/_split.py
+index 24394f869..c8745cb60 100644
+--- a/sklearn/model_selection/_split.py
++++ b/sklearn/model_selection/_split.py
+@@ -620,7 +620,7 @@ class StratifiedKFold(_BaseKFold):
+         super().__init__(n_splits, shuffle, random_state)
+ 
+     def _make_test_folds(self, X, y=None):
+-        rng = self.random_state
++        rng = check_random_state(self.random_state)
+         y = np.asarray(y)
+         type_of_target_y = type_of_target(y)
+         allowed_target_types = ('binary', 'multiclass')
+@@ -651,9 +651,14 @@ class StratifiedKFold(_BaseKFold):
+         # NOTE: Passing the data corresponding to ith class say X[y==class_i]
+         # will break when the data is not 100% stratifiable for all classes.
+         # So we pass np.zeroes(max(c, n_splits)) as data to the KFold
++        # The generators are consumed immediately so that the random state
++        # advances between classes. Otherwise, because the generators are
++        # advanced together, each class would receive the same random
++        # permutation.
+         per_cls_cvs = [
+-            KFold(self.n_splits, shuffle=self.shuffle,
+-                  random_state=rng).split(np.zeros(max(count, self.n_splits)))
++            list(KFold(self.n_splits, shuffle=self.shuffle,
++                       random_state=rng).split(
++                           np.zeros(max(count, self.n_splits))))
+             for count in y_counts]
+ 
+         test_folds = np.zeros(n_samples, dtype=np.int)

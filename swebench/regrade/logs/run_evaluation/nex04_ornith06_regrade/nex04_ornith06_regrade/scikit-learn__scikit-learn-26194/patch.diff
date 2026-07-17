@@ -1,0 +1,35 @@
+diff --git a/sklearn/metrics/_ranking.py b/sklearn/metrics/_ranking.py
+index 0cdead923..6266bbcd3 100644
+--- a/sklearn/metrics/_ranking.py
++++ b/sklearn/metrics/_ranking.py
+@@ -1019,7 +1019,8 @@ def roc_curve(
+     thresholds : ndarray of shape = (n_thresholds,)
+         Decreasing thresholds on the decision function used to compute
+         fpr and tpr. `thresholds[0]` represents no instances being predicted
+-        and is arbitrarily set to `max(y_score) + 1`.
++        and is arbitrarily set to `max(y_score) + 1` unless `y_score` is a
++        probability estimate, in which case it is set to 1.
+ 
+     See Also
+     --------
+@@ -1056,7 +1057,7 @@ def roc_curve(
+     >>> tpr
+     array([0. , 0.5, 0.5, 1. , 1. ])
+     >>> thresholds
+-    array([1.8 , 0.8 , 0.4 , 0.35, 0.1 ])
++    array([1.  , 0.8 , 0.4 , 0.35, 0.1 ])
+     """
+     fps, tps, thresholds = _binary_clf_curve(
+         y_true, y_score, pos_label=pos_label, sample_weight=sample_weight
+@@ -1085,6 +1086,11 @@ def roc_curve(
+     fps = np.r_[0, fps]
+     thresholds = np.r_[thresholds[0] + 1, thresholds]
+ 
++    # If y_score is a probability estimate (all values in [0, 1]),
++    # ensure the extra threshold is not above 1.
++    if thresholds[1] < 1 and thresholds[-1] >= 0:
++        thresholds[0] = 1
++
+     if fps[-1] <= 0:
+         warnings.warn(
+             "No negative samples in y_true, false positive value should be meaningless",

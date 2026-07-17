@@ -1,0 +1,21 @@
+diff --git a/sympy/geometry/point.py b/sympy/geometry/point.py
+index 73c20334d0..530c622ff2 100644
+--- a/sympy/geometry/point.py
++++ b/sympy/geometry/point.py
+@@ -152,7 +152,15 @@ def __new__(cls, *args, **kwargs):
+                         'warn' or 'ignore'.'''))
+         if any(coords[dim:]):
+             raise ValueError('Nonzero coordinates cannot be removed.')
+-        if any(a.is_number and im(a) for a in coords):
++        if evaluate:
++            has_imaginary = any(a.is_number and im(a) for a in coords)
++        else:
++            # When evaluation is disabled, im(real) need not simplify.
++            has_imaginary = any(
++                a.is_number and (a is S.NaN or (
++                    a.is_real is False and a.is_extended_real is False))
++                for a in coords)
++        if has_imaginary:
+             raise ValueError('Imaginary coordinates are not permitted.')
+         if not all(isinstance(a, Expr) for a in coords):
+             raise TypeError('Coordinates must be valid SymPy expressions.')

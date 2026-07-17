@@ -1,0 +1,40 @@
+diff --git a/sphinx/domains/python.py b/sphinx/domains/python.py
+index 893bb0a22..d84da1965 100644
+--- a/sphinx/domains/python.py
++++ b/sphinx/domains/python.py
+@@ -70,11 +70,13 @@ pairindextypes = {
+ 
+ def _parse_annotation(annotation: str) -> List[Node]:
+     """Parse type annotation."""
+-    def make_xref(text: str) -> addnodes.pending_xref:
++    def make_xref(text: str, rolename: str = 'class') -> addnodes.pending_xref:
+         return pending_xref('', nodes.Text(text),
+-                            refdomain='py', reftype='class', reftarget=text)
++                            refdomain='py', reftype=rolename, reftarget=text)
+ 
+     def unparse(node: ast.AST) -> List[Node]:
++        NameConstant = getattr(ast, 'NameConstant', None)
++        Constant = getattr(ast, 'Constant', None)
+         if isinstance(node, ast.Attribute):
+             return [nodes.Text("%s.%s" % (unparse(node.value)[0], node.attr))]
+         elif isinstance(node, ast.Expr):
+@@ -106,6 +108,10 @@ def _parse_annotation(annotation: str) -> List[Node]:
+                 result.append(addnodes.desc_sig_punctuation('', ', '))
+             result.pop()
+             return result
++        elif NameConstant is not None and isinstance(node, NameConstant):
++            return [nodes.Text(repr(node.value))]
++        elif Constant is not None and isinstance(node, Constant):
++            return [nodes.Text(str(node.value))]
+         else:
+             raise SyntaxError  # unsupported syntax
+ 
+@@ -114,7 +120,7 @@ def _parse_annotation(annotation: str) -> List[Node]:
+         result = unparse(tree)
+         for i, node in enumerate(result):
+             if isinstance(node, nodes.Text):
+-                result[i] = make_xref(str(node))
++                result[i] = make_xref(str(node), 'obj' if str(node) == 'None' else 'class')
+         return result
+     except SyntaxError:
+         return [make_xref(annotation)]

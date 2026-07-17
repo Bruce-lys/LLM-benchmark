@@ -1,0 +1,144 @@
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 6c9e9d3707..a2a848ae31 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -1747,7 +1747,10 @@ class Model(metaclass=ModelBase):
+                     else:
+                         _cls = None
+                 except (FieldDoesNotExist, AttributeError):
+-                    if fld is None or fld.get_transform(part) is None:
++                    if fld is None or (
++                        fld.get_transform(part) is None and
++                        (part != 'isnull' or fld.get_lookup(part) is None)
++                    ):
+                         errors.append(
+                             checks.Error(
+                                 "'ordering' refers to the nonexistent field, "
+diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py
+index 05597173ee..f2306274d1 100644
+--- a/django/db/models/sql/compiler.py
++++ b/django/db/models/sql/compiler.py
+@@ -711,12 +711,15 @@ class SQLCompiler:
+         name, order = get_order_dir(name, default_order)
+         descending = order == 'DESC'
+         pieces = name.split(LOOKUP_SEP)
+-        field, targets, alias, joins, path, opts, transform_function = self._setup_joins(pieces, opts, alias)
++        field, targets, alias, joins, path, opts, transform_function = self._setup_joins(
++            pieces, opts, alias, allow_lookups=True
++        )
+ 
+         # If we get to this point and the field is a relation to another model,
+         # append the default ordering for that model unless it is the pk
+         # shortcut or the attribute name of the field that is specified.
+-        if field.is_relation and opts.ordering and getattr(field, 'attname', None) != name and name != 'pk':
++        if (field.is_relation and opts.ordering and getattr(field, 'attname', None) != name
++                and name != 'pk' and LOOKUP_SEP not in name):
+             # Firstly, avoid infinite loops.
+             already_seen = already_seen or set()
+             join_tuple = tuple(getattr(self.query.alias_map[j], 'join_cols', None) for j in joins)
+@@ -737,7 +740,7 @@ class SQLCompiler:
+         targets, alias, _ = self.query.trim_joins(targets, joins, path)
+         return [(OrderBy(transform_function(t, alias), descending=descending), False) for t in targets]
+ 
+-    def _setup_joins(self, pieces, opts, alias):
++    def _setup_joins(self, pieces, opts, alias, allow_lookups=False):
+         """
+         Helper method for get_order_by() and get_distinct().
+ 
+@@ -746,7 +749,9 @@ class SQLCompiler:
+         match. Executing SQL where this is not true is an error.
+         """
+         alias = alias or self.query.get_initial_alias()
+-        field, targets, opts, joins, path, transform_function = self.query.setup_joins(pieces, opts, alias)
++        field, targets, opts, joins, path, transform_function = self.query.setup_joins(
++            pieces, opts, alias, allow_lookups=allow_lookups
++        )
+         alias = joins[-1]
+         return field, targets, alias, joins, path, opts, transform_function
+ 
+diff --git a/django/db/models/sql/query.py b/django/db/models/sql/query.py
+index bb230647eb..7bd38d60a9 100644
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -23,8 +23,8 @@ from django.core.exceptions import (
+ from django.db import DEFAULT_DB_ALIAS, NotSupportedError, connections
+ from django.db.models.aggregates import Count
+ from django.db.models.constants import LOOKUP_SEP
+-from django.db.models.expressions import BaseExpression, Col, F, OuterRef, Ref
+-from django.db.models.fields import Field
++from django.db.models.expressions import BaseExpression, Col, F, OuterRef, RawSQL, Ref
++from django.db.models.fields import BooleanField, Field
+ from django.db.models.fields.related_lookups import MultiColSource
+ from django.db.models.lookups import Lookup
+ from django.db.models.query_utils import (
+@@ -65,6 +65,21 @@ JoinInfo = namedtuple(
+ )
+ 
+ 
++class IsNullExpression(RawSQL):
++    def get_source_expressions(self):
++        return [self.params[0]]
++
++    def set_source_expressions(self, exprs):
++        self.params = exprs
++
++    def relabeled_clone(self, relabels):
++        return self.__class__(
++            self.sql,
++            [self.params[0].relabeled_clone(relabels)],
++            output_field=self.output_field,
++        )
++
++
+ class RawQuery:
+     """A single raw SQL query."""
+ 
+@@ -1514,7 +1529,7 @@ class Query(BaseExpression):
+         return path, final_field, targets, names[pos + 1:]
+ 
+     def setup_joins(self, names, opts, alias, can_reuse=None, allow_many=True,
+-                    reuse_with_filtered_relation=False):
++                    reuse_with_filtered_relation=False, allow_lookups=False):
+         """
+         Compute the necessary table joins for the passage through the fields
+         given in 'names'. 'opts' is the Options class for the current model
+@@ -1536,8 +1551,8 @@ class Query(BaseExpression):
+         for any 'where' constraint), the final 'opts' value, the joins, the
+         field path traveled to generate the joins, and a transform function
+         that takes a field and alias and is equivalent to `field.get_col(alias)`
+-        in the simple case but wraps field transforms if they were included in
+-        names.
++        in the simple case but wraps field transforms and ordering-only lookups
++        if they were included in names.
+ 
+         The target field is the field containing the concrete value. Final
+         field can be something different, for example foreign key pointing to
+@@ -1576,11 +1591,28 @@ class Query(BaseExpression):
+                 break
+         for name in transforms:
+             def transform(field, alias, *, name, previous):
++                wrapped = None
+                 try:
+                     wrapped = previous(field, alias)
+                     return self.try_transform(wrapped, name)
+                 except FieldError:
+                     # FieldError is raised if the transform doesn't exist.
++                    # For ordering, an isnull lookup without a value is valid
++                    # and is represented as an SQL boolean expression.
++                    lookup_class = (
++                        wrapped.output_field.get_lookup(name)
++                        if wrapped is not None
++                        else None
++                    )
++                    if (
++                        allow_lookups and name == 'isnull' and wrapped is not None
++                        and lookup_class
++                    ):
++                        return IsNullExpression(
++                            '%s IS NULL',
++                            [wrapped],
++                            output_field=BooleanField(),
++                        )
+                     if isinstance(final_field, Field) and last_field_exception:
+                         raise last_field_exception
+                     else:

@@ -1,0 +1,55 @@
+diff --git a/xarray/core/computation.py b/xarray/core/computation.py
+index 9fe93c88..a1d790b0 100644
+--- a/xarray/core/computation.py
++++ b/xarray/core/computation.py
+@@ -1727,7 +1727,7 @@ def dot(*arrays, dims=None, **kwargs):
+     return result.transpose(*all_dims, missing_dims="ignore")
+ 
+ 
+-def where(cond, x, y):
++def where(cond, x, y, keep_attrs: Union[bool, str] = True):
+     """Return elements from `x` or `y` depending on `cond`.
+ 
+     Performs xarray-like broadcasting across input arguments.
+@@ -1743,6 +1743,12 @@ def where(cond, x, y):
+         values to choose from where `cond` is True
+     y : scalar, array, Variable, DataArray or Dataset
+         values to choose from where `cond` is False
++    keep_attrs : bool or {"drop", "override", "no_conflicts", "identical", "drop_conflicts"}, optional
++        If True, preserve attributes from the value arguments (`x` or `y`) or
++        the condition (`cond`), preferring the first non-empty set of
++        attributes in the order `x`, `cond`, `y`. If False or "drop", drop
++        attributes. Other values are passed to
++        :py:func:`xarray.apply_ufunc`.
+ 
+     Returns
+     -------
+@@ -1809,14 +1815,26 @@ def where(cond, x, y):
+         equivalent methods
+     """
+     # alignment for three arguments is complicated, so don't support it yet
++    if keep_attrs is True:
++        def _where_keep_attrs(attrs, context=None):
++            for attr in attrs:
++                if attr:
++                    return dict(attr)
++            return {}
++        keep_attrs = _where_keep_attrs
++
++    def _where(x, cond, y):
++        return duck_array_ops.where(cond, x, y)
++
+     return apply_ufunc(
+-        duck_array_ops.where,
+-        cond,
++        _where,
+         x,
++        cond,
+         y,
+         join="exact",
+         dataset_join="exact",
+         dask="allowed",
++        keep_attrs=keep_attrs,
+     )
+ 
+ 

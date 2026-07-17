@@ -1,0 +1,55 @@
+diff --git a/astropy/coordinates/sky_coordinate.py b/astropy/coordinates/sky_coordinate.py
+index ab475f7d0..b5dbfe80a 100644
+--- a/astropy/coordinates/sky_coordinate.py
++++ b/astropy/coordinates/sky_coordinate.py
+@@ -1,5 +1,6 @@
+ import copy
+ import operator
++import threading
+ import re
+ import warnings
+ 
+@@ -33,6 +34,8 @@ from .sky_coordinate_parsers import (
+ 
+ __all__ = ["SkyCoord", "SkyCoordInfo"]
+ 
++_attr_error = threading.local()
++
+ 
+ class SkyCoordInfo(MixinInfo):
+     """
+@@ -871,6 +874,17 @@ class SkyCoord(ShapedLikeNDArray):
+         Overrides getattr to return coordinates that this can be transformed
+         to, based on the alias attr in the primary transform graph.
+         """
++        # If a previous call to __getattr__ raised an AttributeError, and
++        # the current attribute exists on the class (e.g., as a property),
++        # we are being called as a fallback because a descriptor raised
++        # AttributeError. Re-raise the original error instead of raising
++        # a misleading one for the current attribute.
++        if hasattr(_attr_error, 'error'):
++            for klass in type(self).__mro__:
++                if attr in klass.__dict__:
++                    exc = _attr_error.error
++                    raise exc
++
+         if "_sky_coord_frame" in self.__dict__:
+             if self._is_name(attr):
+                 return self  # Should this be a deepcopy of self?
+@@ -895,9 +909,13 @@ class SkyCoord(ShapedLikeNDArray):
+                 return self.transform_to(attr)
+ 
+         # Fail
+-        raise AttributeError(
+-            f"'{self.__class__.__name__}' object has no attribute '{attr}'"
+-        )
++        try:
++            raise AttributeError(
++                f"'{self.__class__.__name__}' object has no attribute '{attr}'"
++            )
++        except AttributeError as e:
++            _attr_error.error = e
++            raise
+ 
+     def __setattr__(self, attr, val):
+         # This is to make anything available through __getattr__ immutable

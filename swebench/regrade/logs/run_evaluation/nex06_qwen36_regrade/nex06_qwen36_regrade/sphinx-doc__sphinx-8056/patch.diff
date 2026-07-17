@@ -1,0 +1,46 @@
+diff --git a/sphinx/util/docfields.py b/sphinx/util/docfields.py
+index c07bc7f66..c12cf8ecc 100644
+--- a/sphinx/util/docfields.py
++++ b/sphinx/util/docfields.py
+@@ -325,9 +325,12 @@ class DocFieldTransformer:
+                 except ValueError:
+                     pass
+                 else:
+-                    types.setdefault(typename, {})[argname] = \
+-                        [nodes.Text(argtype)]
+-                    fieldarg = argname
++                    # A comma immediately before the first whitespace indicates multiple
++                    # parameter names (e.g. ``:param x1, x2:``), not a type.
++                    if not argtype.endswith(','):
++                        types.setdefault(typename, {})[argname] = \
++                            [nodes.Text(argtype)]
++                        fieldarg = argname
+ 
+             translatable_content = nodes.inline(field_body.rawsource,
+                                                 translatable=True)
+diff --git a/tests/test_domain_py.py b/tests/test_domain_py.py
+index b98f37912..b5248814d 100644
+--- a/tests/test_domain_py.py
++++ b/tests/test_domain_py.py
+@@ -838,3 +838,21 @@ def test_noindexentry(app):
+     assert_node(doctree, (addnodes.index, desc, addnodes.index, desc))
+     assert_node(doctree[0], addnodes.index, entries=[('single', 'f (built-in class)', 'f', '', None)])
+     assert_node(doctree[2], addnodes.index, entries=[])
++
++
++def test_pyfunction_docfields_multiple_params(app):
++    text = """
++.. py:function:: func(x1, x2)
++   :noindex:
++
++   :param x1, x2: Input arrays.
++   :type x1, x2: :class:`array_like`
++"""
++    doctree = restructuredtext.parse(app, text)
++    field_list = list(doctree.findall(nodes.field_list))[0]
++    paragraph = field_list[0][1][0]
++
++    assert field_list[0][0].astext() == 'Parameters'
++    assert paragraph.astext().startswith('x1, x2')
++    assert 'array_like' in paragraph.astext()
++    assert not list(paragraph.findall(nodes.emphasis))

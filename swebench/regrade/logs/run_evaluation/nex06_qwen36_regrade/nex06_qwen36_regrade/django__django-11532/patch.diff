@@ -1,0 +1,64 @@
+diff --git a/django/core/mail/message.py b/django/core/mail/message.py
+index e393b4cf5c..4dbf9df648 100644
+--- a/django/core/mail/message.py
++++ b/django/core/mail/message.py
+@@ -10,12 +10,12 @@ from email.mime.base import MIMEBase
+ from email.mime.message import MIMEMessage
+ from email.mime.multipart import MIMEMultipart
+ from email.mime.text import MIMEText
+-from email.utils import formatdate, getaddresses, make_msgid
++from email.utils import formatdate, getaddresses
+ from io import BytesIO, StringIO
+ from pathlib import Path
+ 
+ from django.conf import settings
+-from django.core.mail.utils import DNS_NAME
++from django.core.mail.utils import DNS_NAME, make_msgid
+ from django.utils.encoding import force_str
+ 
+ # Don't BASE64-encode UTF-8 messages so that we avoid unwanted attention from
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..a0b885f069 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -3,6 +3,31 @@ Email message and email sending related helper functions.
+ """
+ 
+ import socket
++from email.utils import make_msgid as _make_msgid
++
++
++def _domain_to_ascii(domain):
++    """
++    Encode a domain name to ASCII using IDNA if it contains non-ASCII
++    characters.
++    """
++    domain = str(domain)
++    try:
++        domain.encode('ascii')
++    except UnicodeEncodeError:
++        domain = domain.encode('idna').decode('ascii')
++    return domain
++
++
++def make_msgid(idstring=None, domain=None):
++    """
++    Create a message ID with a domain name encoded as IDNA if necessary.
++    """
++    if domain is None:
++        domain = _domain_to_ascii(socket.getfqdn())
++    else:
++        domain = _domain_to_ascii(domain)
++    return _make_msgid(idstring, domain=domain)
+ 
+ 
+ # Cache the hostname, but do it lazily: socket.getfqdn() can take a couple of
+@@ -13,7 +38,7 @@ class CachedDnsName:
+ 
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+-            self._fqdn = socket.getfqdn()
++            self._fqdn = _domain_to_ascii(socket.getfqdn())
+         return self._fqdn
+ 
+ 
