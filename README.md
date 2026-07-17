@@ -28,98 +28,132 @@ LLM-benchmark/
 ├── terminal-bench-2-1/      # Terminal-Bench 2.1 任务集
 ├── LICENSE                  # 根目录 Apache-2.0
 └── README.md
+```
 
-快速开始
+## 快速开始
+
+```bash
 git clone https://github.com/Bruce-lys/LLM-benchmark.git
 cd LLM-benchmark
+```
+
 选择要运行的基准，进入对应目录，按其 README 安装依赖并评测：
 
+```bash
 # 示例：LLM Eval
 cd llm-eval
 # 见 llm-eval/README.md
+
 # 示例：IFBench
 cd IFBench
 # 见 IFBench/README.md
+
 # 示例：SWE-bench（工具链入口）
 cd swebench/swebench-kit
 # 见 swebench-kit/README.md 与 RULES.md
-各子项目依赖、API Key、沙箱要求不同，请勿期望在根目录一次安装全部环境。
+```
 
-环境说明
-推荐按子项目分别使用虚拟环境（如 uv / conda / venv）。
-需要独立沙箱的评测（coding / terminal / SWE-bench 等）按其子目录说明准备 Docker、Harbor 或其他运行时。
-API Key、模型端点、本地路径等敏感或机器相关配置不要提交进仓库；优先使用 .env / 本地 YAML（仓库中通常提供 .env.example 或 config.example.yaml）。
-各基准入口速览
-IFBench
+> 各子项目依赖、API Key、沙箱要求不同，**请勿期望在根目录一次安装全部环境**。
+
+## 环境说明
+
+- 推荐按子项目分别使用虚拟环境（如 `uv` / `conda` / `venv`）。
+- 需要独立沙箱的评测（coding / terminal / SWE-bench 等）按其子目录说明准备 Docker、Harbor 或其他运行时。
+- API Key、模型端点、本地路径等敏感或机器相关配置不要提交进仓库；优先使用 `.env` / 本地 YAML（仓库中通常提供 `.env.example` 或 `config.example.yaml`）。
+
+## 各基准入口速览
+
+### IFBench
+
 精确指令遵循评测。安装依赖后，用测试集与模型输出 jsonl 运行：
 
+```bash
 cd IFBench
 pip install -r requirements.txt
 python3 -m run_eval \
   --input_data=IFBench_test.jsonl \
   --input_response_data=sample_output.jsonl \
   --output_dir=eval
-详情见 IFBench/README.md。
+```
 
-HLE (Humanity's Last Exam)
-前沿学科闭卷基准。数据集：🤗 cais/hle。
+详情见 [`IFBench/README.md`](./IFBench/README.md)。
 
+### HLE (Humanity's Last Exam)
+
+前沿学科闭卷基准。数据集：[🤗 cais/hle](https://huggingface.co/datasets/cais/hle)。
+
+```bash
 cd hle
 pip install -r requirements.txt
 # 按 README 配置 OpenAI 兼容接口后运行评测
-详情见 hle/README.md。
+```
 
-LLM Eval
+详情见 [`hle/README.md`](./hle/README.md)。
+
+### LLM Eval
+
 覆盖 AIME26、GPQA Diamond，以及需要沙箱的 NL2Repo 等：
 
+```bash
 cd llm-eval
 uv sync
 source .venv/bin/activate
-详情见 llm-eval/README.md。
+```
 
-SciCode
+详情见 [`llm-eval/README.md`](./llm-eval/README.md)。
+
+### SciCode
+
 科研场景代码生成评测：
 
+```bash
 cd scicode
 # 按 README / pyproject 安装依赖后运行评测脚本
-详情见 scicode/README.md。
+```
 
-SWE-bench
-本目录提供评测脚本与 swebench-kit（YAML 配置驱动：起服务 → 生成轨迹 → 官方评分）。请先阅读 swebench-kit/RULES.md。
+详情见 [`scicode/README.md`](./scicode/README.md)。
 
-Terminal-Bench 2.1
-容器环境下的终端任务评测，推荐使用 Harbor：
+### SWE-bench
 
+本目录提供评测脚本与 [`swebench-kit`](./swebench/swebench-kit/README.md)（YAML 配置驱动：起服务 → 生成轨迹 → 官方评分）。请先阅读 `swebench-kit/RULES.md`。
+
+### Terminal-Bench 2.1
+
+容器环境下的终端任务评测，推荐使用 [Harbor](https://github.com/laude-institute/harbor)：
+
+```bash
 uv tool install harbor
 # 按 terminal-bench-2-1/README.md 提交或本地跑分
-详情见 terminal-bench-2-1/README.md。
+```
 
-来源与致谢
+详情见 [`terminal-bench-2-1/README.md`](./terminal-bench-2-1/README.md)。
+
+## 来源与致谢
+
 本仓库整合了多个开源评测项目，原始工作归属于各自作者与机构。使用或发表结果时，请同时引用对应上游论文 / 仓库 / 数据集：
 
-基准	上游参考
-IFBench
-Paper · HF Collection · open-instruct IF-RLVR
-HLE
-Website · Paper · Dataset
-SciCode
-Homepage · Paper · Dataset
-SWE-bench
-swebench.com · princeton-nlp/SWE-bench
-Terminal-Bench
-tbench.ai · Leaderboard 2.1
-LLM Eval
-见 llm-eval/README.md 中各数据集链接（AIME26 / GPQA / NL2Repo 等）
-License
-本仓库根目录采用 Apache-2.0。
+| 基准 | 上游参考 |
+|------|----------|
+| IFBench | [Paper](https://arxiv.org/pdf/2507.02833) · [HF Collection](https://huggingface.co/collections/allenai/ifbench-683f590687f61b512558cdf1) · [open-instruct IF-RLVR](https://github.com/allenai/open-instruct) |
+| HLE | [Website](https://lastexam.ai) · [Paper](https://arxiv.org/abs/2501.14249) · [Dataset](https://huggingface.co/datasets/cais/hle) |
+| SciCode | [Homepage](https://scicode-bench.github.io/) · [Paper](https://arxiv.org/abs/2407.13168) · [Dataset](https://huggingface.co/datasets/SciCode1/SciCode) |
+| SWE-bench | [swebench.com](https://www.swebench.com/) · [princeton-nlp/SWE-bench](https://github.com/princeton-nlp/SWE-bench) |
+| Terminal-Bench | [tbench.ai](https://www.tbench.ai) · [Leaderboard 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1) |
+| LLM Eval | 见 [`llm-eval/README.md`](./llm-eval/README.md) 中各数据集链接（AIME26 / GPQA / NL2Repo 等） |
 
-各子目录可能沿用其上游许可证，以子目录内 LICENSE 或上游声明为准。例如：
+## License
 
-IFBench、scicode、terminal-bench-2-1：Apache-2.0
-hle：MIT
-贡献
+本仓库根目录采用 [Apache-2.0](./LICENSE)。
+
+各子目录可能沿用其上游许可证，以子目录内 `LICENSE` 或上游声明为准。例如：
+
+- `IFBench`、`scicode`、`terminal-bench-2-1`：Apache-2.0
+- `hle`：MIT
+
+## 贡献
+
 欢迎通过 Issue / PR 补充新的基准目录，或改进统一文档与脚本。新增基准时建议：
 
-放入独立子目录，保留其原有 README 与许可证文件；
-在本 README 的「包含的基准」表格中登记；
-在「来源与致谢」中补充上游链接。
+1. 放入独立子目录，保留其原有 README 与许可证文件；
+2. 在本 README 的「包含的基准」表格中登记；
+3. 在「来源与致谢」中补充上游链接。
