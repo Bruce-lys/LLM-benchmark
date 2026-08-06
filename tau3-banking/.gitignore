@@ -1,0 +1,8 @@
+.env
+.tau2-bench/
+.venv/
+__pycache__/
+data/
+results/
+*.log
+

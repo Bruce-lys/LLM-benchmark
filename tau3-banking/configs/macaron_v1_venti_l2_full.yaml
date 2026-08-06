@@ -1,0 +1,37 @@
+schema_version: 1
+
+benchmark:
+  upstream_repo: https://github.com/sierra-research/tau2-bench.git
+  upstream_ref: v1.0.1
+  upstream_commit: fc0055dc4e0a316c3f83133267fbd6faaa770992
+  domain: banking_knowledge
+  retrieval_config: bm25
+
+agent:
+  llm: openai/Macaron-V1-Venti-merged-L2-streaming-FP8-BLOCK
+  llm_args:
+    api_base: ${AGENT_API_BASE}
+    api_key: ${AGENT_API_KEY}
+    temperature: 1.0
+    top_p: 0.95
+
+user_simulator:
+  llm: openai/gpt-5.2
+  llm_args:
+    api_base: ${USER_API_BASE}
+    api_key: ${USER_API_KEY}
+    reasoning_effort: low
+
+run:
+  num_trials: 1
+  max_concurrency: 4
+  max_steps: 200
+  timeout: 600
+  max_retries: 3
+  retry_delay: 1
+  seed: 300
+  save_to: macaron-banking-full-pass1-gpt52-low
+  auto_resume: true
+  verbose_logs: true
+  llm_log_mode: latest
+
